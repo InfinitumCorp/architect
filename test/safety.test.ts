@@ -37,7 +37,8 @@ describe("workspace confinement", () => {
     await mkdir(root);
     const outside = path.join(dir, "outside");
     await mkdir(outside);
-    await symlink(outside, path.join(root, "escape"));
+    // A junction on Windows: directory symlinks there need admin rights or Developer Mode.
+    await symlink(outside, path.join(root, "escape"), "junction");
     const ws = new WorkspaceInstrument(root);
 
     await ws.execute("workspace_write", { path: "..notes.txt", content: "kept" }, ctx);
