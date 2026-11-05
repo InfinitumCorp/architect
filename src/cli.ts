@@ -91,6 +91,12 @@ function cliApprovals(): ApprovalHandler {
 }
 
 async function main() {
+  // Pick up ANTHROPIC_API_KEY and CNDCTR_* from a local .env (gitignored). Real env vars win.
+  try {
+    process.loadEnvFile(".env");
+  } catch {
+    /* no .env */
+  }
   const { values, positionals } = parseArgs({
     allowPositionals: true,
     options: {
