@@ -4,7 +4,10 @@ import { parseArgs } from "node:util";
 import path from "node:path";
 import { createConductor } from "./index.js";
 import { createConductorServer } from "./server.js";
+import { readFile } from "node:fs/promises";
 import { TriggerRouter } from "./triggers.js";
+import { ScoreLibrary } from "./library.js";
+import { ScheduleStore, Scheduler, validateSchedule } from "./schedules.js";
 import { PERMISSIONS, type ApprovalHandler, type Autonomy, type Permission, type Run, type RunEvent } from "./types.js";
 
 const HELP = `/CNDCTR/ — intent in, outcome out.
@@ -16,7 +19,19 @@ Usage
   cndctr encore <runId> -i k=v ...    Rerun a Score with new inputs
   cndctr runs                         List recent runs
   cndctr show <runId>                 Print a run as JSON
-  cndctr serve [--port 7337]          Start the API, trigger endpoint and the Podium
+  cndctr serve [--port 7337]          Start the API, triggers, schedules and the Podium
+
+Saved Scores (reusable workflows)
+  cndctr save <runId> <name>          Save a run's Score to the library
+  cndctr scores                       List saved Scores
+  cndctr play <name> -i k=v ...       Perform a saved Score with inputs
+  cndctr export <name>                Print a Marketplace package (JSON) for a saved Score
+  cndctr import <file.json>           Install a Score package
+
+Autopilot schedules (run by \`serve\`)
+  cndctr schedule add <name> --score <saved> (--every <min> | --daily HH:MM) [-i k=v] [--budget usd]
+  cndctr schedule list
+  cndctr schedule remove <name>
 
 Options
   -a, --autonomy <level>     rehearsal | accompaniment (default) | autopilot
@@ -27,6 +42,7 @@ Options
       --headed               Show the browser window
       --state <file>         Playwright storage state to reuse a session you signed in to yourself
       --allow-host <host>    Restrict the browser to these hosts (repeatable)
+  -b, --budget <usd>         Spending limit for the run; it hands off instead of going over
       --data <dir>           Data directory (default: .cndctr)
       --json                 Print the final run as JSON
 
@@ -45,7 +61,13 @@ function printEvent(ev: RunEvent) {
       console.log(`\n${C.bold}Score${C.off} ${score.summary}`);
       score.steps.forEach((s, i) => console.log(`  ${i + 1}. ${s.title}${s.checkpoint ? `${C.yellow} [checkpoint]${C.off}` : ""}`));
       console.log(`${C.dim}  permissions: ${score.permissions.join(", ")}${C.off}`);
-      console.log(`${C.dim}  done when: ${score.successCriteria.join(" · ")}${C.off}\n`);
+      console.log(`${C.dim}  done when: ${score.successCriteria.join(" · ")}${C.off}`);
+      const est = d.estimate as { lowUsd: number; highUsd: number } | undefined;
+      if (est) {
+        const limit = d.budgetUsd ? ` · limit $${Number(d.budgetUsd).toFixed(2)}` : " · no limit (set one with --budget)";
+        console.log(`${C.dim}  estimate: $${est.lowUsd.toFixed(2)}–$${est.highUsd.toFixed(2)}${limit}${C.off}`);
+      }
+      console.log();
       break;
     }
     case "step.started":
@@ -111,6 +133,10 @@ async function main() {
       data: { type: "string" },
       port: { type: "string" },
       json: { type: "boolean" },
+      budget: { type: "string", short: "b" },
+      score: { type: "string" },
+      every: { type: "string" },
+      daily: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -131,6 +157,9 @@ async function main() {
   const autonomy = (values.autonomy ?? "accompaniment") as Autonomy;
   if (!["rehearsal", "accompaniment", "autopilot"].includes(autonomy)) throw new Error(`unknown autonomy "${autonomy}"`);
 
+  const budgetUsd = values.budget !== undefined ? Number(values.budget) : undefined;
+  if (budgetUsd !== undefined && !(budgetUsd > 0)) throw new Error("--budget must be a positive number of USD");
+
   const conductor = createConductor({
     dataDir: values.data,
     workspace: values.workspace,
@@ -138,6 +167,8 @@ async function main() {
     approvalHandler: command === "serve" ? undefined : cliApprovals(),
   });
   if (command !== "serve" && !values.json) conductor.on("event", printEvent);
+  const library = new ScoreLibrary(path.join(conductor.store.root, "scores"));
+  const schedules = new ScheduleStore(conductor.store.root);
 
   const finish = async (run: Run) => {
     await conductor.dispose();
@@ -150,18 +181,79 @@ async function main() {
     case "run": {
       const goal = rest.join(" ").trim();
       if (!goal) throw new Error('give a goal: cndctr run "…"');
-      return finish(await conductor.run(goal, { autonomy, inputs, startUrl: values.url, permissions: permit }));
+      return finish(await conductor.run(goal, { autonomy, inputs, startUrl: values.url, permissions: permit, budgetUsd }));
     }
     case "compose": {
       const goal = rest.join(" ").trim();
       const score = await conductor.compose(goal, { inputs, startUrl: values.url, permissions: permit });
       console.log(JSON.stringify(score, null, 2));
+      const est = conductor.estimate(score);
+      console.error(`${C.dim}estimate to perform: $${est.lowUsd.toFixed(2)}–$${est.highUsd.toFixed(2)}${C.off}`);
       return conductor.dispose();
     }
     case "recover":
-      return finish(await conductor.recover(required(rest[0], "runId")));
+      return finish(await conductor.recover(required(rest[0], "runId"), { budgetUsd }));
     case "encore":
-      return finish(await conductor.encore(required(rest[0], "runId"), inputs, values.autonomy ? autonomy : undefined));
+      return finish(
+        await conductor.encore(required(rest[0], "runId"), inputs, values.autonomy ? autonomy : undefined, budgetUsd),
+      );
+    case "save": {
+      const run = await conductor.store.load(required(rest[0], "runId"));
+      const saved = await library.save(required(rest[1], "name"), run.score);
+      console.log(`Saved "${saved.name}"${saved.inputs.length ? ` (inputs: ${saved.inputs.join(", ")})` : ""}`);
+      return;
+    }
+    case "scores": {
+      for (const s of await library.list()) {
+        console.log(`${s.name.padEnd(28)} ${s.inputs.length ? `[${s.inputs.join(", ")}] ` : ""}${s.description.slice(0, 80)}`);
+      }
+      return;
+    }
+    case "play": {
+      const saved = await library.get(required(rest[0], "name"));
+      const run = await conductor.prepare(saved.score, { inputs, autonomy, budgetUsd, source: `score:${saved.name}` });
+      return finish(await conductor.perform(run));
+    }
+    case "export": {
+      const { savedAt: _s, inputs: _i, ...pkg } = await library.get(required(rest[0], "name"));
+      console.log(JSON.stringify(pkg, null, 2));
+      return;
+    }
+    case "import": {
+      const raw = JSON.parse(await readFile(required(rest[0], "file"), "utf8"));
+      const saved = await library.import(raw);
+      console.log(`Installed "${saved.name}" — permissions it asks for: ${saved.score.permissions.join(", ") || "none"}`);
+      return;
+    }
+    case "schedule": {
+      const sub = rest[0];
+      if (sub === "list") {
+        for (const s of await schedules.list()) {
+          const when = s.everyMinutes ? `every ${s.everyMinutes}m` : `daily ${s.dailyAt}`;
+          console.log(
+            `${s.name.padEnd(24)} ${s.score.padEnd(24)} ${when.padEnd(14)} ${s.autonomy.padEnd(13)} ${s.enabled ? "on " : "off"} last: ${s.lastRunAt ?? "never"}`,
+          );
+        }
+        return;
+      }
+      if (sub === "remove") return schedules.remove(required(rest[1], "name"));
+      if (sub === "add") {
+        const s = validateSchedule({
+          name: required(rest[1], "name"),
+          score: required(values.score, "--score"),
+          everyMinutes: values.every ? Number(values.every) : undefined,
+          dailyAt: values.daily,
+          inputs,
+          autonomy: values.autonomy ? autonomy : "autopilot",
+          budgetUsd,
+        });
+        await library.get(s.score);
+        await schedules.upsert(s);
+        console.log(`Scheduled "${s.name}". It runs while \`cndctr serve\` is running.`);
+        return;
+      }
+      throw new Error("usage: cndctr schedule add|list|remove");
+    }
     case "runs": {
       for (const r of await conductor.store.list()) {
         console.log(`${r.id}  ${r.status.padEnd(17)} ${r.autonomy.padEnd(13)} ${r.createdAt}  ${r.score.goal.slice(0, 70)}`);
@@ -175,7 +267,8 @@ async function main() {
       const port = Number(values.port ?? process.env.PORT ?? 7337);
       const token = process.env.CNDCTR_API_TOKEN;
       const triggers = await TriggerRouter.fromFile(path.resolve("cndctr.triggers.json"));
-      createConductorServer({ conductor, token, triggers }).listen(port, () => {
+      createConductorServer({ conductor, token, triggers, library, schedules }).listen(port, () => {
+        new Scheduler(conductor, library, schedules).start();
         console.log(`/CNDCTR/ listening on http://localhost:${port}  (Podium at /)`);
         if (!token) console.log(`${C.yellow}CNDCTR_API_TOKEN is not set: the API is open to anyone who can reach this port.${C.off}`);
       });

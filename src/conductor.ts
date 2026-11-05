@@ -8,6 +8,7 @@ import { ToolInputError, validateInput, type Instrument, type ToolContext, type 
 import { gate, newId, now, truncate } from "./policy.js";
 import { composePrompt, composeSystem, interpolate, performSystem, verifySystem } from "./prompts.js";
 import { RunStore } from "./store.js";
+import { addUsage, emptyUsage, estimateCost, type TurnUsage } from "./usage.js";
 import {
   PERMISSIONS,
   type ActionRecord,
@@ -49,6 +50,10 @@ export interface ComposeOptions {
 
 export interface PerformOptions extends ComposeOptions {
   autonomy?: Autonomy;
+  /** Spending limit for the run, in USD. */
+  budgetUsd?: number;
+  /** Saved Score or schedule name that started the run. */
+  source?: string;
 }
 
 interface ControlTool {
@@ -124,6 +129,7 @@ const CONTROL_TOOLS: Record<string, ControlTool> = {
 };
 
 class RunCancelled extends Error {}
+class BudgetExceeded extends Error {}
 
 /**
  * /CNDCTR/ — Compose a Score, Perform it with Instruments, Verify the outcome.
@@ -161,13 +167,22 @@ export class Conductor extends EventEmitter {
   // ───────────────────────────── Compose ─────────────────────────────
 
   async compose(goal: string, opts: ComposeOptions = {}): Promise<Score> {
+    return (await this.composeWithUsage(goal, opts)).score;
+  }
+
+  /** Rough cost range for performing a Score with the current model. */
+  estimate(score: Score) {
+    return estimateCost(score, this.brain.model);
+  }
+
+  private async composeWithUsage(goal: string, opts: ComposeOptions): Promise<{ score: Score; usage?: TurnUsage }> {
     const ceiling = opts.permissions ? this.ceiling.filter((p) => opts.permissions!.includes(p)) : this.ceiling;
-    const draft = await this.brain.compose(
+    const { draft, usage } = await this.brain.compose(
       composeSystem(this.instruments, ceiling),
       composePrompt(goal, opts.inputs ?? {}, opts.startUrl),
     );
     const known = new Set(this.instruments.map((i) => i.name));
-    return {
+    const score: Score = {
       id: newId("score"),
       goal,
       summary: draft.summary,
@@ -185,9 +200,14 @@ export class Conductor extends EventEmitter {
       successCriteria: draft.successCriteria,
       createdAt: now(),
     };
+    return { score, usage };
   }
 
-  createRun(score: Score, autonomy: Autonomy, extra: Partial<Pick<Run, "trigger" | "parentRunId">> = {}): Run {
+  createRun(
+    score: Score,
+    autonomy: Autonomy,
+    extra: Partial<Pick<Run, "trigger" | "parentRunId" | "budgetUsd" | "source">> = {},
+  ): Run {
     const t = now();
     return {
       id: newId("run"),
@@ -197,6 +217,7 @@ export class Conductor extends EventEmitter {
       steps: score.steps.map((s) => ({ id: s.id, status: "pending", attempts: 0 })),
       actions: [],
       evidence: [],
+      usage: emptyUsage(),
       createdAt: t,
       updatedAt: t,
       ...extra,
@@ -211,10 +232,15 @@ export class Conductor extends EventEmitter {
 
   /** Compose a Score and persist a run without performing it yet. */
   async start(goal: string, opts: PerformOptions = {}): Promise<Run> {
-    const score = await this.compose(goal, opts);
-    const run = this.createRun(score, opts.autonomy ?? "accompaniment", { trigger: opts.trigger });
+    const { score, usage } = await this.composeWithUsage(goal, opts);
+    const run = this.createRun(score, opts.autonomy ?? "accompaniment", {
+      trigger: opts.trigger,
+      budgetUsd: opts.budgetUsd,
+      source: opts.source,
+    });
+    if (usage) addUsage(run.usage, usage, this.brain.model);
     await this.store.save(run);
-    await this.emitEvent(run.id, "run.composed", { score });
+    await this.emitEvent(run.id, "run.composed", { score, estimate: this.estimate(score), budgetUsd: run.budgetUsd });
     return run;
   }
 
@@ -276,7 +302,13 @@ export class Conductor extends EventEmitter {
       await this.verify(run);
       return run;
     } catch (err) {
-      if (err instanceof RunCancelled) {
+      if (err instanceof BudgetExceeded) {
+        await this.handoff(
+          run,
+          err.message,
+          `Raise the limit and resume: cndctr recover ${run.id} --budget <usd>  (or POST /v1/runs/${run.id}/recover { "budgetUsd": … })`,
+        );
+      } else if (err instanceof RunCancelled) {
         await this.fail(run, "cancelled");
       } else {
         await this.fail(run, err instanceof Error ? err.message : String(err));
@@ -347,7 +379,17 @@ export class Conductor extends EventEmitter {
 
     for (let turn = 0; turn < maxTurns; turn++) {
       if (this.cancelled.has(run.id)) throw new RunCancelled();
+      run.usage ??= emptyUsage();
+      if (run.budgetUsd !== undefined && run.usage.costUsd >= run.budgetUsd) {
+        throw new BudgetExceeded(
+          `Spending limit reached: $${run.usage.costUsd.toFixed(2)} spent of a $${run.budgetUsd.toFixed(2)} limit`,
+        );
+      }
       const res = await this.brain.turn({ system, messages, tools });
+      if (res.usage) {
+        addUsage(run.usage, res.usage, this.brain.model);
+        void this.emitEvent(run.id, "usage", { ...run.usage });
+      }
       if (res.stop_reason === "refusal") throw new Error("the model declined to continue this step");
       messages.push({ role: "assistant", content: res.content as ContentBlockParam[] });
 
@@ -567,19 +609,52 @@ export class Conductor extends EventEmitter {
   // ─────────────────────── Encore · Recover · Handoff ───────────────────────
 
   /** Rerun a Score with new inputs. */
-  async encore(runId: string, inputs: Record<string, string>, autonomy?: Autonomy): Promise<Run> {
+  async encore(runId: string, inputs: Record<string, string>, autonomy?: Autonomy, budgetUsd?: number): Promise<Run> {
     const prev = await this.store.load(runId);
-    const score: Score = { ...prev.score, id: newId("score"), inputs: { ...prev.score.inputs, ...inputs }, createdAt: now() };
-    const run = this.createRun(score, autonomy ?? prev.autonomy, { parentRunId: prev.id });
-    await this.store.save(run);
+    const run = await this.prepare(prev.score, {
+      inputs,
+      autonomy: autonomy ?? prev.autonomy,
+      budgetUsd: budgetUsd ?? prev.budgetUsd,
+      parentRunId: prev.id,
+    });
     await this.emitEvent(run.id, "run.encore", { from: prev.id, inputs });
     return this.perform(run);
   }
 
+  /**
+   * Turn an existing Score (saved, scheduled, or from the Score Marketplace) into a new run.
+   * A Score from disk or another account is untrusted: its permissions are re-clamped to this
+   * account's ceiling and its instruments to the ones installed here.
+   */
+  async prepare(
+    base: Score,
+    opts: { inputs?: Record<string, string>; autonomy?: Autonomy; budgetUsd?: number; parentRunId?: string; source?: string } = {},
+  ): Promise<Run> {
+    const known = new Set(this.instruments.map((i) => i.name));
+    const score: Score = {
+      ...base,
+      id: newId("score"),
+      inputs: { ...base.inputs, ...(opts.inputs ?? {}) },
+      permissions: base.permissions.filter((p) => this.ceiling.includes(p)),
+      steps: base.steps.map((s) => ({ ...s, instruments: s.instruments.filter((n) => known.has(n)) })),
+      createdAt: now(),
+    };
+    const run = this.createRun(score, opts.autonomy ?? "accompaniment", {
+      parentRunId: opts.parentRunId,
+      budgetUsd: opts.budgetUsd,
+      source: opts.source,
+    });
+    await this.store.save(run);
+    await this.emitEvent(run.id, "run.composed", { score, estimate: this.estimate(score), budgetUsd: run.budgetUsd });
+    return run;
+  }
+
   /** Resume after a failed step without repeating completed work. */
-  async recover(runId: string): Promise<Run> {
+  async recover(runId: string, opts: { budgetUsd?: number } = {}): Promise<Run> {
     const run = await this.store.load(runId);
     if (["succeeded", "rehearsed"].includes(run.status)) throw new Error(`run ${runId} already finished (${run.status})`);
+    run.usage ??= emptyUsage();
+    if (opts.budgetUsd !== undefined) run.budgetUsd = opts.budgetUsd;
     for (const s of run.steps) if (s.status !== "done") s.status = "pending";
     run.error = undefined;
     run.verdict = undefined;

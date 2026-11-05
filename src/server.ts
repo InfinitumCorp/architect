@@ -5,8 +5,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Conductor } from "./conductor.js";
 import { TriggerRouter } from "./triggers.js";
+import { ScoreLibrary } from "./library.js";
+import { ScheduleStore, validateSchedule } from "./schedules.js";
 import { PERMISSIONS, type Autonomy, type Permission, type RunEvent, type Signal } from "./types.js";
-import { now } from "./policy.js";
+import { InputError, NotFoundError, now } from "./policy.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
@@ -16,6 +18,15 @@ export interface ServerOptions {
   triggers?: TriggerRouter;
   /** Bearer token required on /v1/*. Strongly recommended whenever the server is reachable by others. */
   token?: string;
+  library?: ScoreLibrary;
+  schedules?: ScheduleStore;
+}
+
+function budget(v: unknown): number | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) throw new HttpError(400, "budgetUsd must be a positive number");
+  return n;
 }
 
 class HttpError extends Error {
@@ -77,6 +88,8 @@ function permissions(v: unknown): Permission[] | undefined {
 export function createConductorServer(opts: ServerOptions): Server {
   const { conductor } = opts;
   const triggers = opts.triggers ?? new TriggerRouter();
+  const library = opts.library ?? new ScoreLibrary(path.join(conductor.store.root, "scores"));
+  const schedules = opts.schedules ?? new ScheduleStore(conductor.store.root);
   const background = (p: Promise<unknown>) => p.catch((err) => console.error("[cndctr]", err));
 
   const authorized = (req: IncomingMessage, url: URL) => {
@@ -114,6 +127,7 @@ export function createConductorServer(opts: ServerOptions): Server {
             inputs: stringMap(b.inputs),
             startUrl: b.startUrl ? String(b.startUrl) : undefined,
             permissions: permissions(b.permissions),
+            budgetUsd: budget(b.budgetUsd),
           });
           if (!b.composeOnly) background(conductor.perform(run));
           return json(res, 202, run);
@@ -139,18 +153,73 @@ export function createConductorServer(opts: ServerOptions): Server {
           }
           if (action === "recover") {
             if (conductor.isActive(id)) throw new HttpError(409, "run is still performing");
-            background(conductor.recover(id));
+            background(conductor.recover(id, { budgetUsd: budget(b.budgetUsd) }));
             return json(res, 202, { ok: true });
           }
           if (action === "encore") {
             const autonomy = AUTONOMY.includes(b.autonomy as Autonomy) ? (b.autonomy as Autonomy) : undefined;
-            background(conductor.encore(id, stringMap(b.inputs), autonomy));
+            background(conductor.encore(id, stringMap(b.inputs), autonomy, budget(b.budgetUsd)));
             return json(res, 202, { ok: true });
           }
           if (action === "cancel") {
             conductor.cancel(id);
             return json(res, 202, { ok: true });
           }
+        }
+      }
+
+      if (resource === "scores") {
+        if (req.method === "GET" && !id) return json(res, 200, await library.list());
+        if (req.method === "GET" && id && !action) return json(res, 200, await library.get(id));
+        if (req.method === "POST" && id === "import") return json(res, 201, await library.import(await body(req)));
+        if (req.method === "POST" && !id) {
+          const b = await body(req);
+          const run = await conductor.store.load(String(b.runId ?? ""));
+          const saved = await library.save(String(b.name ?? ""), run.score, {
+            description: b.description ? String(b.description) : undefined,
+            author: b.author ? String(b.author) : undefined,
+          });
+          return json(res, 201, saved);
+        }
+        if (req.method === "POST" && id && action === "play") {
+          const b = await body(req);
+          const saved = await library.get(id);
+          const run = await conductor.prepare(saved.score, {
+            inputs: stringMap(b.inputs),
+            autonomy: AUTONOMY.includes(b.autonomy as Autonomy) ? (b.autonomy as Autonomy) : "accompaniment",
+            budgetUsd: budget(b.budgetUsd),
+            source: `score:${id}`,
+          });
+          background(conductor.perform(run));
+          return json(res, 202, run);
+        }
+        if (req.method === "DELETE" && id) {
+          await library.remove(id);
+          return json(res, 200, { ok: true });
+        }
+      }
+
+      if (resource === "schedules") {
+        if (req.method === "GET") return json(res, 200, await schedules.list());
+        if (req.method === "POST" && !id) {
+          const b = await body(req);
+          const s = validateSchedule({
+            name: String(b.name ?? ""),
+            score: String(b.score ?? ""),
+            everyMinutes: b.everyMinutes !== undefined ? Number(b.everyMinutes) : undefined,
+            dailyAt: b.dailyAt ? String(b.dailyAt) : undefined,
+            inputs: stringMap(b.inputs),
+            autonomy: AUTONOMY.includes(b.autonomy as Autonomy) ? (b.autonomy as Autonomy) : undefined,
+            budgetUsd: budget(b.budgetUsd),
+            enabled: b.enabled === undefined ? true : b.enabled === true,
+          });
+          await library.get(s.score); // must exist
+          await schedules.upsert(s);
+          return json(res, 201, s);
+        }
+        if (req.method === "DELETE" && id) {
+          await schedules.remove(id);
+          return json(res, 200, { ok: true });
         }
       }
 
@@ -190,7 +259,11 @@ export function createConductorServer(opts: ServerOptions): Server {
 
       throw new HttpError(404, "not found");
     } catch (err) {
-      const status = err instanceof HttpError ? err.status : (err as NodeJS.ErrnoException).code === "ENOENT" ? 404 : 500;
+      const status =
+        err instanceof HttpError ? err.status
+        : err instanceof InputError || (err as Error)?.name === "ZodError" ? 400
+        : err instanceof NotFoundError || (err as NodeJS.ErrnoException).code === "ENOENT" ? 404
+        : 500;
       if (status === 500) console.error("[cndctr]", err);
       if (!res.headersSent) json(res, status, { error: err instanceof Error ? err.message : String(err) });
       else res.end();

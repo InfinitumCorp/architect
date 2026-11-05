@@ -7,7 +7,10 @@
  *   Verify       – "done" means the success criteria were confirmed, not that the last button was clicked
  */
 
-export type Autonomy = "rehearsal" | "accompaniment" | "autopilot";
+import type { RunUsage } from "./usage.js";
+export type { RunUsage } from "./usage.js";
+
+export type Autonomy ="rehearsal" | "accompaniment" | "autopilot";
 
 /** How consequential a single action is. Drives approval gating. */
 export type Risk = "read" | "write" | "irreversible";
@@ -133,6 +136,12 @@ export interface Run {
   trigger?: Signal;
   /** Set when this run is an Encore of another run. */
   parentRunId?: string;
+  /** Model tokens and cost so far. */
+  usage: RunUsage;
+  /** Spending limit in USD. When reached, the run hands off instead of continuing. */
+  budgetUsd?: number;
+  /** Name of the saved Score or schedule that started this run, if any. */
+  source?: string;
   createdAt: string;
   updatedAt: string;
 }

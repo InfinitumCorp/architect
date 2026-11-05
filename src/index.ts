@@ -19,6 +19,10 @@ export { HttpInstrument } from "./instruments/http.js";
 export { EcosystemInstrument, INFINITUM_PRODUCTS, productsFromEnv } from "./instruments/ecosystem.js";
 export type { Instrument, ToolSpec, ToolContext, ToolOutput } from "./instruments/types.js";
 export { TriggerRouter, type TriggerRule } from "./triggers.js";
+export { ScoreLibrary, type SavedScore, digestOf } from "./library.js";
+export { Scheduler, ScheduleStore, validateSchedule, isDue, type Schedule } from "./schedules.js";
+export { estimateCost, costOf, type RunUsage, type TurnUsage } from "./usage.js";
+export { createConductorServer } from "./server.js";
 
 export interface CreateConductorOptions extends Partial<Omit<ConductorOptions, "brain" | "instruments">> {
   brain?: Brain;

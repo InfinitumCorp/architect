@@ -60,3 +60,8 @@ const IRREVERSIBLE_COMMANDS =
 export function classifyCommand(command: string): Risk {
   return IRREVERSIBLE_COMMANDS.test(command) ? "irreversible" : "write";
 }
+
+/** Bad input from a caller (API body, CLI flag, imported package). Maps to HTTP 400. */
+export class InputError extends Error {}
+/** A named thing that does not exist. Maps to HTTP 404. */
+export class NotFoundError extends Error {}
