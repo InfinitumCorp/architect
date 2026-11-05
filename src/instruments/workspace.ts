@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { classifyCommand, truncate } from "../policy.js";
 import type { Instrument, ToolContext, ToolOutput, ToolSpec } from "./types.js";
@@ -54,18 +54,36 @@ export class WorkspaceInstrument implements Instrument {
     },
   ];
 
-  /** Resolve a model-supplied path and refuse anything outside the workspace. */
-  resolve(p: string): string {
-    const full = path.resolve(this.root, p);
+  /** Resolve a model-supplied path and refuse anything outside the workspace, including through a symlink. */
+  async resolve(p: string): Promise<string> {
+    const full = path.resolve(this.root, p || ".");
     const rel = path.relative(this.root, full);
-    if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error(`path "${p}" is outside the workspace`);
-    return full;
+    if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
+      throw new Error(`path "${p}" is outside the workspace`);
+    }
+    const rootReal = await realpath(this.root);
+    let cursor = full;
+    for (;;) {
+      try {
+        const real = await realpath(cursor);
+        const relReal = path.relative(rootReal, real);
+        if (relReal === ".." || relReal.startsWith(`..${path.sep}`) || path.isAbsolute(relReal)) {
+          throw new Error(`path "${p}" is outside the workspace`);
+        }
+        return full;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+        const parent = path.dirname(cursor);
+        if (parent === cursor) return full;
+        cursor = parent;
+      }
+    }
   }
 
   async execute(tool: string, input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput> {
     switch (tool) {
       case "workspace_list": {
-        const dir = this.resolve(String(input.path ?? "."));
+        const dir = await this.resolve(String(input.path ?? "."));
         const entries = await readdir(dir, { withFileTypes: true });
         const lines = entries
           .filter((e) => e.name !== "node_modules" && e.name !== ".git")
@@ -73,13 +91,13 @@ export class WorkspaceInstrument implements Instrument {
         return { text: lines.join("\n") || "(empty)" };
       }
       case "workspace_read": {
-        const file = this.resolve(String(input.path));
+        const file = await this.resolve(String(input.path));
         const info = await stat(file);
         if (info.size > 2_000_000) return { text: "File is larger than 2 MB; read a smaller file.", isError: true };
         return { text: truncate(await readFile(file, "utf8"), 40_000) };
       }
       case "workspace_write": {
-        const file = this.resolve(String(input.path));
+        const file = await this.resolve(String(input.path));
         await mkdir(path.dirname(file), { recursive: true });
         await writeFile(file, String(input.content), "utf8");
         ctx.addEvidence({ kind: "file", label: "wrote", content: path.relative(this.root, file) });
