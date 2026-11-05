@@ -97,6 +97,7 @@
     document.getElementById("detail").innerHTML = `
       <div class="card"><h2>Goal</h2><div>${esc(run.score.goal)}</div>
         <div class="status ${run.status}" style="margin-top:8px">${esc(run.status)} · ${esc(run.autonomy)}${run.error ? " · " + esc(run.error) : ""}</div>
+        ${run.usage ? `<div style="color:var(--dim);font-size:12px;margin-top:4px">spent $${run.usage.costUsd.toFixed(2)}${run.budgetUsd ? ` of $${run.budgetUsd.toFixed(2)} limit` : ""} · ${run.usage.calls} model calls${run.source ? " · " + esc(run.source) : ""}</div>` : ""}
         <div class="row" style="margin-top:10px">
           ${["failed","handed_off"].includes(run.status) ? '<button data-act="recover">Recover</button>' : ""}
           ${["succeeded","failed","rehearsed"].includes(run.status) ? '<button data-act="encore">Encore</button>' : ""}

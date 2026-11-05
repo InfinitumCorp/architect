@@ -47,6 +47,10 @@
     "./sdk": {
       "types": "./dist/sdk.d.ts",
       "default": "./dist/sdk.js"
+    },
+    "./adapter": {
+      "types": "./dist/adapter.d.ts",
+      "default": "./dist/adapter.js"
     }
   },
   "engines": {

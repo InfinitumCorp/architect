@@ -31,6 +31,22 @@ The gate (`src/policy.ts`) is pure and deterministic. A tool whose permission th
 - **Recover** — resume a failed or handed-off run; completed steps are not repeated and the performer sees what the last attempt did.
 - **Handoff** — when Conductor needs a person (sign-in, CAPTCHA, payment details, a judgment call) it writes `handoff/HANDOFF.md`, the browser session state and a last screenshot, then stops.
 
+### Estimates and spending limits
+
+Every Score shows a cost estimate before it runs, and every run tracks tokens and dollars as it goes (CLI, Podium, `run.usage`). Give a limit with `--budget 5` (or `budgetUsd` in the API): when it is reached, Conductor hands off instead of continuing, and `recover --budget 10` resumes with a higher limit.
+
+### Saved Scores, the Marketplace and Autopilot schedules
+
+```bash
+cndctr save run_ab12cd34 supplier-quote          # keep a Score that worked
+cndctr play supplier-quote -i supplier="Globex"  # rerun it with new inputs
+cndctr export supplier-quote > quote.json         # Marketplace package (SHA-256 digest)
+cndctr import quote.json                          # install one; tampered packages are rejected
+cndctr schedule add weekly-quotes --score supplier-quote --daily 09:00 -i supplier=Acme --budget 3
+```
+
+A Score installed from someone else is untrusted: when it is played, its permissions are re-clamped to your account's ceiling and its instruments to the ones you have. Schedules run on Autopilot inside `cndctr serve` and never overlap themselves.
+
 ### Safe by design
 
 - Permissions belong to the Score and the account (`permissionCeiling`). The model proposes; the ceiling disposes. Nothing read during a run can expand them.
@@ -87,7 +103,21 @@ await cndctr.signal("spectre", "renewal_risk", { account: "Acme", owner: "dana@a
 
 Rules live in `cndctr.triggers.json` (see `cndctr.triggers.example.json`). Built-in defaults cover Spectre `renewal_risk`, [HRVST] `fault`, METATRON¹⁰⁰ `event` and Cumulus://Cloud `alert`. Signal payloads are flattened into the goal as data.
 
-**3. Be played by it (Conductor action contract).** A product exposes actions Conductor can call as an Instrument:
+**3. Be played by it (Conductor action contract).** A product exposes actions Conductor can call as an Instrument. `cndctr/adapter` implements the contract in a few lines (see [examples/spectre-adapter.ts](examples/spectre-adapter.ts)):
+
+```ts
+import { createActionHandler } from "cndctr/adapter";
+const cndctr = createActionHandler({
+  token: process.env.CNDCTR_PRODUCT_TOKEN,
+  actions: {
+    find_account:   { description: "Look up an account", risk: "read",  run: ({ query }) => crm.find(query) },
+    draft_followup: { description: "Save a draft email", risk: "write", run: (p) => crm.draft(p) },
+  },
+});
+http.createServer(async (req, res) => { if (await cndctr(req, res)) return; /* your app */ });
+```
+
+The wire format:
 
 ```
 GET  {baseUrl}/cndctr/v1/actions            -> [{ name, description, risk }]
@@ -121,6 +151,12 @@ Configure with `CNDCTR_PRODUCT_<KEY>_URL` / `CNDCTR_PRODUCT_<KEY>_TOKEN` for `sc
 | `GET` | `/v1/approvals` | decisions waiting for a person |
 | `POST` | `/v1/approvals/:id` | `{ approved, note?, by? }` |
 | `POST` | `/v1/signals/:product` | `{ type, payload }` ecosystem trigger |
+| `GET` / `POST` / `DELETE` | `/v1/scores[/:name]` | saved Scores (`POST { runId, name }` saves) |
+| `POST` | `/v1/scores/:name/play` | `{ inputs?, autonomy?, budgetUsd? }` |
+| `POST` | `/v1/scores/import` | install a Marketplace package |
+| `GET` / `POST` / `DELETE` | `/v1/schedules[/:name]` | Autopilot schedules |
+
+`POST /v1/runs`, `/recover` and `/encore` also accept `budgetUsd`.
 
 All `/v1` routes require `Authorization: Bearer $CNDCTR_API_TOKEN` when the token is set (set it whenever the server is reachable by others).
 
@@ -162,9 +198,14 @@ src/
   triggers.ts         ecosystem signal → Score rules
   server.ts           HTTP API + SSE + Podium
   sdk.ts              client for other products
+  adapter.ts          action-contract handler for products Conductor plays
+  usage.ts            token pricing, estimates, spending limits
+  library.ts          saved Scores and Marketplace packages
+  schedules.ts        Autopilot schedules
   cli.ts              `cndctr`
 podium/index.html     the Podium
-test/                 gate, conductor end-to-end (scripted brain), real-Chromium browser, API + SDK
+test/                 gate, conductor end-to-end, real Chromium, API + SDK, budgets, library, schedules, ecosystem + Firmament
+examples/             spectre-adapter.ts
 ```
 
 ## Development
