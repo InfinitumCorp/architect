@@ -1,0 +1,43 @@
+[
+  {
+    "product": "spectre",
+    "type": "renewal_risk",
+    "goal": "Spectre flagged a renewal risk for {{payload.account}} ({{payload.reason}}). Review the account's recent activity, draft a personal follow-up for the account owner {{payload.owner}}, and prepare it for approval.",
+    "autonomy": "accompaniment",
+    "permissions": [
+      "ecosystem",
+      "http.read"
+    ]
+  },
+  {
+    "product": "hrvst",
+    "type": "fault",
+    "goal": "[HRVST] captured a fault: {{payload.description}} at {{payload.location}}. Open a maintenance ticket with the observation and evidence, and assign it to {{payload.team}}.",
+    "autonomy": "accompaniment",
+    "permissions": [
+      "ecosystem",
+      "browser"
+    ]
+  },
+  {
+    "product": "metatron",
+    "type": "event",
+    "goal": "METATRON¹⁰⁰ flagged an event: {{payload.summary}}. Work out what it means for the user and prepare the follow-up actions it calls for.",
+    "autonomy": "rehearsal",
+    "permissions": [
+      "ecosystem",
+      "browser",
+      "http.read"
+    ]
+  },
+  {
+    "product": "cumulus",
+    "type": "alert",
+    "goal": "Cumulus://Cloud raised an alert: {{payload.message}} on {{payload.resource}}. Diagnose it with read-only checks and prepare the remediation.",
+    "autonomy": "rehearsal",
+    "permissions": [
+      "ecosystem",
+      "http.read"
+    ]
+  }
+]

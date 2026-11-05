@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.cndctr/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+cndctr.triggers.json
