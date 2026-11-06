@@ -32,7 +32,7 @@ describe("workspace confinement", () => {
   afterEach(() => rm(dir, { recursive: true, force: true }));
 
   it("writes a dotted name and refuses a symlink that leaves the workspace", async () => {
-    dir = await mkdtemp(path.join(tmpdir(), "rchtct-safe-"));
+    dir = await mkdtemp(path.join(tmpdir(), "architech-safe-"));
     const root = path.join(dir, "ws");
     await mkdir(root);
     const outside = path.join(dir, "outside");

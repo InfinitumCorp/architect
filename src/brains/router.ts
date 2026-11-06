@@ -54,7 +54,7 @@ export class RouterBrain implements Brain {
   readonly policy: RouterPolicy;
   private down = new Map<string, number>();
   private now: () => number;
-  /** Called on every routed call; Architect can log it. */
+  /** Called on every routed call; Architech can log it. */
   onRoute?: (d: RouteDecision & { used: string; failures: Array<{ id: string; error: string }> }) => void;
 
   constructor(candidates: Candidate[], policy: Partial<RouterPolicy> = {}, now: () => number = Date.now) {

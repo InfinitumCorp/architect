@@ -1,15 +1,15 @@
 /**
- * /RCHTCT/ as an MCP server, so Claude Code, Cursor and other agents can hand Architect a goal.
+ * /ARCHITECH/ as an MCP server, so Claude Code, Cursor and other agents can hand Architech a goal.
  *
- *   rchtct mcp                      # stdio; talks to `rchtct serve` at RCHTCT_URL (default http://localhost:7337)
+ *   architech mcp                      # stdio; talks to `architech serve` at ARCHITECH_URL (default http://localhost:7337)
  *
- * It is a thin client over the Architect HTTP API. Approvals are deliberately NOT exposed:
+ * It is a thin client over the Architech HTTP API. Approvals are deliberately NOT exposed:
  * a calling agent can start, watch, recover and cancel runs, but risky actions still wait
  * for a person in the Podium or the CLI. An agent must never approve its own actions.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { RchtctClient } from "./sdk.js";
+import { ArchitechClient } from "./sdk.js";
 import { PERMISSIONS, type Run } from "./types.js";
 
 const TERMINAL = new Set(["succeeded", "failed", "rehearsed", "handed_off"]);
@@ -43,7 +43,7 @@ function fail(err: unknown) {
   return { isError: true, content: [{ type: "text" as const, text: err instanceof Error ? err.message : String(err) }] };
 }
 
-async function waitFor(client: RchtctClient, runId: string, timeoutSec: number, intervalMs: number) {
+async function waitFor(client: ArchitechClient, runId: string, timeoutSec: number, intervalMs: number) {
   const deadline = Date.now() + timeoutSec * 1000;
   for (;;) {
     const run = await client.getRun(runId);
@@ -55,27 +55,27 @@ async function waitFor(client: RchtctClient, runId: string, timeoutSec: number, 
 }
 
 export interface McpOptions {
-  client?: RchtctClient;
+  client?: ArchitechClient;
   /** Poll interval while waiting on a run. */
   pollMs?: number;
 }
 
 export function createMcpServer(opts: McpOptions = {}): McpServer {
   const client =
-    opts.client ?? new RchtctClient({ baseUrl: process.env.RCHTCT_URL, token: process.env.RCHTCT_API_TOKEN });
+    opts.client ?? new ArchitechClient({ baseUrl: process.env.ARCHITECH_URL, token: process.env.ARCHITECH_API_TOKEN });
   const pollMs = opts.pollMs ?? 2_000;
-  const server = new McpServer({ name: "rchtct", version: "0.1.0" });
+  const server = new McpServer({ name: "architech", version: "0.1.0" });
   const approvalNote = (run: Run) =>
     run.status === "awaiting_approval"
       ? { note: "This run is waiting for a person to approve an action in the Podium or CLI. You cannot approve it." }
       : {};
 
   server.registerTool(
-    "rchtct_run",
+    "architech_run",
     {
-      title: "Start an Architect run",
+      title: "Start an Architech run",
       description:
-        "Give Architect a goal in plain language. It plans a Score, drives a browser and other instruments, and verifies the result. " +
+        "Give Architech a goal in plain language. It plans a Score, drives a browser and other instruments, and verifies the result. " +
         "autonomy: rehearsal (plan and simulate, no side effects), accompaniment (default; risky actions wait for a person), autopilot. " +
         "With wait=true, returns when the run finishes, needs approval, or wait_seconds pass.",
       inputSchema: {
@@ -108,7 +108,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
   );
 
   server.registerTool(
-    "rchtct_get_run",
+    "architech_get_run",
     {
       title: "Get a run",
       description: "Status, Score steps, verdict and spend for one run. With wait=true, waits until it finishes or needs approval.",
@@ -125,7 +125,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
   );
 
   server.registerTool(
-    "rchtct_list_runs",
+    "architech_list_runs",
     {
       title: "List runs",
       description: "Recent runs, newest first.",
@@ -143,7 +143,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
   );
 
   server.registerTool(
-    "rchtct_pending_approvals",
+    "architech_pending_approvals",
     {
       title: "Pending approvals",
       description: "Actions waiting for a person. Read-only: approve or decline them in the Podium or CLI, not through this server.",
@@ -160,7 +160,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
   );
 
   server.registerTool(
-    "rchtct_recover",
+    "architech_recover",
     {
       title: "Recover a run",
       description: "Resume a failed or handed-off run from where it stopped, optionally with a new spending limit.",
@@ -177,7 +177,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
   );
 
   server.registerTool(
-    "rchtct_cancel",
+    "architech_cancel",
     {
       title: "Cancel a run",
       description: "Stop a run that is in progress.",

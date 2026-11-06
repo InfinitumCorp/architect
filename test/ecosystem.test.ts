@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createActionHandler } from "../src/adapter.js";
-import { Architect } from "../src/architect.js";
+import { Architech } from "../src/architech.js";
 import { EcosystemInstrument } from "../src/instruments/ecosystem.js";
 import { ScriptedBrain, toolUse } from "./helpers.js";
 
@@ -15,7 +15,7 @@ const drafts: unknown[] = [];
 const attestations: unknown[] = [];
 
 beforeAll(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "rchtct-eco-"));
+  dir = await mkdtemp(path.join(tmpdir(), "architech-eco-"));
   const spectre = createActionHandler({
     token: "spectre-token",
     actions: {
@@ -24,7 +24,7 @@ beforeAll(async () => {
     },
   });
   const firmament = createActionHandler({
-    basePath: "/firmament/rchtct/v1",
+    basePath: "/firmament/architech/v1",
     actions: { attest: { description: "attest", risk: "write", run: (p) => (attestations.push(p), { tx: "0xabc" }) } },
   });
   server = createServer(async (req, res) => {
@@ -42,7 +42,7 @@ afterAll(async () => {
 
 describe("ecosystem: adapter + instrument + attestation", () => {
   it("rejects a missing token and lists actions with one", async () => {
-    expect((await fetch(`${base}/rchtct/v1/actions`)).status).toBe(401);
+    expect((await fetch(`${base}/architech/v1/actions`)).status).toBe(401);
     const eco = new EcosystemInstrument([{ key: "spectre", baseUrl: base, token: "spectre-token" }]);
     const out = await eco.execute("ecosystem_actions", { product: "spectre" }, { runId: "run_x" });
     expect(out.text).toContain("draft_followup");
@@ -77,10 +77,10 @@ describe("ecosystem: adapter + instrument + attestation", () => {
         () => [toolUse("submit_verdict", { passed: true, summary: "draft exists", criteria: [{ criterion: "a draft exists for the owner", met: true, evidence: "draftId 1" }] })],
       ],
     );
-    const architect = new Architect({ brain, instruments: [eco], dataDir: path.join(dir, "data") });
+    const architech = new Architech({ brain, instruments: [eco], dataDir: path.join(dir, "data") });
     const events: string[] = [];
-    architect.on("event", (e) => events.push(e.type));
-    const run = await architect.run("Follow up on Acme's renewal risk");
+    architech.on("event", (e) => events.push(e.type));
+    const run = await architech.run("Follow up on Acme's renewal risk");
 
     expect(run.status).toBe("succeeded");
     expect(drafts).toHaveLength(1);

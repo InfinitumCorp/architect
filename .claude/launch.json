@@ -1,6 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "rchtct-podium", "runtimeExecutable": "node", "runtimeArgs": ["dist/cli.js", "serve", "--port", "7337"], "port": 7337 }
+    { "name": "architech-podium", "runtimeExecutable": "node", "runtimeArgs": ["dist/cli.js", "serve", "--port", "7337"], "port": 7337 }
   ]
 }

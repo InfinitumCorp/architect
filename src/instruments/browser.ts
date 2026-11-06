@@ -22,14 +22,14 @@ const SNAPSHOT_SCRIPT = () => {
   ].join(",");
   const lines: string[] = [];
   let n = 0;
-  document.querySelectorAll("[data-rchtct-ref]").forEach((el) => el.removeAttribute("data-rchtct-ref"));
+  document.querySelectorAll("[data-architech-ref]").forEach((el) => el.removeAttribute("data-architech-ref"));
   for (const el of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
     const rect = el.getBoundingClientRect();
     const style = getComputedStyle(el);
     if (rect.width === 0 || rect.height === 0 || style.visibility === "hidden" || style.display === "none") continue;
     if ((el as HTMLInputElement).type === "hidden") continue;
     const ref = `e${++n}`;
-    el.setAttribute("data-rchtct-ref", ref);
+    el.setAttribute("data-architech-ref", ref);
     const tag = el.tagName.toLowerCase();
     const role = el.getAttribute("role") ?? (tag === "a" ? "link" : tag);
     const input = el as HTMLInputElement;
@@ -182,7 +182,7 @@ export class BrowserInstrument implements Instrument {
 
   private locator(page: Page, ref: string) {
     if (!/^e\d+$/.test(ref)) throw new Error(`"${ref}" is not a snapshot ref; call browser_snapshot first`);
-    return page.locator(`[data-rchtct-ref="${ref}"]`).first();
+    return page.locator(`[data-architech-ref="${ref}"]`).first();
   }
 
   private async classifyRef(ref: string) {
@@ -251,7 +251,7 @@ export class BrowserInstrument implements Instrument {
         });
         if (sensitive) {
           return {
-            text: "Refused: this is a password or payment field. Credentials are entered by a person, never by Architect. Use request_handoff.",
+            text: "Refused: this is a password or payment field. Credentials are entered by a person, never by Architech. Use request_handoff.",
             isError: true,
           };
         }

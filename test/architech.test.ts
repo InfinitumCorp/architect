@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Architect } from "../src/architect.js";
+import { Architech } from "../src/architech.js";
 import { WorkspaceInstrument } from "../src/instruments/workspace.js";
 import type { ScoreDraft } from "../src/brain.js";
 import { ScriptedBrain, text, toolUse } from "./helpers.js";
@@ -20,13 +20,13 @@ const draft = (overrides: Partial<ScoreDraft> = {}): ScoreDraft => ({
 let dir: string;
 let ws: WorkspaceInstrument;
 beforeEach(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "rchtct-"));
+  dir = await mkdtemp(path.join(tmpdir(), "architech-"));
   ws = new WorkspaceInstrument(path.join(dir, "ws"));
   await import("node:fs/promises").then((fs) => fs.mkdir(ws.root, { recursive: true }));
 });
 afterEach(() => rm(dir, { recursive: true, force: true }));
 
-describe("Architect end to end", () => {
+describe("Architech end to end", () => {
   it("composes, performs, verifies and records evidence", async () => {
     const brain = new ScriptedBrain(draft(), [
       (req) => {
@@ -55,11 +55,11 @@ describe("Architect end to end", () => {
         }),
       ],
     ]);
-    const architect = new Architect({ brain, instruments: [ws], dataDir: path.join(dir, "data") });
+    const architech = new Architech({ brain, instruments: [ws], dataDir: path.join(dir, "data") });
     const events: string[] = [];
-    architect.on("event", (e) => events.push(e.type));
+    architech.on("event", (e) => events.push(e.type));
 
-    const run = await architect.run("Greet", { inputs: { greeting: "hi there" }, autonomy: "accompaniment" });
+    const run = await architech.run("Greet", { inputs: { greeting: "hi there" }, autonomy: "accompaniment" });
 
     expect(run.status).toBe("succeeded");
     expect(run.verdict?.passed).toBe(true);
@@ -67,7 +67,7 @@ describe("Architect end to end", () => {
     expect(run.actions.map((a) => `${a.tool}:${a.outcome}`)).toEqual(["workspace_write:executed", "workspace_read:executed"]);
     expect(run.evidence.some((e) => e.kind === "file")).toBe(true);
     expect(events).toContain("run.verified");
-    const stored = await architect.store.load(run.id);
+    const stored = await architech.store.load(run.id);
     expect(stored.status).toBe("succeeded");
   });
 
@@ -76,8 +76,8 @@ describe("Architect end to end", () => {
       () => [toolUse("workspace_write", { path: "hello.txt", content: "x" })],
       () => [toolUse("step_complete", { summary: "Would write hello.txt" })],
     ]);
-    const architect = new Architect({ brain, instruments: [ws], dataDir: path.join(dir, "data") });
-    const run = await architect.run("Greet", { autonomy: "rehearsal" });
+    const architech = new Architech({ brain, instruments: [ws], dataDir: path.join(dir, "data") });
+    const run = await architech.run("Greet", { autonomy: "rehearsal" });
     expect(run.status).toBe("rehearsed");
     expect(run.actions[0]?.outcome).toBe("simulated");
     expect(existsSync(path.join(ws.root, "hello.txt"))).toBe(false);
@@ -92,7 +92,7 @@ describe("Architect end to end", () => {
         return [toolUse("step_failed", { reason: "push was declined" })];
       },
     ]);
-    const architect = new Architect({
+    const architech = new Architech({
       brain,
       instruments: [ws],
       dataDir: path.join(dir, "data"),
@@ -101,7 +101,7 @@ describe("Architect end to end", () => {
         return { approved: false, note: "not today" };
       },
     });
-    const run = await architect.run("Ship it");
+    const run = await architech.run("Ship it");
     expect(asked).toEqual(["workspace_run:irreversible"]);
     expect(run.actions[0]?.outcome).toBe("denied");
     expect(run.status).toBe("failed");
@@ -116,8 +116,8 @@ describe("Architect end to end", () => {
       },
       () => [toolUse("step_failed", { reason: "cannot write" })],
     ]);
-    const architect = new Architect({ brain, instruments: [ws], dataDir: path.join(dir, "data") });
-    const run = await architect.run("Try to write", { autonomy: "autopilot" });
+    const architech = new Architech({ brain, instruments: [ws], dataDir: path.join(dir, "data") });
+    const run = await architech.run("Try to write", { autonomy: "autopilot" });
     // standing.irreversible is outside the default ceiling, so it is dropped at compose time.
     expect(run.score.permissions).toEqual(["workspace.read", "shell"]);
     expect(run.actions[0]?.outcome).toBe("blocked");
@@ -137,10 +137,10 @@ describe("Architect end to end", () => {
       () => [toolUse("request_handoff", { reason: "needs sign-in", instructions_for_person: "Sign in, then recover" })],
     ];
     const brain = new ScriptedBrain(twoSteps, script);
-    const architect = new Architect({ brain, instruments: [ws], dataDir: path.join(dir, "data") });
-    const first = await architect.run("Two files");
+    const architech = new Architech({ brain, instruments: [ws], dataDir: path.join(dir, "data") });
+    const first = await architech.run("Two files");
     expect(first.status).toBe("handed_off");
-    expect(existsSync(path.join(architect.store.runDir(first.id), "handoff", "HANDOFF.md"))).toBe(true);
+    expect(existsSync(path.join(architech.store.runDir(first.id), "handoff", "HANDOFF.md"))).toBe(true);
 
     const brain2 = new ScriptedBrain(twoSteps, [
       (req) => {
@@ -150,8 +150,8 @@ describe("Architect end to end", () => {
       () => [toolUse("step_complete", { summary: "b done" })],
       () => [toolUse("submit_verdict", { passed: true, summary: "ok", criteria: [{ criterion: "c", met: true, evidence: "e" }] })],
     ]);
-    const architect2 = new Architect({ brain: brain2, instruments: [ws], dataDir: path.join(dir, "data") });
-    const recovered = await architect2.recover(first.id);
+    const architech2 = new Architech({ brain: brain2, instruments: [ws], dataDir: path.join(dir, "data") });
+    const recovered = await architech2.recover(first.id);
     expect(recovered.status).toBe("succeeded");
     expect(recovered.steps.map((s) => s.status)).toEqual(["done", "done"]);
   });

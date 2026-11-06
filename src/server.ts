@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Architect } from "./architect.js";
+import type { Architech } from "./architech.js";
 import { TriggerRouter } from "./triggers.js";
 import { ScoreLibrary } from "./library.js";
 import { ScheduleStore, validateSchedule } from "./schedules.js";
@@ -14,7 +14,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
 
 export interface ServerOptions {
-  architect: Architect;
+  architech: Architech;
   triggers?: TriggerRouter;
   /** Bearer token required on /v1/*. Strongly recommended whenever the server is reachable by others. */
   token?: string;
@@ -69,7 +69,7 @@ function permissions(v: unknown): Permission[] | undefined {
 }
 
 /**
- * The Architect HTTP API and the Podium (the one-screen view of goal, plan, live actions,
+ * The Architech HTTP API and the Podium (the one-screen view of goal, plan, live actions,
  * decisions waiting for you and the evidence behind every result).
  *
  *   POST /v1/runs                       start a run            { goal, autonomy?, inputs?, startUrl?, permissions?, composeOnly? }
@@ -85,12 +85,12 @@ function permissions(v: unknown): Permission[] | undefined {
  *   POST /v1/approvals/:id              decide                 { approved, note?, by? }
  *   POST /v1/signals/:product           ecosystem trigger      { type, payload }
  */
-export function createArchitectServer(opts: ServerOptions): Server {
-  const { architect } = opts;
+export function createArchitechServer(opts: ServerOptions): Server {
+  const { architech } = opts;
   const triggers = opts.triggers ?? new TriggerRouter();
-  const library = opts.library ?? new ScoreLibrary(path.join(architect.store.root, "scores"));
-  const schedules = opts.schedules ?? new ScheduleStore(architect.store.root);
-  const background = (p: Promise<unknown>) => p.catch((err) => console.error("[rchtct]", err));
+  const library = opts.library ?? new ScoreLibrary(path.join(architech.store.root, "scores"));
+  const schedules = opts.schedules ?? new ScheduleStore(architech.store.root);
+  const background = (p: Promise<unknown>) => p.catch((err) => console.error("[architech]", err));
 
   const authorized = (req: IncomingMessage, url: URL) => {
     if (!opts.token) return true;
@@ -116,53 +116,53 @@ export function createArchitectServer(opts: ServerOptions): Server {
       const [, resource, id, action, file] = parts;
 
       if (resource === "runs" && !id) {
-        if (req.method === "GET") return json(res, 200, await architect.store.list(Number(url.searchParams.get("limit") ?? 50)));
+        if (req.method === "GET") return json(res, 200, await architech.store.list(Number(url.searchParams.get("limit") ?? 50)));
         if (req.method === "POST") {
           const b = await body(req);
           const goal = String(b.goal ?? "").trim();
           if (!goal) throw new HttpError(400, "goal is required");
           const autonomy = (AUTONOMY.includes(b.autonomy as Autonomy) ? b.autonomy : "accompaniment") as Autonomy;
-          const run = await architect.start(goal, {
+          const run = await architech.start(goal, {
             autonomy,
             inputs: stringMap(b.inputs),
             startUrl: b.startUrl ? String(b.startUrl) : undefined,
             permissions: permissions(b.permissions),
             budgetUsd: budget(b.budgetUsd),
           });
-          if (!b.composeOnly) background(architect.perform(run));
+          if (!b.composeOnly) background(architech.perform(run));
           return json(res, 202, run);
         }
       }
 
       if (resource === "runs" && id) {
-        if (req.method === "GET" && !action) return json(res, 200, await architect.store.load(id));
-        if (req.method === "GET" && action === "events") return streamEvents(req, res, architect, id);
+        if (req.method === "GET" && !action) return json(res, 200, await architech.store.load(id));
+        if (req.method === "GET" && action === "events") return streamEvents(req, res, architech, id);
         if (req.method === "GET" && action === "evidence" && file) {
           if (!/^[\w.-]+\.png$/.test(file)) throw new HttpError(400, "bad evidence name");
           res.writeHead(200, { "content-type": "image/png" });
-          res.end(await readFile(path.join(architect.store.runDir(id), "evidence", file)));
+          res.end(await readFile(path.join(architech.store.runDir(id), "evidence", file)));
           return;
         }
         if (req.method === "POST") {
           const b = await body(req);
           if (action === "perform") {
-            const run = await architect.store.load(id);
+            const run = await architech.store.load(id);
             if (run.status !== "composed") throw new HttpError(409, `run is ${run.status}`);
-            background(architect.perform(run));
+            background(architech.perform(run));
             return json(res, 202, { ok: true });
           }
           if (action === "recover") {
-            if (architect.isActive(id)) throw new HttpError(409, "run is still performing");
-            background(architect.recover(id, { budgetUsd: budget(b.budgetUsd) }));
+            if (architech.isActive(id)) throw new HttpError(409, "run is still performing");
+            background(architech.recover(id, { budgetUsd: budget(b.budgetUsd) }));
             return json(res, 202, { ok: true });
           }
           if (action === "encore") {
             const autonomy = AUTONOMY.includes(b.autonomy as Autonomy) ? (b.autonomy as Autonomy) : undefined;
-            background(architect.encore(id, stringMap(b.inputs), autonomy, budget(b.budgetUsd)));
+            background(architech.encore(id, stringMap(b.inputs), autonomy, budget(b.budgetUsd)));
             return json(res, 202, { ok: true });
           }
           if (action === "cancel") {
-            architect.cancel(id);
+            architech.cancel(id);
             return json(res, 202, { ok: true });
           }
         }
@@ -174,7 +174,7 @@ export function createArchitectServer(opts: ServerOptions): Server {
         if (req.method === "POST" && id === "import") return json(res, 201, await library.import(await body(req)));
         if (req.method === "POST" && !id) {
           const b = await body(req);
-          const run = await architect.store.load(String(b.runId ?? ""));
+          const run = await architech.store.load(String(b.runId ?? ""));
           const saved = await library.save(String(b.name ?? ""), run.score, {
             description: b.description ? String(b.description) : undefined,
             author: b.author ? String(b.author) : undefined,
@@ -184,13 +184,13 @@ export function createArchitectServer(opts: ServerOptions): Server {
         if (req.method === "POST" && id && action === "play") {
           const b = await body(req);
           const saved = await library.get(id);
-          const run = await architect.prepare(saved.score, {
+          const run = await architech.prepare(saved.score, {
             inputs: stringMap(b.inputs),
             autonomy: AUTONOMY.includes(b.autonomy as Autonomy) ? (b.autonomy as Autonomy) : "accompaniment",
             budgetUsd: budget(b.budgetUsd),
             source: `score:${id}`,
           });
-          background(architect.perform(run));
+          background(architech.perform(run));
           return json(res, 202, run);
         }
         if (req.method === "DELETE" && id) {
@@ -224,10 +224,10 @@ export function createArchitectServer(opts: ServerOptions): Server {
       }
 
       if (resource === "approvals") {
-        if (req.method === "GET" && !id) return json(res, 200, architect.pendingApprovals);
+        if (req.method === "GET" && !id) return json(res, 200, architech.pendingApprovals);
         if (req.method === "POST" && id) {
           const b = await body(req);
-          const ok = architect.decide(id, {
+          const ok = architech.decide(id, {
             approved: b.approved === true,
             note: b.note ? String(b.note) : undefined,
             by: b.by ? String(b.by) : "api",
@@ -247,13 +247,13 @@ export function createArchitectServer(opts: ServerOptions): Server {
         };
         const match = triggers.match(signal);
         if (!match) return json(res, 202, { accepted: true, started: false, reason: "no trigger rule matches" });
-        const run = await architect.start(match.goal, {
+        const run = await architech.start(match.goal, {
           autonomy: match.autonomy ?? "accompaniment",
           permissions: match.permissions,
           startUrl: match.startUrl,
           trigger: signal,
         });
-        background(architect.perform(run));
+        background(architech.perform(run));
         return json(res, 202, { accepted: true, started: true, runId: run.id });
       }
 
@@ -264,23 +264,23 @@ export function createArchitectServer(opts: ServerOptions): Server {
         : err instanceof InputError || (err as Error)?.name === "ZodError" ? 400
         : err instanceof NotFoundError || (err as NodeJS.ErrnoException).code === "ENOENT" ? 404
         : 500;
-      if (status === 500) console.error("[rchtct]", err);
+      if (status === 500) console.error("[architech]", err);
       if (!res.headersSent) json(res, status, { error: err instanceof Error ? err.message : String(err) });
       else res.end();
     }
   });
 }
 
-async function streamEvents(req: IncomingMessage, res: ServerResponse, architect: Architect, runId: string) {
-  await architect.store.load(runId); // 404s if unknown
+async function streamEvents(req: IncomingMessage, res: ServerResponse, architech: Architech, runId: string) {
+  await architech.store.load(runId); // 404s if unknown
   res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
   const send = (ev: RunEvent) => res.write(`event: ${ev.type}\ndata: ${JSON.stringify(ev)}\n\n`);
-  for (const ev of await architect.store.events(runId)) send(ev);
+  for (const ev of await architech.store.events(runId)) send(ev);
   const listener = (ev: RunEvent) => ev.runId === runId && send(ev);
-  architect.on("event", listener);
+  architech.on("event", listener);
   const ping = setInterval(() => res.write(": ping\n\n"), 20_000);
   req.on("close", () => {
     clearInterval(ping);
-    architect.off("event", listener);
+    architech.off("event", listener);
   });
 }

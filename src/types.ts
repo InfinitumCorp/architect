@@ -1,8 +1,8 @@
 /**
- * Core vocabulary of /RCHTCT/ (Architect).
+ * Core vocabulary of /ARCHITECH/ (Architech).
  *
  *   Score        – an executable plan: steps, permissions, checkpoints, definition of success
- *   Instrument   – a capability Architect can play (browser, workspace, HTTP, Infinitum products)
+ *   Instrument   – a capability Architech can play (browser, workspace, HTTP, Infinitum products)
  *   Performance  – a run of a Score; every action is recorded with evidence
  *   Verify       – "done" means the success criteria were confirmed, not that the last button was clicked
  */

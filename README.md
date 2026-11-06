@@ -1,10 +1,10 @@
-# /RCHTCT/™ — Architect
+# /ARCHITECH/™ — Architech
 
-**Intent in. Outcome out.** /RCHTCT/ is Infinitum's AI execution engine. Describe an outcome; Architect writes the plan, operates the interfaces (a real browser, your project folder, APIs and other Infinitum products), and proves the result is done before it says so.
+**Intent in. Outcome out.** /ARCHITECH/ is Infinitum's AI execution engine. Describe an outcome; Architech writes the plan, operates the interfaces (a real browser, your project folder, APIs and other Infinitum products), and proves the result is done before it says so.
 
-It is also the **action layer for the Infinitum ecosystem**: when Spectre spots a renewal risk, METATRON¹⁰⁰ flags an event or [HRVST] captures a fault, a signal starts a Score and Architect turns it into finished work — with a person's approval at every step that matters.
+It is also the **action layer for the Infinitum ecosystem**: when Spectre spots a renewal risk, METATRON¹⁰⁰ flags an event or [HRVST] captures a fault, a signal starts a Score and Architech turns it into finished work — with a person's approval at every step that matters.
 
-> You set the direction. Architect carries it through.
+> You set the direction. Architech carries it through.
 
 ## How it works
 
@@ -29,29 +29,29 @@ The gate (`src/policy.ts`) is pure and deterministic. A tool whose permission th
 
 - **Encore** — rerun a Score with new inputs (`{{name}}` placeholders in step instructions).
 - **Recover** — resume a failed or handed-off run; completed steps are not repeated and the performer sees what the last attempt did.
-- **Handoff** — when Architect needs a person (sign-in, CAPTCHA, payment details, a judgment call) it writes `handoff/HANDOFF.md`, the browser session state and a last screenshot, then stops.
+- **Handoff** — when Architech needs a person (sign-in, CAPTCHA, payment details, a judgment call) it writes `handoff/HANDOFF.md`, the browser session state and a last screenshot, then stops.
 
 ### Estimates and spending limits
 
-Every Score shows a cost estimate before it runs, and every run tracks tokens and dollars as it goes (CLI, Podium, `run.usage`). Give a limit with `--budget 5` (or `budgetUsd` in the API): when it is reached, Architect hands off instead of continuing, and `recover --budget 10` resumes with a higher limit.
+Every Score shows a cost estimate before it runs, and every run tracks tokens and dollars as it goes (CLI, Podium, `run.usage`). Give a limit with `--budget 5` (or `budgetUsd` in the API): when it is reached, Architech hands off instead of continuing, and `recover --budget 10` resumes with a higher limit.
 
 ### Saved Scores, the Marketplace and Autopilot schedules
 
 ```bash
-rchtct save run_ab12cd34 supplier-quote          # keep a Score that worked
-rchtct play supplier-quote -i supplier="Globex"  # rerun it with new inputs
-rchtct export supplier-quote > quote.json         # Marketplace package (SHA-256 digest)
-rchtct import quote.json                          # install one; tampered packages are rejected
-rchtct schedule add weekly-quotes --score supplier-quote --daily 09:00 -i supplier=Acme --budget 3
+architech save run_ab12cd34 supplier-quote          # keep a Score that worked
+architech play supplier-quote -i supplier="Globex"  # rerun it with new inputs
+architech export supplier-quote > quote.json         # Marketplace package (SHA-256 digest)
+architech import quote.json                          # install one; tampered packages are rejected
+architech schedule add weekly-quotes --score supplier-quote --daily 09:00 -i supplier=Acme --budget 3
 ```
 
-A Score installed from someone else is untrusted: when it is played, its permissions are re-clamped to your account's ceiling and its instruments to the ones you have. Schedules run on Autopilot inside `rchtct serve` and never overlap themselves.
+A Score installed from someone else is untrusted: when it is played, its permissions are re-clamped to your account's ceiling and its instruments to the ones you have. Schedules run on Autopilot inside `architech serve` and never overlap themselves.
 
 ### Safe by design
 
 - Permissions belong to the Score and the account (`permissionCeiling`). The model proposes; the ceiling disposes. Nothing read during a run can expand them.
 - Every tool output reaches the model wrapped as `<tool_output trust="untrusted">`, and the prompts treat it as data, never instructions.
-- Architect never types into password or payment-card fields, never creates accounts and never solves CAPTCHAs — those become a Handoff.
+- Architech never types into password or payment-card fields, never creates accounts and never solves CAPTCHAs — those become a Handoff.
 - Workspace paths are confined to the workspace folder; browser hosts can be allow-listed (`--allow-host`).
 - Verified outcomes are attested on **Firmament Network** when it is connected (SHA-256 digest of Score, verdict and evidence).
 
@@ -78,55 +78,55 @@ node dist/cli.js encore run_ab12cd34 -i supplier="Acme Corp"
 node dist/cli.js recover run_ab12cd34
 
 # API + Podium (live view, approvals, evidence)
-RCHTCT_API_TOKEN=change-me node dist/cli.js serve      # http://localhost:7337/?token=change-me
+ARCHITECH_API_TOKEN=change-me node dist/cli.js serve      # http://localhost:7337/?token=change-me
 ```
 
-## Folding Architect into every Infinitum product
+## Folding Architech into every Infinitum product
 
 Each product integrates in one of three ways:
 
 **1. Call it (SDK).** Dependency-free, runs in Node, browsers, VEIL</> and edge runtimes.
 
 ```ts
-import { RchtctClient } from "rchtct/sdk";
-const rchtct = new RchtctClient({ baseUrl: process.env.RCHTCT_URL, token: process.env.RCHTCT_TOKEN });
+import { ArchitechClient } from "architech/sdk";
+const architech = new ArchitechClient({ baseUrl: process.env.ARCHITECH_URL, token: process.env.ARCHITECH_TOKEN });
 
-const run = await rchtct.run({ goal: "Compare these suppliers, prepare the order and bring me the final price for approval" });
-for await (const ev of rchtct.events(run.id)) console.log(ev.type, ev.data);
+const run = await architech.run({ goal: "Compare these suppliers, prepare the order and bring me the final price for approval" });
+for await (const ev of architech.events(run.id)) console.log(ev.type, ev.data);
 ```
 
 **2. Signal it (triggers).** A product posts a signal; a matching rule starts a Score.
 
 ```ts
-await rchtct.signal("spectre", "renewal_risk", { account: "Acme", owner: "dana@acme.example", reason: "usage down 40%" });
+await architech.signal("spectre", "renewal_risk", { account: "Acme", owner: "dana@acme.example", reason: "usage down 40%" });
 ```
 
-Rules live in `rchtct.triggers.json` (see `rchtct.triggers.example.json`). Built-in defaults cover Spectre `renewal_risk`, [HRVST] `fault`, METATRON¹⁰⁰ `event` and Cumulus://Cloud `alert`. Signal payloads are flattened into the goal as data.
+Rules live in `architech.triggers.json` (see `architech.triggers.example.json`). Built-in defaults cover Spectre `renewal_risk`, [HRVST] `fault`, METATRON¹⁰⁰ `event` and Cumulus://Cloud `alert`. Signal payloads are flattened into the goal as data.
 
-**3. Be played by it (Architect action contract).** A product exposes actions Architect can call as an Instrument. `rchtct/adapter` implements the contract in a few lines (see [examples/spectre-adapter.ts](examples/spectre-adapter.ts)):
+**3. Be played by it (Architech action contract).** A product exposes actions Architech can call as an Instrument. `architech/adapter` implements the contract in a few lines (see [examples/spectre-adapter.ts](examples/spectre-adapter.ts)):
 
 ```ts
-import { createActionHandler } from "rchtct/adapter";
-const rchtct = createActionHandler({
-  token: process.env.RCHTCT_PRODUCT_TOKEN,
+import { createActionHandler } from "architech/adapter";
+const architech = createActionHandler({
+  token: process.env.ARCHITECH_PRODUCT_TOKEN,
   actions: {
     find_account:   { description: "Look up an account", risk: "read",  run: ({ query }) => crm.find(query) },
     draft_followup: { description: "Save a draft email", risk: "write", run: (p) => crm.draft(p) },
   },
 });
-http.createServer(async (req, res) => { if (await rchtct(req, res)) return; /* your app */ });
+http.createServer(async (req, res) => { if (await architech(req, res)) return; /* your app */ });
 ```
 
 The wire format:
 
 ```
-GET  {baseUrl}/rchtct/v1/actions            -> [{ name, description, risk }]
-POST {baseUrl}/rchtct/v1/actions/{action}   <- { runId, payload }   -> JSON
+GET  {baseUrl}/architech/v1/actions            -> [{ name, description, risk }]
+POST {baseUrl}/architech/v1/actions/{action}   <- { runId, payload }   -> JSON
 ```
 
-Configure with `RCHTCT_PRODUCT_<KEY>_URL` / `RCHTCT_PRODUCT_<KEY>_TOKEN` for `scalvs`, `spectre`, `hrvst`, `metatron`, `cumulus`, `firmament`, `veil`, `throne`, `fabric`, `eidetic`, `eon`, `conjure`.
+Configure with `ARCHITECH_PRODUCT_<KEY>_URL` / `ARCHITECH_PRODUCT_<KEY>_TOKEN` for `scalvs`, `spectre`, `hrvst`, `metatron`, `cumulus`, `firmament`, `veil`, `throne`, `fabric`, `eidetic`, `eon`, `conjure`.
 
-| Product | Role with /RCHTCT/ |
+| Product | Role with /ARCHITECH/ |
 |---|---|
 | SCALVS.ai | the intelligence behind every step (swap in via the `Brain` interface) |
 | +SPCTR (Spectre) | CRM follow-ups and routing; renewal-risk triggers |
@@ -134,11 +134,11 @@ Configure with `RCHTCT_PRODUCT_<KEY>_URL` / `RCHTCT_PRODUCT_<KEY>_TOKEN` for `sc
 | METATRON¹⁰⁰ | event triggers |
 | Cumulus://Cloud | secure execution environments; alert triggers |
 | Firmament Network | verified-outcome attestation (`attest` action) |
-| VEIL</> | Architect in the browser sidebar via the SDK |
+| VEIL</> | Architech in the browser sidebar via the SDK |
 | #THRONE | local / on-prem runs: point `Brain` at a local model, run `serve` on the box |
 | CONJURE | pre-flight rehearsal of a Score's stakeholder reactions (planned) |
 
-`/RCHTCT/ MIL` (ODIN° Decide layer) is a separate product on accredited infrastructure and is **not** built from this repository.
+`/ARCHITECH/ MIL` (ODIN° Decide layer) is a separate product on accredited infrastructure and is **not** built from this repository.
 
 ## HTTP API
 
@@ -158,26 +158,26 @@ Configure with `RCHTCT_PRODUCT_<KEY>_URL` / `RCHTCT_PRODUCT_<KEY>_TOKEN` for `sc
 
 `POST /v1/runs`, `/recover` and `/encore` also accept `budgetUsd`.
 
-All `/v1` routes require `Authorization: Bearer $RCHTCT_API_TOKEN` when the token is set (set it whenever the server is reachable by others).
+All `/v1` routes require `Authorization: Bearer $ARCHITECH_API_TOKEN` when the token is set (set it whenever the server is reachable by others).
 
 ## MCP server (Claude Code, Cursor, other agents)
 
-`rchtct mcp` speaks MCP over stdio and drives a running `rchtct serve` (at `RCHTCT_URL`, default `http://localhost:7337`, with `RCHTCT_API_TOKEN`). Add it to Claude Code:
+`architech mcp` speaks MCP over stdio and drives a running `architech serve` (at `ARCHITECH_URL`, default `http://localhost:7337`, with `ARCHITECH_API_TOKEN`). Add it to Claude Code:
 
 ```bash
-claude mcp add rchtct -- node /path/to/rchtct/dist/cli.js mcp
+claude mcp add architech -- node /path/to/architech/dist/cli.js mcp
 ```
 
-Tools: `rchtct_run` (with `wait`), `rchtct_get_run`, `rchtct_list_runs`, `rchtct_pending_approvals`, `rchtct_recover`, `rchtct_cancel`. There is deliberately no approve tool: a calling agent can start and watch runs, but risky actions still wait for a person in the Podium or CLI.
+Tools: `architech_run` (with `wait`), `architech_get_run`, `architech_list_runs`, `architech_pending_approvals`, `architech_recover`, `architech_cancel`. There is deliberately no approve tool: a calling agent can start and watch runs, but risky actions still wait for a person in the Podium or CLI.
 
 ## Library
 
 ```ts
-import { createArchitect } from "rchtct";
+import { createArchitech } from "architech";
 
-const architect = createArchitect({ workspace: "./my-app", browser: { headless: false } });
-architect.on("event", (e) => console.log(e.type));
-const run = await architect.run("Build a landing page for the spring sale and check it renders", { autonomy: "accompaniment" });
+const architech = createArchitech({ workspace: "./my-app", browser: { headless: false } });
+architech.on("event", (e) => console.log(e.type));
+const run = await architech.run("Build a landing page for the spring sale and check it renders", { autonomy: "accompaniment" });
 console.log(run.status, run.verdict);
 ```
 
@@ -188,18 +188,18 @@ Bring your own `Instrument` (any object with `tools` and `execute`) or your own 
 | Variable | Default | |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | or an `ant auth login` profile |
-| `RCHTCT_MODEL` | `claude-opus-5-5` | |
-| `RCHTCT_EFFORT` | `high` | `low` … `max` |
-| `RCHTCT_FALLBACKS` | on | server-side refusal fallback; set `off` on Bedrock / Vertex / Foundry |
-| `RCHTCT_DATA_DIR` | `.rchtct` | runs, events, evidence |
-| `RCHTCT_WORKSPACE` | `.rchtct/workspace` | the folder Architect may build in |
-| `RCHTCT_API_TOKEN` | — | bearer token for `serve` |
-| `RCHTCT_BRAIN` | automatic | `anthropic` forces one Claude model; `auto` requires routed models |
+| `ARCHITECH_MODEL` | `claude-opus-5-5` | |
+| `ARCHITECH_EFFORT` | `high` | `low` … `max` |
+| `ARCHITECH_FALLBACKS` | on | server-side refusal fallback; set `off` on Bedrock / Vertex / Foundry |
+| `ARCHITECH_DATA_DIR` | `.architech` | runs, events, evidence |
+| `ARCHITECH_WORKSPACE` | `.architech/workspace` | the folder Architech may build in |
+| `ARCHITECH_API_TOKEN` | — | bearer token for `serve` |
+| `ARCHITECH_BRAIN` | automatic | `anthropic` forces one Claude model; `auto` requires routed models |
 | `OMNIROUTE_URL` | — | route through OmniRoute, e.g. `http://localhost:20128/v1` (see below) |
 
 ## Automatic model selection (OmniRoute, Ollama and other open models)
 
-Architect can run on open-source and gateway models instead of, or alongside, Claude. A router picks a model for every call:
+Architech can run on open-source and gateway models instead of, or alongside, Claude. A router picks a model for every call:
 
 | Call | Tier | Why |
 |---|---|---|
@@ -219,12 +219,12 @@ OMNIROUTE_FAST_MODEL=qwen3:8b                # optional: a cheap model for routi
 OMNIROUTE_STRONG_MODEL=...                   # optional: a strong model for plans and verdicts
 ```
 
-With `ANTHROPIC_API_KEY` also set, Claude becomes the `strong` model and OmniRoute handles the rest. `RCHTCT_OPENAI_BASE_URL` plus `RCHTCT_OPENAI_MODEL` does the same for any other OpenAI-compatible endpoint, such as Ollama, LM Studio, vLLM, OpenRouter or LiteLLM.
+With `ANTHROPIC_API_KEY` also set, Claude becomes the `strong` model and OmniRoute handles the rest. `ARCHITECH_OPENAI_BASE_URL` plus `ARCHITECH_OPENAI_MODEL` does the same for any other OpenAI-compatible endpoint, such as Ollama, LM Studio, vLLM, OpenRouter or LiteLLM.
 
-**Full control** comes from a `rchtct.models.json` file (copy `rchtct.models.example.json`). It lists models with a `tier`, an optional `price` in USD per million tokens, a `vision` flag for models that can read screenshots, and `apiKeyEnv`, the *name* of the env var that holds the key. Keys themselves are rejected in this file. You can also override the routing `policy`.
+**Full control** comes from a `architech.models.json` file (copy `architech.models.example.json`). It lists models with a `tier`, an optional `price` in USD per million tokens, a `vision` flag for models that can read screenshots, and `apiKeyEnv`, the *name* of the env var that holds the key. Keys themselves are rejected in this file. You can also override the routing `policy`.
 
 ```bash
-rchtct models     # routing table, and whether each model is reachable
+architech models     # routing table, and whether each model is reachable
 ```
 
 During a run the CLI shows each routing decision, such as `⇢ act → ollama/qwen3 [fast]`.
@@ -240,21 +240,21 @@ src/
   brain.ts            Claude (compose with structured output; perform with tool use)
   brains/openai.ts    any OpenAI-compatible model (OmniRoute, Ollama, vLLM, OpenRouter …)
   brains/router.ts    automatic model selection: tiers, escalation, failover, cooldowns
-  brains/config.ts    rchtct.models.json and OMNIROUTE_URL / RCHTCT_OPENAI_* shortcuts
+  brains/config.ts    architech.models.json and OMNIROUTE_URL / ARCHITECH_OPENAI_* shortcuts
   mcp.ts              MCP server for Claude Code, Cursor and other agents
-  architect.ts        Compose → Perform → Verify, Encore / Recover / Handoff, approvals
+  architech.ts        Compose → Perform → Verify, Encore / Recover / Handoff, approvals
   prompts.ts          system prompts and safety rules
   instruments/        browser (Playwright), workspace, http, ecosystem
   triggers.ts         ecosystem signal → Score rules
   server.ts           HTTP API + SSE + Podium
   sdk.ts              client for other products
-  adapter.ts          action-contract handler for products Architect plays
+  adapter.ts          action-contract handler for products Architech plays
   usage.ts            token pricing, estimates, spending limits
   library.ts          saved Scores and Marketplace packages
   schedules.ts        Autopilot schedules
-  cli.ts              `rchtct`
+  cli.ts              `architech`
 podium/index.html     the Podium
-test/                 gate, architect end-to-end, real Chromium, API + SDK, budgets, library, schedules, ecosystem + Firmament
+test/                 gate, architech end-to-end, real Chromium, API + SDK, budgets, library, schedules, ecosystem + Firmament
 examples/             spectre-adapter.ts
 ```
 

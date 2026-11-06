@@ -1,8 +1,8 @@
 node_modules/
 dist/
-.rchtct/
+.architech/
 *.tsbuildinfo
 .env
 .env.*
 !.env.example
-rchtct.triggers.json
+architech.triggers.json

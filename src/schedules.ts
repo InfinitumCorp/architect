@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { Architect } from "./architect.js";
+import type { Architech } from "./architech.js";
 import type { ScoreLibrary } from "./library.js";
 import { InputError, now } from "./policy.js";
 import type { Autonomy } from "./types.js";
@@ -87,16 +87,16 @@ export class ScheduleStore {
   }
 }
 
-/** Ticks inside `rchtct serve` and starts due schedules. Never overlaps runs of the same schedule. */
+/** Ticks inside `architech serve` and starts due schedules. Never overlaps runs of the same schedule. */
 export class Scheduler {
   private timer?: NodeJS.Timeout;
   private ticking = false;
 
   constructor(
-    private architect: Architect,
+    private architech: Architech,
     private library: ScoreLibrary,
     private store: ScheduleStore,
-    private log: (msg: string) => void = (m) => console.log(`[rchtct schedule] ${m}`),
+    private log: (msg: string) => void = (m) => console.log(`[architech schedule] ${m}`),
   ) {}
 
   start(intervalMs = 30_000) {
@@ -116,10 +116,10 @@ export class Scheduler {
       const all = await this.store.list();
       for (const s of all) {
         if (!isDue(s, at)) continue;
-        if (s.lastRunId && this.architect.isActive(s.lastRunId)) continue;
+        if (s.lastRunId && this.architech.isActive(s.lastRunId)) continue;
         try {
           const saved = await this.library.get(s.score);
-          const run = await this.architect.prepare(saved.score, {
+          const run = await this.architech.prepare(saved.score, {
             inputs: s.inputs,
             autonomy: s.autonomy,
             budgetUsd: s.budgetUsd,
@@ -129,7 +129,7 @@ export class Scheduler {
           s.lastRunId = run.id;
           started.push(run.id);
           this.log(`${s.name} → ${run.id}`);
-          void this.architect.perform(run).catch((err) => this.log(`${s.name} failed: ${err}`));
+          void this.architech.perform(run).catch((err) => this.log(`${s.name} failed: ${err}`));
         } catch (err) {
           s.lastRunAt = now(); // do not retry a broken schedule every tick
           this.log(`${s.name} could not start: ${err instanceof Error ? err.message : err}`);

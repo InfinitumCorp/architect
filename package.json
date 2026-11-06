@@ -1,7 +1,7 @@
 {
-  "name": "rchtct",
+  "name": "architech",
   "version": "0.1.0",
-  "description": "/RCHTCT/ (Architect) — Infinitum's autonomous AI execution engine",
+  "description": "/ARCHITECH/ (Architech) — Infinitum's autonomous AI execution engine",
   "main": "dist/index.js",
   "scripts": {
     "test": "vitest run",
@@ -38,7 +38,7 @@
   },
   "types": "dist/index.d.ts",
   "bin": {
-    "rchtct": "dist/cli.js"
+    "architech": "dist/cli.js"
   },
   "exports": {
     ".": {
