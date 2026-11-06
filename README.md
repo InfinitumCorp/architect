@@ -1,6 +1,6 @@
-# /ARCHITCT/™ — Architect
+# :\ARCHITECT\\™ — Architect
 
-**Intent in. Outcome out.** /ARCHITCT/ is Infinitum's AI execution engine. Describe an outcome; Architect writes the plan, operates the interfaces (a real browser, your project folder, APIs and other Infinitum products), and proves the result is done before it says so.
+**Intent in. Outcome out.** :\ARCHITECT\\ is Infinitum's AI execution engine. Describe an outcome; Architect writes the plan, operates the interfaces (a real browser, your project folder, APIs and other Infinitum products), and proves the result is done before it says so.
 
 It is also the **action layer for the Infinitum ecosystem**: when Spectre spots a renewal risk, METATRON¹⁰⁰ flags an event or [HRVST] captures a fault, a signal starts a Score and Architect turns it into finished work — with a person's approval at every step that matters.
 
@@ -126,7 +126,7 @@ POST {baseUrl}/architct/v1/actions/{action}   <- { runId, payload }   -> JSON
 
 Configure with `ARCHITCT_PRODUCT_<KEY>_URL` / `ARCHITCT_PRODUCT_<KEY>_TOKEN` for `scalvs`, `spectre`, `hrvst`, `metatron`, `cumulus`, `firmament`, `veil`, `throne`, `fabric`, `eidetic`, `eon`, `conjure`.
 
-| Product | Role with /ARCHITCT/ |
+| Product | Role with :\ARCHITECT\\ |
 |---|---|
 | SCALVS.ai | the intelligence behind every step (swap in via the `Brain` interface) |
 | +SPCTR (Spectre) | CRM follow-ups and routing; renewal-risk triggers |
@@ -138,7 +138,7 @@ Configure with `ARCHITCT_PRODUCT_<KEY>_URL` / `ARCHITCT_PRODUCT_<KEY>_TOKEN` for
 | #THRONE | local / on-prem runs: point `Brain` at a local model, run `serve` on the box |
 | CONJURE | pre-flight rehearsal of a Score's stakeholder reactions (planned) |
 
-`/ARCHITCT/ MIL` (ODIN° Decide layer) is a separate product on accredited infrastructure and is **not** built from this repository.
+`:\ARCHITECT\ MIL` (ODIN° Decide layer) is a separate product on accredited infrastructure and is **not** built from this repository.
 
 ## HTTP API
 

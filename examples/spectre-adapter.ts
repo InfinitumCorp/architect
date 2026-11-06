@@ -1,5 +1,5 @@
 /**
- * Example: +SPCTR (Spectre) exposing CRM actions to /ARCHITCT/, and raising a renewal-risk signal.
+ * Example: +SPCTR (Spectre) exposing CRM actions to :\\ARCHITECT\\, and raising a renewal-risk signal.
  *
  *   npx tsx examples/spectre-adapter.ts
  *   # then point Architect at it:

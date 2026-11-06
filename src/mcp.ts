@@ -1,5 +1,5 @@
 /**
- * /ARCHITCT/ as an MCP server, so Claude Code, Cursor and other agents can hand Architect a goal.
+ * :\\ARCHITECT\\ as an MCP server, so Claude Code, Cursor and other agents can hand Architect a goal.
  *
  *   architct mcp                      # stdio; talks to `architct serve` at ARCHITCT_URL (default http://localhost:7337)
  *

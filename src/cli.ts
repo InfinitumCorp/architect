@@ -12,7 +12,7 @@ import { RouterBrain } from "./brains/router.js";
 import { OpenAICompatBrain } from "./brains/openai.js";
 import { PERMISSIONS, type ApprovalHandler, type Autonomy, type Permission, type Run, type RunEvent } from "./types.js";
 
-const HELP = `/ARCHITCT/ — intent in, outcome out.
+const HELP = `:\\ARCHITECT\\ — intent in, outcome out.
 
 Usage
   architct run "<goal>" [options]     Compose a Score, perform it, verify the result
@@ -304,7 +304,7 @@ async function main() {
       const triggers = await TriggerRouter.fromFile(path.resolve("architct.triggers.json"));
       createArchitectServer({ architct, token, triggers, library, schedules }).listen(port, () => {
         new Scheduler(architct, library, schedules).start();
-        console.log(`/ARCHITCT/ listening on http://localhost:${port}  (Podium at /)`);
+        console.log(`:\\ARCHITECT\\ listening on http://localhost:${port}  (Podium at /)`);
         if (!token) console.log(`${C.yellow}ARCHITCT_API_TOKEN is not set: the API is open to anyone who can reach this port.${C.off}`);
       });
       return;

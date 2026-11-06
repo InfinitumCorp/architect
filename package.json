@@ -1,7 +1,7 @@
 {
   "name": "architct",
   "version": "0.1.0",
-  "description": "/ARCHITCT/ (Architect) — Infinitum's autonomous AI execution engine",
+  "description": ":\\ARCHITECT\\ (Architect) — Infinitum's autonomous AI execution engine",
   "main": "dist/index.js",
   "scripts": {
     "test": "vitest run",
