@@ -30,6 +30,8 @@ export interface StartRunRequest {
   permissions?: Permission[];
   /** Compose the Score only; perform later with `perform(runId)`. */
   composeOnly?: boolean;
+  /** Spending limit in USD; the run hands off when it is reached. */
+  budgetUsd?: number;
 }
 
 export class CndctrError extends Error {
@@ -78,8 +80,8 @@ export class CndctrClient {
   perform(runId: string) {
     return this.req<{ ok: true }>("POST", `/v1/runs/${runId}/perform`, {});
   }
-  recover(runId: string) {
-    return this.req<{ ok: true }>("POST", `/v1/runs/${runId}/recover`, {});
+  recover(runId: string, budgetUsd?: number) {
+    return this.req<{ ok: true }>("POST", `/v1/runs/${runId}/recover`, { budgetUsd });
   }
   encore(runId: string, inputs: Record<string, string>, autonomy?: Autonomy) {
     return this.req<{ ok: true }>("POST", `/v1/runs/${runId}/encore`, { inputs, autonomy });

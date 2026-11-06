@@ -20,6 +20,8 @@ Usage
   cndctr runs                         List recent runs
   cndctr show <runId>                 Print a run as JSON
   cndctr serve [--port 7337]          Start the API, triggers, schedules and the Podium
+  cndctr mcp                          MCP server (stdio) for Claude Code, Cursor and other agents;
+                                      talks to \`serve\` at CNDCTR_URL. Approvals stay with people.
 
 Saved Scores (reusable workflows)
   cndctr save <runId> <name>          Save a run's Score to the library
@@ -143,6 +145,13 @@ async function main() {
   const [command, ...rest] = positionals;
   if (!command || values.help) {
     console.log(HELP);
+    return;
+  }
+  if (command === "mcp") {
+    // stdout carries the MCP protocol: nothing else may print there.
+    const { createMcpServer } = await import("./mcp.js");
+    const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
+    await createMcpServer().connect(new StdioServerTransport());
     return;
   }
 

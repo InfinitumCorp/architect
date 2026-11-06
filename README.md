@@ -160,6 +160,16 @@ Configure with `CNDCTR_PRODUCT_<KEY>_URL` / `CNDCTR_PRODUCT_<KEY>_TOKEN` for `sc
 
 All `/v1` routes require `Authorization: Bearer $CNDCTR_API_TOKEN` when the token is set (set it whenever the server is reachable by others).
 
+## MCP server (Claude Code, Cursor, other agents)
+
+`cndctr mcp` speaks MCP over stdio and drives a running `cndctr serve` (at `CNDCTR_URL`, default `http://localhost:7337`, with `CNDCTR_API_TOKEN`). Add it to Claude Code:
+
+```bash
+claude mcp add cndctr -- node /path/to/cndctr/dist/cli.js mcp
+```
+
+Tools: `cndctr_run` (with `wait`), `cndctr_get_run`, `cndctr_list_runs`, `cndctr_pending_approvals`, `cndctr_recover`, `cndctr_cancel`. There is deliberately no approve tool: a calling agent can start and watch runs, but risky actions still wait for a person in the Podium or CLI.
+
 ## Library
 
 ```ts
