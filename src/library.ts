@@ -8,7 +8,7 @@ import { PERMISSIONS, type Score } from "./types.js";
 
 /**
  * Saved Scores: reusable workflows you can rerun with new inputs, schedule on Autopilot,
- * or package for the Score Marketplace (where creators are paid in $CNDT).
+ * or package for the Score Marketplace (where creators are paid in $ARCT).
  */
 export interface SavedScore {
   name: string;

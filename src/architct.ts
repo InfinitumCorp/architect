@@ -132,7 +132,7 @@ class RunCancelled extends Error {}
 class BudgetExceeded extends Error {}
 
 /**
- * /ARCHITCT/ — Compose a Score, Perform it with Instruments, Verify the outcome.
+ * :\\ARCHITECT\\ — Compose a Score, Perform it with Instruments, Verify the outcome.
  * Emits "event" with every RunEvent; the same events are persisted for the Podium.
  */
 export class Architect extends EventEmitter {
