@@ -132,7 +132,7 @@ class RunCancelled extends Error {}
 class BudgetExceeded extends Error {}
 
 /**
- * :\\ARCHITECT\\ — Compose a Score, Perform it with Instruments, Verify the outcome.
+ * :\ARCHITECT\ — Compose a Score, Perform it with Instruments, Verify the outcome.
  * Emits "event" with every RunEvent; the same events are persisted for the Podium.
  */
 export class Architect extends EventEmitter {
@@ -149,7 +149,7 @@ export class Architect extends EventEmitter {
     super();
     this.brain = opts.brain;
     this.instruments = opts.instruments;
-    this.store = new RunStore(path.resolve(opts.dataDir ?? ".architct"));
+    this.store = new RunStore(path.resolve(opts.dataDir ?? ".architect"));
     this.ceiling = opts.permissionCeiling ?? PERMISSIONS.filter((p) => p !== "standing.irreversible");
     for (const instrument of opts.instruments) {
       for (const spec of instrument.tools) this.toolIndex.set(spec.name, { instrument, spec });
@@ -306,7 +306,7 @@ export class Architect extends EventEmitter {
         await this.handoff(
           run,
           err.message,
-          `Raise the limit and resume: architct recover ${run.id} --budget <usd>  (or POST /v1/runs/${run.id}/recover { "budgetUsd": … })`,
+          `Raise the limit and resume: architect recover ${run.id} --budget <usd>  (or POST /v1/runs/${run.id}/recover { "budgetUsd": … })`,
         );
       } else if (err instanceof RunCancelled) {
         await this.fail(run, "cancelled");
@@ -395,7 +395,7 @@ export class Architect extends EventEmitter {
 
       for (const block of res.content) {
         if (block.type === "text" && block.text.trim()) {
-          await this.emitEvent(run.id, "architct.note", { stepId, text: block.text });
+          await this.emitEvent(run.id, "architect.note", { stepId, text: block.text });
         }
       }
       const uses = res.content.filter((b) => b.type === "tool_use");
@@ -689,7 +689,7 @@ export class Architect extends EventEmitter {
       "## Artifacts",
       ...Object.entries(artifacts).map(([k, v]) => `- ${k}: ${v}`),
       "",
-      `When you are done, resume with: \`architct recover ${run.id}\``,
+      `When you are done, resume with: \`architect recover ${run.id}\``,
     ].join("\n");
     await writeFile(path.join(dir, "HANDOFF.md"), md);
     await this.emitEvent(run.id, "run.handed_off", { reason, instructions, artifacts });

@@ -31,7 +31,7 @@ const ctx = (): ToolContext => ({
 });
 
 beforeAll(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "architct-browser-"));
+  dir = await mkdtemp(path.join(tmpdir(), "architect-browser-"));
   server = createServer((_, res) => {
     res.writeHead(200, { "content-type": "text/html" });
     res.end(PAGE);

@@ -1,7 +1,7 @@
 {
-  "name": "architct",
+  "name": "architect",
   "version": "0.1.0",
-  "description": ":\\ARCHITECT\\ (Architect) — Infinitum's autonomous AI execution engine",
+  "description": ":\\ARCHITECT\\™ (Architect) — Infinitum's autonomous AI execution engine",
   "main": "dist/index.js",
   "scripts": {
     "test": "vitest run",
@@ -38,7 +38,7 @@
   },
   "types": "dist/index.d.ts",
   "bin": {
-    "architct": "dist/cli.js"
+    "architect": "dist/cli.js"
   },
   "exports": {
     ".": {

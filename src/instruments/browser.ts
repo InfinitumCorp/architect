@@ -22,14 +22,14 @@ const SNAPSHOT_SCRIPT = () => {
   ].join(",");
   const lines: string[] = [];
   let n = 0;
-  document.querySelectorAll("[data-architct-ref]").forEach((el) => el.removeAttribute("data-architct-ref"));
+  document.querySelectorAll("[data-architect-ref]").forEach((el) => el.removeAttribute("data-architect-ref"));
   for (const el of Array.from(document.querySelectorAll<HTMLElement>(selector))) {
     const rect = el.getBoundingClientRect();
     const style = getComputedStyle(el);
     if (rect.width === 0 || rect.height === 0 || style.visibility === "hidden" || style.display === "none") continue;
     if ((el as HTMLInputElement).type === "hidden") continue;
     const ref = `e${++n}`;
-    el.setAttribute("data-architct-ref", ref);
+    el.setAttribute("data-architect-ref", ref);
     const tag = el.tagName.toLowerCase();
     const role = el.getAttribute("role") ?? (tag === "a" ? "link" : tag);
     const input = el as HTMLInputElement;
@@ -182,7 +182,7 @@ export class BrowserInstrument implements Instrument {
 
   private locator(page: Page, ref: string) {
     if (!/^e\d+$/.test(ref)) throw new Error(`"${ref}" is not a snapshot ref; call browser_snapshot first`);
-    return page.locator(`[data-architct-ref="${ref}"]`).first();
+    return page.locator(`[data-architect-ref="${ref}"]`).first();
   }
 
   private async classifyRef(ref: string) {

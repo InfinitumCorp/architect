@@ -1,10 +1,10 @@
 /**
- * architct/adapter — let an Infinitum product be played by Architect.
+ * architect/adapter — let an Infinitum product be played by Architect.
  *
- *   import { createActionHandler } from "architct/adapter";
+ *   import { createActionHandler } from "architect/adapter";
  *
- *   const architct = createActionHandler({
- *     token: process.env.ARCHITCT_PRODUCT_TOKEN,
+ *   const architect = createActionHandler({
+ *     token: process.env.ARCHITECT_PRODUCT_TOKEN,
  *     actions: {
  *       find_account: { description: "Look up an account by name", risk: "read",
  *                       run: async ({ name }) => crm.find(String(name)) },
@@ -13,11 +13,11 @@
  *     },
  *   });
  *
- *   http.createServer(async (req, res) => { if (await architct(req, res)) return; ...your app... });
+ *   http.createServer(async (req, res) => { if (await architect(req, res)) return; ...your app... });
  *
  * Implements the Architect action contract:
- *   GET  /architct/v1/actions            -> [{ name, description, risk }]
- *   POST /architct/v1/actions/{action}   <- { runId, payload } -> JSON result
+ *   GET  /architect/v1/actions            -> [{ name, description, risk }]
+ *   POST /architect/v1/actions/{action}   <- { runId, payload } -> JSON result
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
@@ -33,7 +33,7 @@ export interface ActionHandlerOptions {
   actions: Record<string, ProductAction>;
   /** Bearer token Architect must present. Strongly recommended. */
   token?: string;
-  /** Path prefix (default "/architct/v1"). */
+  /** Path prefix (default "/architect/v1"). */
   basePath?: string;
 }
 
@@ -54,7 +54,7 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
 
 /** Returns true when it handled the request, false when the path is not part of the contract. */
 export function createActionHandler(opts: ActionHandlerOptions) {
-  const base = (opts.basePath ?? "/architct/v1").replace(/\/$/, "");
+  const base = (opts.basePath ?? "/architect/v1").replace(/\/$/, "");
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (!url.pathname.startsWith(`${base}/actions`)) return false;

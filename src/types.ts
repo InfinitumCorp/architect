@@ -1,5 +1,5 @@
 /**
- * Core vocabulary of :\\ARCHITECT\\ (Architect).
+ * Core vocabulary of :\ARCHITECT\ (Architect).
  *
  *   Score        – an executable plan: steps, permissions, checkpoints, definition of success
  *   Instrument   – a capability Architect can play (browser, workspace, HTTP, Infinitum products)

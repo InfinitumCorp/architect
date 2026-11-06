@@ -1,9 +1,9 @@
 /**
- * Example: +SPCTR (Spectre) exposing CRM actions to :\\ARCHITECT\\, and raising a renewal-risk signal.
+ * Example: +SPCTR (Spectre) exposing CRM actions to :\ARCHITECT\, and raising a renewal-risk signal.
  *
  *   npx tsx examples/spectre-adapter.ts
  *   # then point Architect at it:
- *   ARCHITCT_PRODUCT_SPECTRE_URL=http://localhost:7401 ARCHITCT_PRODUCT_SPECTRE_TOKEN=dev-spectre node dist/cli.js serve
+ *   ARCHITECT_PRODUCT_SPECTRE_URL=http://localhost:7401 ARCHITECT_PRODUCT_SPECTRE_TOKEN=dev-spectre node dist/cli.js serve
  *
  * The CRM here is an in-memory stand-in; a real Spectre wires these actions to its own services.
  */
@@ -50,11 +50,11 @@ createServer(async (req, res) => {
   if (await handler(req, res)) return;
   res.writeHead(404).end();
 }).listen(port, async () => {
-  console.log(`Spectre adapter on http://localhost:${port}/architct/v1/actions`);
-  if (process.env.ARCHITCT_URL) {
+  console.log(`Spectre adapter on http://localhost:${port}/architect/v1/actions`);
+  if (process.env.ARCHITECT_URL) {
     // Spectre spotted something: hand it to Architect as a signal.
-    const architct = new ArchitectClient({ baseUrl: process.env.ARCHITCT_URL, token: process.env.ARCHITCT_TOKEN });
-    const res = await architct.signal("spectre", "renewal_risk", { account: "Acme Corp", owner: "dana@acme.example", reason: "usage down 40% in 60 days" });
+    const architect = new ArchitectClient({ baseUrl: process.env.ARCHITECT_URL, token: process.env.ARCHITECT_TOKEN });
+    const res = await architect.signal("spectre", "renewal_risk", { account: "Acme Corp", owner: "dana@acme.example", reason: "usage down 40% in 60 days" });
     console.log("signal sent:", res);
   }
 });

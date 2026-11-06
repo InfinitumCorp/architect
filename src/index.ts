@@ -1,15 +1,15 @@
 import path from "node:path";
 import { AnthropicBrain, type AnthropicBrainOptions, type Brain } from "./brain.js";
 import { brainFromEnv } from "./brains/config.js";
-import { Architect, type ArchitectOptions } from "./architct.js";
+import { Architect, type ArchitectOptions } from "./architect.js";
 import { BrowserInstrument, type BrowserInstrumentOptions } from "./instruments/browser.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { HttpInstrument } from "./instruments/http.js";
 import { WorkspaceInstrument } from "./instruments/workspace.js";
 
 export * from "./types.js";
-export { Architect } from "./architct.js";
-export type { ArchitectOptions, ComposeOptions, PerformOptions } from "./architct.js";
+export { Architect } from "./architect.js";
+export type { ArchitectOptions, ComposeOptions, PerformOptions } from "./architect.js";
 export { AnthropicBrain, ScoreDraftSchema } from "./brain.js";
 export { OpenAICompatBrain, ModelCallError, type OpenAICompatOptions } from "./brains/openai.js";
 export { RouterBrain, DEFAULT_POLICY, type Candidate, type RouterPolicy, type Tier, type Task } from "./brains/router.js";
@@ -40,11 +40,11 @@ export interface CreateArchitectOptions extends Partial<Omit<ArchitectOptions, "
 
 /** An Architect with the standard instruments: browser, workspace, HTTP and the Infinitum ecosystem. */
 export function createArchitect(opts: CreateArchitectOptions = {}): Architect {
-  const dataDir = path.resolve(opts.dataDir ?? process.env.ARCHITCT_DATA_DIR ?? ".architct");
+  const dataDir = path.resolve(opts.dataDir ?? process.env.ARCHITECT_DATA_DIR ?? ".architect");
   const instruments = [];
   if (opts.browser !== false) instruments.push(new BrowserInstrument(opts.browser ?? {}));
   if (opts.workspace !== false) {
-    instruments.push(new WorkspaceInstrument(opts.workspace ?? process.env.ARCHITCT_WORKSPACE ?? path.join(dataDir, "workspace")));
+    instruments.push(new WorkspaceInstrument(opts.workspace ?? process.env.ARCHITECT_WORKSPACE ?? path.join(dataDir, "workspace")));
   }
   if (opts.http !== false) instruments.push(new HttpInstrument());
   if (opts.ecosystem !== false) instruments.push(new EcosystemInstrument());

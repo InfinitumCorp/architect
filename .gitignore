@@ -1,8 +1,8 @@
 node_modules/
 dist/
-.architct/
+.architect/
 *.tsbuildinfo
 .env
 .env.*
 !.env.example
-architct.triggers.json
+architect.triggers.json

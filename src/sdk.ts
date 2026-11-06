@@ -1,14 +1,14 @@
 /**
- * @infinitum/architct SDK — how every Infinitum product folds Architect in.
+ * @infinitum/architect SDK — how every Infinitum product folds Architect in.
  *
- *   const architct = new ArchitectClient({ baseUrl: process.env.ARCHITCT_URL, token: process.env.ARCHITCT_TOKEN });
+ *   const architect = new ArchitectClient({ baseUrl: process.env.ARCHITECT_URL, token: process.env.ARCHITECT_TOKEN });
  *
  *   // Spectre: turn a renewal risk into finished work
- *   await architct.signal("spectre", "renewal_risk", { account: "Acme", owner: "dana@acme.example", reason: "usage down 40%" });
+ *   await architect.signal("spectre", "renewal_risk", { account: "Acme", owner: "dana@acme.example", reason: "usage down 40%" });
  *
  *   // Any product: describe an outcome directly
- *   const run = await architct.run({ goal: "Compare these suppliers and bring me the final price", autonomy: "accompaniment" });
- *   for await (const ev of architct.events(run.id)) console.log(ev.type);
+ *   const run = await architect.run({ goal: "Compare these suppliers and bring me the final price", autonomy: "accompaniment" });
+ *   for await (const ev of architect.events(run.id)) console.log(ev.type);
  *
  * Dependency-free (uses global fetch), so it runs in Node 18+, browsers, VEIL</> and edge runtimes.
  */

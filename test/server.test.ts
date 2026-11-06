@@ -3,7 +3,7 @@ import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Architect } from "../src/architct.js";
+import { Architect } from "../src/architect.js";
 import { WorkspaceInstrument } from "../src/instruments/workspace.js";
 import { createArchitectServer } from "../src/server.js";
 import { ArchitectClient, ArchitectError } from "../src/sdk.js";
@@ -14,7 +14,7 @@ let server: Server;
 let client: ArchitectClient;
 
 beforeAll(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "architct-server-"));
+  dir = await mkdtemp(path.join(tmpdir(), "architect-server-"));
   const ws = new WorkspaceInstrument(path.join(dir, "ws"));
   await mkdir(ws.root, { recursive: true });
   const brain = new ScriptedBrain(
@@ -32,8 +32,8 @@ beforeAll(async () => {
       () => [toolUse("submit_verdict", { passed: true, summary: "ok", criteria: [{ criterion: "note exists", met: true, evidence: "x" }] })],
     ],
   );
-  const architct = new Architect({ brain, instruments: [ws], dataDir: path.join(dir, "data"), approvalTimeoutMs: 20_000 });
-  server = createArchitectServer({ architct, token: "secret" });
+  const architect = new Architect({ brain, instruments: [ws], dataDir: path.join(dir, "data"), approvalTimeoutMs: 20_000 });
+  server = createArchitectServer({ architect, token: "secret" });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   client = new ArchitectClient({ baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, token: "secret" });
 });

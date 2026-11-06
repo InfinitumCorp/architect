@@ -1,7 +1,7 @@
 /**
- * :\\ARCHITECT\\ as an MCP server, so Claude Code, Cursor and other agents can hand Architect a goal.
+ * :\ARCHITECT\ as an MCP server, so Claude Code, Cursor and other agents can hand Architect a goal.
  *
- *   architct mcp                      # stdio; talks to `architct serve` at ARCHITCT_URL (default http://localhost:7337)
+ *   architect mcp                      # stdio; talks to `architect serve` at ARCHITECT_URL (default http://localhost:7337)
  *
  * It is a thin client over the Architect HTTP API. Approvals are deliberately NOT exposed:
  * a calling agent can start, watch, recover and cancel runs, but risky actions still wait
@@ -62,16 +62,16 @@ export interface McpOptions {
 
 export function createMcpServer(opts: McpOptions = {}): McpServer {
   const client =
-    opts.client ?? new ArchitectClient({ baseUrl: process.env.ARCHITCT_URL, token: process.env.ARCHITCT_API_TOKEN });
+    opts.client ?? new ArchitectClient({ baseUrl: process.env.ARCHITECT_URL, token: process.env.ARCHITECT_API_TOKEN });
   const pollMs = opts.pollMs ?? 2_000;
-  const server = new McpServer({ name: "architct", version: "0.1.0" });
+  const server = new McpServer({ name: "architect", version: "0.1.0" });
   const approvalNote = (run: Run) =>
     run.status === "awaiting_approval"
       ? { note: "This run is waiting for a person to approve an action in the Podium or CLI. You cannot approve it." }
       : {};
 
   server.registerTool(
-    "architct_run",
+    "architect_run",
     {
       title: "Start an Architect run",
       description:
@@ -108,7 +108,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
   );
 
   server.registerTool(
-    "architct_get_run",
+    "architect_get_run",
     {
       title: "Get a run",
       description: "Status, Score steps, verdict and spend for one run. With wait=true, waits until it finishes or needs approval.",
@@ -125,7 +125,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
   );
 
   server.registerTool(
-    "architct_list_runs",
+    "architect_list_runs",
     {
       title: "List runs",
       description: "Recent runs, newest first.",
@@ -143,7 +143,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
   );
 
   server.registerTool(
-    "architct_pending_approvals",
+    "architect_pending_approvals",
     {
       title: "Pending approvals",
       description: "Actions waiting for a person. Read-only: approve or decline them in the Podium or CLI, not through this server.",
@@ -160,7 +160,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
   );
 
   server.registerTool(
-    "architct_recover",
+    "architect_recover",
     {
       title: "Recover a run",
       description: "Resume a failed or handed-off run from where it stopped, optionally with a new spending limit.",
@@ -177,7 +177,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
   );
 
   server.registerTool(
-    "architct_cancel",
+    "architect_cancel",
     {
       title: "Cancel a run",
       description: "Stop a run that is in progress.",

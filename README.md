@@ -1,6 +1,6 @@
-# :\ARCHITECT\\™ — Architect
+# :\ARCHITECT\™ — Architect
 
-**Intent in. Outcome out.** :\ARCHITECT\\ is Infinitum's AI execution engine. Describe an outcome; Architect writes the plan, operates the interfaces (a real browser, your project folder, APIs and other Infinitum products), and proves the result is done before it says so.
+**Intent in. Outcome out.** :\ARCHITECT\ is Infinitum's AI execution engine. Describe an outcome; Architect writes the plan, operates the interfaces (a real browser, your project folder, APIs and other Infinitum products), and proves the result is done before it says so.
 
 It is also the **action layer for the Infinitum ecosystem**: when Spectre spots a renewal risk, METATRON¹⁰⁰ flags an event or [HRVST] captures a fault, a signal starts a Score and Architect turns it into finished work — with a person's approval at every step that matters.
 
@@ -38,14 +38,14 @@ Every Score shows a cost estimate before it runs, and every run tracks tokens an
 ### Saved Scores, the Marketplace and Autopilot schedules
 
 ```bash
-architct save run_ab12cd34 supplier-quote          # keep a Score that worked
-architct play supplier-quote -i supplier="Globex"  # rerun it with new inputs
-architct export supplier-quote > quote.json         # Marketplace package (SHA-256 digest)
-architct import quote.json                          # install one; tampered packages are rejected
-architct schedule add weekly-quotes --score supplier-quote --daily 09:00 -i supplier=Acme --budget 3
+architect save run_ab12cd34 supplier-quote          # keep a Score that worked
+architect play supplier-quote -i supplier="Globex"  # rerun it with new inputs
+architect export supplier-quote > quote.json         # Marketplace package (SHA-256 digest)
+architect import quote.json                          # install one; tampered packages are rejected
+architect schedule add weekly-quotes --score supplier-quote --daily 09:00 -i supplier=Acme --budget 3
 ```
 
-A Score installed from someone else is untrusted: when it is played, its permissions are re-clamped to your account's ceiling and its instruments to the ones you have. Schedules run on Autopilot inside `architct serve` and never overlap themselves.
+A Score installed from someone else is untrusted: when it is played, its permissions are re-clamped to your account's ceiling and its instruments to the ones you have. Schedules run on Autopilot inside `architect serve` and never overlap themselves.
 
 ### Safe by design
 
@@ -78,7 +78,7 @@ node dist/cli.js encore run_ab12cd34 -i supplier="Acme Corp"
 node dist/cli.js recover run_ab12cd34
 
 # API + Podium (live view, approvals, evidence)
-ARCHITCT_API_TOKEN=change-me node dist/cli.js serve      # http://localhost:7337/?token=change-me
+ARCHITECT_API_TOKEN=change-me node dist/cli.js serve      # http://localhost:7337/?token=change-me
 ```
 
 ## Folding Architect into every Infinitum product
@@ -88,45 +88,45 @@ Each product integrates in one of three ways:
 **1. Call it (SDK).** Dependency-free, runs in Node, browsers, VEIL</> and edge runtimes.
 
 ```ts
-import { ArchitectClient } from "architct/sdk";
-const architct = new ArchitectClient({ baseUrl: process.env.ARCHITCT_URL, token: process.env.ARCHITCT_TOKEN });
+import { ArchitectClient } from "architect/sdk";
+const architect = new ArchitectClient({ baseUrl: process.env.ARCHITECT_URL, token: process.env.ARCHITECT_TOKEN });
 
-const run = await architct.run({ goal: "Compare these suppliers, prepare the order and bring me the final price for approval" });
-for await (const ev of architct.events(run.id)) console.log(ev.type, ev.data);
+const run = await architect.run({ goal: "Compare these suppliers, prepare the order and bring me the final price for approval" });
+for await (const ev of architect.events(run.id)) console.log(ev.type, ev.data);
 ```
 
 **2. Signal it (triggers).** A product posts a signal; a matching rule starts a Score.
 
 ```ts
-await architct.signal("spectre", "renewal_risk", { account: "Acme", owner: "dana@acme.example", reason: "usage down 40%" });
+await architect.signal("spectre", "renewal_risk", { account: "Acme", owner: "dana@acme.example", reason: "usage down 40%" });
 ```
 
-Rules live in `architct.triggers.json` (see `architct.triggers.example.json`). Built-in defaults cover Spectre `renewal_risk`, [HRVST] `fault`, METATRON¹⁰⁰ `event` and Cumulus://Cloud `alert`. Signal payloads are flattened into the goal as data.
+Rules live in `architect.triggers.json` (see `architect.triggers.example.json`). Built-in defaults cover Spectre `renewal_risk`, [HRVST] `fault`, METATRON¹⁰⁰ `event` and Cumulus://Cloud `alert`. Signal payloads are flattened into the goal as data.
 
-**3. Be played by it (Architect action contract).** A product exposes actions Architect can call as an Instrument. `architct/adapter` implements the contract in a few lines (see [examples/spectre-adapter.ts](examples/spectre-adapter.ts)):
+**3. Be played by it (Architect action contract).** A product exposes actions Architect can call as an Instrument. `architect/adapter` implements the contract in a few lines (see [examples/spectre-adapter.ts](examples/spectre-adapter.ts)):
 
 ```ts
-import { createActionHandler } from "architct/adapter";
-const architct = createActionHandler({
-  token: process.env.ARCHITCT_PRODUCT_TOKEN,
+import { createActionHandler } from "architect/adapter";
+const architect = createActionHandler({
+  token: process.env.ARCHITECT_PRODUCT_TOKEN,
   actions: {
     find_account:   { description: "Look up an account", risk: "read",  run: ({ query }) => crm.find(query) },
     draft_followup: { description: "Save a draft email", risk: "write", run: (p) => crm.draft(p) },
   },
 });
-http.createServer(async (req, res) => { if (await architct(req, res)) return; /* your app */ });
+http.createServer(async (req, res) => { if (await architect(req, res)) return; /* your app */ });
 ```
 
 The wire format:
 
 ```
-GET  {baseUrl}/architct/v1/actions            -> [{ name, description, risk }]
-POST {baseUrl}/architct/v1/actions/{action}   <- { runId, payload }   -> JSON
+GET  {baseUrl}/architect/v1/actions            -> [{ name, description, risk }]
+POST {baseUrl}/architect/v1/actions/{action}   <- { runId, payload }   -> JSON
 ```
 
-Configure with `ARCHITCT_PRODUCT_<KEY>_URL` / `ARCHITCT_PRODUCT_<KEY>_TOKEN` for `scalvs`, `spectre`, `hrvst`, `metatron`, `cumulus`, `firmament`, `veil`, `throne`, `fabric`, `eidetic`, `eon`, `conjure`.
+Configure with `ARCHITECT_PRODUCT_<KEY>_URL` / `ARCHITECT_PRODUCT_<KEY>_TOKEN` for `scalvs`, `spectre`, `hrvst`, `metatron`, `cumulus`, `firmament`, `veil`, `throne`, `fabric`, `eidetic`, `eon`, `conjure`.
 
-| Product | Role with :\ARCHITECT\\ |
+| Product | Role with :\ARCHITECT\ |
 |---|---|
 | SCALVS.ai | the intelligence behind every step (swap in via the `Brain` interface) |
 | +SPCTR (Spectre) | CRM follow-ups and routing; renewal-risk triggers |
@@ -158,26 +158,26 @@ Configure with `ARCHITCT_PRODUCT_<KEY>_URL` / `ARCHITCT_PRODUCT_<KEY>_TOKEN` for
 
 `POST /v1/runs`, `/recover` and `/encore` also accept `budgetUsd`.
 
-All `/v1` routes require `Authorization: Bearer $ARCHITCT_API_TOKEN` when the token is set (set it whenever the server is reachable by others).
+All `/v1` routes require `Authorization: Bearer $ARCHITECT_API_TOKEN` when the token is set (set it whenever the server is reachable by others).
 
 ## MCP server (Claude Code, Cursor, other agents)
 
-`architct mcp` speaks MCP over stdio and drives a running `architct serve` (at `ARCHITCT_URL`, default `http://localhost:7337`, with `ARCHITCT_API_TOKEN`). Add it to Claude Code:
+`architect mcp` speaks MCP over stdio and drives a running `architect serve` (at `ARCHITECT_URL`, default `http://localhost:7337`, with `ARCHITECT_API_TOKEN`). Add it to Claude Code:
 
 ```bash
-claude mcp add architct -- node /path/to/architct/dist/cli.js mcp
+claude mcp add architect -- node /path/to/architect/dist/cli.js mcp
 ```
 
-Tools: `architct_run` (with `wait`), `architct_get_run`, `architct_list_runs`, `architct_pending_approvals`, `architct_recover`, `architct_cancel`. There is deliberately no approve tool: a calling agent can start and watch runs, but risky actions still wait for a person in the Podium or CLI.
+Tools: `architect_run` (with `wait`), `architect_get_run`, `architect_list_runs`, `architect_pending_approvals`, `architect_recover`, `architect_cancel`. There is deliberately no approve tool: a calling agent can start and watch runs, but risky actions still wait for a person in the Podium or CLI.
 
 ## Library
 
 ```ts
-import { createArchitect } from "architct";
+import { createArchitect } from "architect";
 
-const architct = createArchitect({ workspace: "./my-app", browser: { headless: false } });
-architct.on("event", (e) => console.log(e.type));
-const run = await architct.run("Build a landing page for the spring sale and check it renders", { autonomy: "accompaniment" });
+const architect = createArchitect({ workspace: "./my-app", browser: { headless: false } });
+architect.on("event", (e) => console.log(e.type));
+const run = await architect.run("Build a landing page for the spring sale and check it renders", { autonomy: "accompaniment" });
 console.log(run.status, run.verdict);
 ```
 
@@ -188,13 +188,13 @@ Bring your own `Instrument` (any object with `tools` and `execute`) or your own 
 | Variable | Default | |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | — | or an `ant auth login` profile |
-| `ARCHITCT_MODEL` | `claude-opus-5-5` | |
-| `ARCHITCT_EFFORT` | `high` | `low` … `max` |
-| `ARCHITCT_FALLBACKS` | on | server-side refusal fallback; set `off` on Bedrock / Vertex / Foundry |
-| `ARCHITCT_DATA_DIR` | `.architct` | runs, events, evidence |
-| `ARCHITCT_WORKSPACE` | `.architct/workspace` | the folder Architect may build in |
-| `ARCHITCT_API_TOKEN` | — | bearer token for `serve` |
-| `ARCHITCT_BRAIN` | automatic | `anthropic` forces one Claude model; `auto` requires routed models |
+| `ARCHITECT_MODEL` | `claude-opus-5-5` | |
+| `ARCHITECT_EFFORT` | `high` | `low` … `max` |
+| `ARCHITECT_FALLBACKS` | on | server-side refusal fallback; set `off` on Bedrock / Vertex / Foundry |
+| `ARCHITECT_DATA_DIR` | `.architect` | runs, events, evidence |
+| `ARCHITECT_WORKSPACE` | `.architect/workspace` | the folder Architect may build in |
+| `ARCHITECT_API_TOKEN` | — | bearer token for `serve` |
+| `ARCHITECT_BRAIN` | automatic | `anthropic` forces one Claude model; `auto` requires routed models |
 | `OMNIROUTE_URL` | — | route through OmniRoute, e.g. `http://localhost:20128/v1` (see below) |
 
 ## Automatic model selection (OmniRoute, Ollama and other open models)
@@ -219,12 +219,12 @@ OMNIROUTE_FAST_MODEL=qwen3:8b                # optional: a cheap model for routi
 OMNIROUTE_STRONG_MODEL=...                   # optional: a strong model for plans and verdicts
 ```
 
-With `ANTHROPIC_API_KEY` also set, Claude becomes the `strong` model and OmniRoute handles the rest. `ARCHITCT_OPENAI_BASE_URL` plus `ARCHITCT_OPENAI_MODEL` does the same for any other OpenAI-compatible endpoint, such as Ollama, LM Studio, vLLM, OpenRouter or LiteLLM.
+With `ANTHROPIC_API_KEY` also set, Claude becomes the `strong` model and OmniRoute handles the rest. `ARCHITECT_OPENAI_BASE_URL` plus `ARCHITECT_OPENAI_MODEL` does the same for any other OpenAI-compatible endpoint, such as Ollama, LM Studio, vLLM, OpenRouter or LiteLLM.
 
-**Full control** comes from a `architct.models.json` file (copy `architct.models.example.json`). It lists models with a `tier`, an optional `price` in USD per million tokens, a `vision` flag for models that can read screenshots, and `apiKeyEnv`, the *name* of the env var that holds the key. Keys themselves are rejected in this file. You can also override the routing `policy`.
+**Full control** comes from a `architect.models.json` file (copy `architect.models.example.json`). It lists models with a `tier`, an optional `price` in USD per million tokens, a `vision` flag for models that can read screenshots, and `apiKeyEnv`, the *name* of the env var that holds the key. Keys themselves are rejected in this file. You can also override the routing `policy`.
 
 ```bash
-architct models     # routing table, and whether each model is reachable
+architect models     # routing table, and whether each model is reachable
 ```
 
 During a run the CLI shows each routing decision, such as `⇢ act → ollama/qwen3 [fast]`.
@@ -240,9 +240,9 @@ src/
   brain.ts            Claude (compose with structured output; perform with tool use)
   brains/openai.ts    any OpenAI-compatible model (OmniRoute, Ollama, vLLM, OpenRouter …)
   brains/router.ts    automatic model selection: tiers, escalation, failover, cooldowns
-  brains/config.ts    architct.models.json and OMNIROUTE_URL / ARCHITCT_OPENAI_* shortcuts
+  brains/config.ts    architect.models.json and OMNIROUTE_URL / ARCHITECT_OPENAI_* shortcuts
   mcp.ts              MCP server for Claude Code, Cursor and other agents
-  architct.ts        Compose → Perform → Verify, Encore / Recover / Handoff, approvals
+  architect.ts        Compose → Perform → Verify, Encore / Recover / Handoff, approvals
   prompts.ts          system prompts and safety rules
   instruments/        browser (Playwright), workspace, http, ecosystem
   triggers.ts         ecosystem signal → Score rules
@@ -252,9 +252,9 @@ src/
   usage.ts            token pricing, estimates, spending limits
   library.ts          saved Scores and Marketplace packages
   schedules.ts        Autopilot schedules
-  cli.ts              `architct`
+  cli.ts              `architect`
 podium/index.html     the Podium
-test/                 gate, architct end-to-end, real Chromium, API + SDK, budgets, library, schedules, ecosystem + Firmament
+test/                 gate, architect end-to-end, real Chromium, API + SDK, budgets, library, schedules, ecosystem + Firmament
 examples/             spectre-adapter.ts
 ```
 

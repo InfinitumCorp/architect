@@ -127,7 +127,7 @@ export class WorkspaceInstrument implements Instrument {
       let stdout = "";
       let stderr = "";
       const timer = setTimeout(() => {
-        stderr += `\n[architct] command timed out after ${this.opts.commandTimeoutMs ?? 180_000}ms`;
+        stderr += `\n[architect] command timed out after ${this.opts.commandTimeoutMs ?? 180_000}ms`;
         child.kill();
       }, this.opts.commandTimeoutMs ?? 180_000);
       child.stdout.on("data", (d) => (stdout += d));

@@ -5,10 +5,10 @@ import type { Instrument, ToolOutput, ToolSpec } from "./types.js";
  * The Infinitum product catalog Architect can act through.
  * Each product exposes the Architect action contract:
  *
- *   GET  {baseUrl}/architct/v1/actions              -> [{ name, description, risk }]
- *   POST {baseUrl}/architct/v1/actions/{action}     -> body { runId, payload } ; returns JSON
+ *   GET  {baseUrl}/architect/v1/actions              -> [{ name, description, risk }]
+ *   POST {baseUrl}/architect/v1/actions/{action}     -> body { runId, payload } ; returns JSON
  *
- * Products are configured with ARCHITCT_PRODUCT_<KEY>_URL and ARCHITCT_PRODUCT_<KEY>_TOKEN.
+ * Products are configured with ARCHITECT_PRODUCT_<KEY>_URL and ARCHITECT_PRODUCT_<KEY>_TOKEN.
  */
 export const INFINITUM_PRODUCTS: Record<string, { name: string; role: string }> = {
   scalvs: { name: "SCALVS.ai", role: "AI workforce: the intelligence behind every step" },
@@ -33,8 +33,8 @@ export interface ProductEndpoint {
 
 export function productsFromEnv(env: NodeJS.ProcessEnv = process.env): ProductEndpoint[] {
   return Object.keys(INFINITUM_PRODUCTS).flatMap((key) => {
-    const baseUrl = env[`ARCHITCT_PRODUCT_${key.toUpperCase()}_URL`];
-    return baseUrl ? [{ key, baseUrl: baseUrl.replace(/\/$/, ""), token: env[`ARCHITCT_PRODUCT_${key.toUpperCase()}_TOKEN`] }] : [];
+    const baseUrl = env[`ARCHITECT_PRODUCT_${key.toUpperCase()}_URL`];
+    return baseUrl ? [{ key, baseUrl: baseUrl.replace(/\/$/, ""), token: env[`ARCHITECT_PRODUCT_${key.toUpperCase()}_TOKEN`] }] : [];
   });
 }
 
@@ -87,7 +87,7 @@ export class EcosystemInstrument implements Instrument {
 
   async call(product: string, action: string, payload: unknown, runId: string): Promise<{ status: number; body: string }> {
     const ep = this.endpoint(product);
-    const res = await fetch(`${ep.baseUrl}/architct/v1/actions/${encodeURIComponent(action)}`, {
+    const res = await fetch(`${ep.baseUrl}/architect/v1/actions/${encodeURIComponent(action)}`, {
       method: "POST",
       headers: { "content-type": "application/json", ...(ep.token ? { authorization: `Bearer ${ep.token}` } : {}) },
       body: JSON.stringify({ runId, payload: payload ?? {} }),
@@ -100,7 +100,7 @@ export class EcosystemInstrument implements Instrument {
     const product = String(input.product);
     if (tool === "ecosystem_actions") {
       const ep = this.endpoint(product);
-      const res = await fetch(`${ep.baseUrl}/architct/v1/actions`, {
+      const res = await fetch(`${ep.baseUrl}/architect/v1/actions`, {
         headers: ep.token ? { authorization: `Bearer ${ep.token}` } : {},
         signal: AbortSignal.timeout(20_000),
       });
