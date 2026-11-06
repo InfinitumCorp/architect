@@ -1,15 +1,15 @@
 import path from "node:path";
 import { AnthropicBrain, type AnthropicBrainOptions, type Brain } from "./brain.js";
 import { brainFromEnv } from "./brains/config.js";
-import { Architech, type ArchitechOptions } from "./architech.js";
+import { Architect, type ArchitectOptions } from "./architct.js";
 import { BrowserInstrument, type BrowserInstrumentOptions } from "./instruments/browser.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { HttpInstrument } from "./instruments/http.js";
 import { WorkspaceInstrument } from "./instruments/workspace.js";
 
 export * from "./types.js";
-export { Architech } from "./architech.js";
-export type { ArchitechOptions, ComposeOptions, PerformOptions } from "./architech.js";
+export { Architect } from "./architct.js";
+export type { ArchitectOptions, ComposeOptions, PerformOptions } from "./architct.js";
 export { AnthropicBrain, ScoreDraftSchema } from "./brain.js";
 export { OpenAICompatBrain, ModelCallError, type OpenAICompatOptions } from "./brains/openai.js";
 export { RouterBrain, DEFAULT_POLICY, type Candidate, type RouterPolicy, type Tier, type Task } from "./brains/router.js";
@@ -26,29 +26,29 @@ export { TriggerRouter, type TriggerRule } from "./triggers.js";
 export { ScoreLibrary, type SavedScore, digestOf } from "./library.js";
 export { Scheduler, ScheduleStore, validateSchedule, isDue, type Schedule } from "./schedules.js";
 export { estimateCost, costOf, type RunUsage, type TurnUsage } from "./usage.js";
-export { createArchitechServer } from "./server.js";
+export { createArchitectServer } from "./server.js";
 
-export interface CreateArchitechOptions extends Partial<Omit<ArchitechOptions, "brain" | "instruments">> {
+export interface CreateArchitectOptions extends Partial<Omit<ArchitectOptions, "brain" | "instruments">> {
   brain?: Brain;
   brainOptions?: AnthropicBrainOptions;
   browser?: BrowserInstrumentOptions | false;
-  /** Folder Architech may read, write and run commands in. Defaults to <dataDir>/workspace. */
+  /** Folder Architect may read, write and run commands in. Defaults to <dataDir>/workspace. */
   workspace?: string | false;
   http?: boolean;
   ecosystem?: boolean;
 }
 
-/** An Architech with the standard instruments: browser, workspace, HTTP and the Infinitum ecosystem. */
-export function createArchitech(opts: CreateArchitechOptions = {}): Architech {
-  const dataDir = path.resolve(opts.dataDir ?? process.env.ARCHITECH_DATA_DIR ?? ".architech");
+/** An Architect with the standard instruments: browser, workspace, HTTP and the Infinitum ecosystem. */
+export function createArchitect(opts: CreateArchitectOptions = {}): Architect {
+  const dataDir = path.resolve(opts.dataDir ?? process.env.ARCHITCT_DATA_DIR ?? ".architct");
   const instruments = [];
   if (opts.browser !== false) instruments.push(new BrowserInstrument(opts.browser ?? {}));
   if (opts.workspace !== false) {
-    instruments.push(new WorkspaceInstrument(opts.workspace ?? process.env.ARCHITECH_WORKSPACE ?? path.join(dataDir, "workspace")));
+    instruments.push(new WorkspaceInstrument(opts.workspace ?? process.env.ARCHITCT_WORKSPACE ?? path.join(dataDir, "workspace")));
   }
   if (opts.http !== false) instruments.push(new HttpInstrument());
   if (opts.ecosystem !== false) instruments.push(new EcosystemInstrument());
-  return new Architech({
+  return new Architect({
     ...opts,
     dataDir,
     brain: opts.brain ?? (opts.brainOptions ? new AnthropicBrain(opts.brainOptions) : brainFromEnv()),

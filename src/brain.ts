@@ -48,7 +48,7 @@ export interface ComposeResult {
   model?: string;
 }
 
-/** The model behind Architech. Swappable so tests (and on-prem #THRONE runs) can supply their own. */
+/** The model behind Architect. Swappable so tests (and on-prem #THRONE runs) can supply their own. */
 export interface Brain {
   /** Model id, used for pricing. */
   readonly model: string;
@@ -86,9 +86,9 @@ export class AnthropicBrain implements Brain {
 
   constructor(opts: AnthropicBrainOptions = {}) {
     this._client = opts.client;
-    this.model = opts.model ?? process.env.ARCHITECH_MODEL ?? "claude-opus-5-5";
-    this.effort = opts.effort ?? (process.env.ARCHITECH_EFFORT as AnthropicBrainOptions["effort"]) ?? "high";
-    this.fallbacks = opts.fallbacks ?? process.env.ARCHITECH_FALLBACKS !== "off";
+    this.model = opts.model ?? process.env.ARCHITCT_MODEL ?? "claude-opus-5-5";
+    this.effort = opts.effort ?? (process.env.ARCHITCT_EFFORT as AnthropicBrainOptions["effort"]) ?? "high";
+    this.fallbacks = opts.fallbacks ?? process.env.ARCHITCT_FALLBACKS !== "off";
   }
 
   /** Created on first use, so commands that never call the model work without credentials. */

@@ -5,20 +5,20 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Architech } from "../src/architech.js";
+import { Architect } from "../src/architct.js";
 import { WorkspaceInstrument } from "../src/instruments/workspace.js";
 import { createMcpServer } from "../src/mcp.js";
-import { createArchitechServer } from "../src/server.js";
-import { ArchitechClient } from "../src/sdk.js";
+import { createArchitectServer } from "../src/server.js";
+import { ArchitectClient } from "../src/sdk.js";
 import { ScriptedBrain, toolUse } from "./helpers.js";
 
 let dir: string;
 let server: Server;
-let human: ArchitechClient;
+let human: ArchitectClient;
 let agent: Client;
 
 beforeAll(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "architech-mcp-"));
+  dir = await mkdtemp(path.join(tmpdir(), "architct-mcp-"));
   const ws = new WorkspaceInstrument(path.join(dir, "ws"));
   await mkdir(ws.root, { recursive: true });
   const brain = new ScriptedBrain(
@@ -36,13 +36,13 @@ beforeAll(async () => {
       () => [toolUse("submit_verdict", { passed: true, summary: "ok", criteria: [{ criterion: "note exists", met: true, evidence: "x" }] })],
     ],
   );
-  const architech = new Architech({ brain, instruments: [ws], dataDir: path.join(dir, "data"), approvalTimeoutMs: 20_000 });
-  server = createArchitechServer({ architech, token: "secret" });
+  const architct = new Architect({ brain, instruments: [ws], dataDir: path.join(dir, "data"), approvalTimeoutMs: 20_000 });
+  server = createArchitectServer({ architct, token: "secret" });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   const baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  human = new ArchitechClient({ baseUrl, token: "secret" });
+  human = new ArchitectClient({ baseUrl, token: "secret" });
 
-  const mcp = createMcpServer({ client: new ArchitechClient({ baseUrl, token: "secret" }), pollMs: 50 });
+  const mcp = createMcpServer({ client: new ArchitectClient({ baseUrl, token: "secret" }), pollMs: 50 });
   const [a, b] = InMemoryTransport.createLinkedPair();
   await mcp.connect(a);
   agent = new Client({ name: "test-agent", version: "1.0.0" });
@@ -62,33 +62,33 @@ describe("MCP server", () => {
     const { tools } = await agent.listTools();
     const names = tools.map((t) => t.name);
     expect(names).toEqual(
-      expect.arrayContaining(["architech_run", "architech_get_run", "architech_list_runs", "architech_pending_approvals", "architech_recover", "architech_cancel"]),
+      expect.arrayContaining(["architct_run", "architct_get_run", "architct_list_runs", "architct_pending_approvals", "architct_recover", "architct_cancel"]),
     );
     expect(names.some((n) => /approve|decide/.test(n))).toBe(false);
   });
 
   it("starts a run, stops at the approval for a person, and reports the verified result", async () => {
-    const started = parse(await agent.callTool({ name: "architech_run", arguments: { goal: "Publish the release note", wait: true, wait_seconds: 10 } }));
+    const started = parse(await agent.callTool({ name: "architct_run", arguments: { goal: "Publish the release note", wait: true, wait_seconds: 10 } }));
     expect(started.status, JSON.stringify(started)).toBe("awaiting_approval");
     expect(started.note).toMatch(/cannot approve/);
 
-    const pending = parse(await agent.callTool({ name: "architech_pending_approvals", arguments: {} }));
+    const pending = parse(await agent.callTool({ name: "architct_pending_approvals", arguments: {} }));
     expect(pending[0].tool).toBe("workspace_run");
 
     // A person approves it outside MCP.
     await human.decide(pending[0].id, true, undefined, "test");
 
-    const done = parse(await agent.callTool({ name: "architech_get_run", arguments: { run_id: started.id, wait: true, wait_seconds: 10 } }));
+    const done = parse(await agent.callTool({ name: "architct_get_run", arguments: { run_id: started.id, wait: true, wait_seconds: 10 } }));
     expect(done.status).toBe("succeeded");
     expect(done.verdict.passed).toBe(true);
     expect(done.steps[0]).toMatchObject({ title: "Publish note", status: "done" });
 
-    const list = parse(await agent.callTool({ name: "architech_list_runs", arguments: {} }));
+    const list = parse(await agent.callTool({ name: "architct_list_runs", arguments: {} }));
     expect(list[0].id).toBe(started.id);
   }, 30_000);
 
   it("returns an error result for an unknown run", async () => {
-    const r = await agent.callTool({ name: "architech_get_run", arguments: { run_id: "run_nope" } });
+    const r = await agent.callTool({ name: "architct_get_run", arguments: { run_id: "run_nope" } });
     expect(r.isError).toBe(true);
   });
 });

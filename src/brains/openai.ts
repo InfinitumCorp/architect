@@ -1,6 +1,6 @@
 /**
  * A Brain for any OpenAI-compatible chat endpoint: OmniRoute, Ollama, LM Studio, vLLM, OpenRouter,
- * LiteLLM, Together, Groq… Architech speaks Anthropic-shaped messages internally; this translates.
+ * LiteLLM, Together, Groq… Architect speaks Anthropic-shaped messages internally; this translates.
  */
 import { z } from "zod";
 import { ScoreDraftSchema, type Brain, type ComposeResult, type ContentBlock, type MessageParam, type TurnRequest, type TurnResult } from "../brain.js";

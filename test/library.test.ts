@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { Architech } from "../src/architech.js";
+import { Architect } from "../src/architct.js";
 import { WorkspaceInstrument } from "../src/instruments/workspace.js";
 import { ScoreLibrary, digestOf } from "../src/library.js";
 import { ScheduleStore, Scheduler, isDue, validateSchedule } from "../src/schedules.js";
@@ -27,7 +27,7 @@ const writeAndVerify = (file: string) => [
 let dir: string;
 let ws: WorkspaceInstrument;
 beforeEach(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "architech-lib-"));
+  dir = await mkdtemp(path.join(tmpdir(), "architct-lib-"));
   ws = new WorkspaceInstrument(path.join(dir, "ws"));
   await mkdir(ws.root, { recursive: true });
 });
@@ -49,16 +49,16 @@ describe("usage and spending limits", () => {
       () => [toolUse("workspace_list", {})],
       () => [toolUse("workspace_list", {})],
     ]);
-    const architech = new Architech({ brain, instruments: [ws], dataDir: path.join(dir, "data") });
-    const run = await architech.run("Report", { inputs: { supplier: "acme" }, budgetUsd: 0.1 });
+    const architct = new Architect({ brain, instruments: [ws], dataDir: path.join(dir, "data") });
+    const run = await architct.run("Report", { inputs: { supplier: "acme" }, budgetUsd: 0.1 });
     expect(run.status).toBe("handed_off");
     expect(run.usage.calls).toBe(3); // compose + 2 turns, then the limit stops the third
     expect(run.usage.costUsd).toBeCloseTo(0.138, 3);
-    const handoff = await readFile(path.join(architech.store.runDir(run.id), "handoff", "HANDOFF.md"), "utf8");
+    const handoff = await readFile(path.join(architct.store.runDir(run.id), "handoff", "HANDOFF.md"), "utf8");
     expect(handoff).toMatch(/Spending limit reached/);
 
     const brain2 = new ScriptedBrain(draft, writeAndVerify("report-acme.txt"));
-    const c2 = new Architech({ brain: brain2, instruments: [ws], dataDir: path.join(dir, "data") });
+    const c2 = new Architect({ brain: brain2, instruments: [ws], dataDir: path.join(dir, "data") });
     const recovered = await c2.recover(run.id, { budgetUsd: 5 });
     expect(recovered.status).toBe("succeeded");
     expect(recovered.usage.costUsd).toBeGreaterThan(run.usage.costUsd);
@@ -67,8 +67,8 @@ describe("usage and spending limits", () => {
 
 describe("Score library", () => {
   it("saves a run's Score, finds its inputs, and plays it with new inputs", async () => {
-    const architech = new Architech({ brain: new ScriptedBrain(draft, writeAndVerify("report-acme.txt")), instruments: [ws], dataDir: path.join(dir, "data") });
-    const first = await architech.run("Report", { inputs: { supplier: "acme" } });
+    const architct = new Architect({ brain: new ScriptedBrain(draft, writeAndVerify("report-acme.txt")), instruments: [ws], dataDir: path.join(dir, "data") });
+    const first = await architct.run("Report", { inputs: { supplier: "acme" } });
     expect(first.status).toBe("succeeded");
 
     const lib = new ScoreLibrary(path.join(dir, "data", "scores"));
@@ -76,7 +76,7 @@ describe("Score library", () => {
     expect(saved.inputs).toEqual(["supplier"]);
     expect((await lib.list()).map((s) => s.name)).toEqual(["supplier-report"]);
 
-    const c2 = new Architech({ brain: new ScriptedBrain(draft, writeAndVerify("report-globex.txt")), instruments: [ws], dataDir: path.join(dir, "data") });
+    const c2 = new Architect({ brain: new ScriptedBrain(draft, writeAndVerify("report-globex.txt")), instruments: [ws], dataDir: path.join(dir, "data") });
     const run = await c2.prepare((await lib.get("supplier-report")).score, { inputs: { supplier: "globex" }, source: "score:supplier-report" });
     const played = await c2.perform(run);
     expect(played.status).toBe("succeeded");
@@ -101,8 +101,8 @@ describe("Score library", () => {
     await expect(lib.import({ ...pkg, name: "../escape" })).rejects.toThrow();
     const installed = await lib.import(pkg);
 
-    const architech = new Architech({ brain: new ScriptedBrain(draft, []), instruments: [ws], dataDir: path.join(dir, "data") });
-    const run = await architech.prepare(installed.score, { autonomy: "autopilot" });
+    const architct = new Architect({ brain: new ScriptedBrain(draft, []), instruments: [ws], dataDir: path.join(dir, "data") });
+    const run = await architct.prepare(installed.score, { autonomy: "autopilot" });
     expect(run.score.permissions).toEqual(["workspace.read"]);
     expect(run.score.steps[0]!.instruments).toEqual(["workspace"]);
   });
@@ -133,7 +133,7 @@ describe("Autopilot schedules", () => {
     const dataDir = path.join(dir, "data");
     const lib = new ScoreLibrary(path.join(dataDir, "scores"));
     const store = new ScheduleStore(dataDir);
-    const architech = new Architech({ brain: new ScriptedBrain(draft, writeAndVerify("report-nightly.txt")), instruments: [ws], dataDir });
+    const architct = new Architect({ brain: new ScriptedBrain(draft, writeAndVerify("report-nightly.txt")), instruments: [ws], dataDir });
     await lib.save("supplier-report", {
       ...draft,
       id: "score_1",
@@ -144,13 +144,13 @@ describe("Autopilot schedules", () => {
     });
     await store.upsert(validateSchedule({ name: "nightly", score: "supplier-report", everyMinutes: 60, inputs: { supplier: "nightly" }, budgetUsd: 2 }));
 
-    const scheduler = new Scheduler(architech, lib, store, () => {});
+    const scheduler = new Scheduler(architct, lib, store, () => {});
     const [runId] = await scheduler.tick();
     expect(runId).toBeDefined();
     expect(await scheduler.tick()).toEqual([]); // not due again for an hour
 
-    for (let i = 0; i < 50 && architech.isActive(runId!); i++) await new Promise((r) => setTimeout(r, 20));
-    const run = await architech.store.load(runId!);
+    for (let i = 0; i < 50 && architct.isActive(runId!); i++) await new Promise((r) => setTimeout(r, 20));
+    const run = await architct.store.load(runId!);
     expect(run.status).toBe("succeeded");
     expect(run.autonomy).toBe("autopilot");
     expect(run.budgetUsd).toBe(2);

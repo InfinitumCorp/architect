@@ -36,7 +36,7 @@ export interface ToolOutput {
   isError?: boolean;
 }
 
-/** A capability Architech can play. */
+/** A capability Architect can play. */
 export interface Instrument {
   name: string;
   description: string;

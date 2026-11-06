@@ -1,7 +1,7 @@
 {
-  "name": "architech",
+  "name": "architct",
   "version": "0.1.0",
-  "description": "/ARCHITECH/ (Architech) — Infinitum's autonomous AI execution engine",
+  "description": "/ARCHITCT/ (Architect) — Infinitum's autonomous AI execution engine",
   "main": "dist/index.js",
   "scripts": {
     "test": "vitest run",
@@ -38,7 +38,7 @@
   },
   "types": "dist/index.d.ts",
   "bin": {
-    "architech": "dist/cli.js"
+    "architct": "dist/cli.js"
   },
   "exports": {
     ".": {

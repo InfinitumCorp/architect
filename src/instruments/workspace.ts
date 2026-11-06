@@ -6,7 +6,7 @@ import type { Instrument, ToolContext, ToolOutput, ToolSpec } from "./types.js";
 
 /**
  * Files and commands, confined to one workspace directory.
- * This is how Architech builds things: write code, run the build and tests, read the output.
+ * This is how Architect builds things: write code, run the build and tests, read the output.
  */
 export class WorkspaceInstrument implements Instrument {
   name = "workspace";
@@ -127,7 +127,7 @@ export class WorkspaceInstrument implements Instrument {
       let stdout = "";
       let stderr = "";
       const timer = setTimeout(() => {
-        stderr += `\n[architech] command timed out after ${this.opts.commandTimeoutMs ?? 180_000}ms`;
+        stderr += `\n[architct] command timed out after ${this.opts.commandTimeoutMs ?? 180_000}ms`;
         child.kill();
       }, this.opts.commandTimeoutMs ?? 180_000);
       child.stdout.on("data", (d) => (stdout += d));

@@ -1,15 +1,15 @@
 /**
- * Example: +SPCTR (Spectre) exposing CRM actions to /ARCHITECH/, and raising a renewal-risk signal.
+ * Example: +SPCTR (Spectre) exposing CRM actions to /ARCHITCT/, and raising a renewal-risk signal.
  *
  *   npx tsx examples/spectre-adapter.ts
- *   # then point Architech at it:
- *   ARCHITECH_PRODUCT_SPECTRE_URL=http://localhost:7401 ARCHITECH_PRODUCT_SPECTRE_TOKEN=dev-spectre node dist/cli.js serve
+ *   # then point Architect at it:
+ *   ARCHITCT_PRODUCT_SPECTRE_URL=http://localhost:7401 ARCHITCT_PRODUCT_SPECTRE_TOKEN=dev-spectre node dist/cli.js serve
  *
  * The CRM here is an in-memory stand-in; a real Spectre wires these actions to its own services.
  */
 import { createServer } from "node:http";
 import { createActionHandler } from "../src/adapter.js";
-import { ArchitechClient } from "../src/sdk.js";
+import { ArchitectClient } from "../src/sdk.js";
 
 const accounts = new Map([
   ["acme", { name: "Acme Corp", owner: "dana@acme.example", plan: "Team", usageTrend: "-40% over 60 days", renewal: "2026-12-01" }],
@@ -50,11 +50,11 @@ createServer(async (req, res) => {
   if (await handler(req, res)) return;
   res.writeHead(404).end();
 }).listen(port, async () => {
-  console.log(`Spectre adapter on http://localhost:${port}/architech/v1/actions`);
-  if (process.env.ARCHITECH_URL) {
-    // Spectre spotted something: hand it to Architech as a signal.
-    const architech = new ArchitechClient({ baseUrl: process.env.ARCHITECH_URL, token: process.env.ARCHITECH_TOKEN });
-    const res = await architech.signal("spectre", "renewal_risk", { account: "Acme Corp", owner: "dana@acme.example", reason: "usage down 40% in 60 days" });
+  console.log(`Spectre adapter on http://localhost:${port}/architct/v1/actions`);
+  if (process.env.ARCHITCT_URL) {
+    // Spectre spotted something: hand it to Architect as a signal.
+    const architct = new ArchitectClient({ baseUrl: process.env.ARCHITCT_URL, token: process.env.ARCHITCT_TOKEN });
+    const res = await architct.signal("spectre", "renewal_risk", { account: "Acme Corp", owner: "dana@acme.example", reason: "usage down 40% in 60 days" });
     console.log("signal sent:", res);
   }
 });

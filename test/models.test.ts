@@ -7,7 +7,7 @@ import type { Brain, TurnRequest } from "../src/brain.js";
 import { brainFromEnv, loadModelsFile, modelsFromEnv } from "../src/brains/config.js";
 import { OpenAICompatBrain, toOpenAIMessages } from "../src/brains/openai.js";
 import { RouterBrain, trailingErrors } from "../src/brains/router.js";
-import { Architech } from "../src/architech.js";
+import { Architect } from "../src/architct.js";
 import { WorkspaceInstrument } from "../src/instruments/workspace.js";
 
 /** A fake OpenAI-compatible gateway (stands in for OmniRoute / Ollama). */
@@ -24,7 +24,7 @@ const chat = (message: Record<string, unknown>, finish = "stop", model?: string)
 const call = (name: string, args: unknown, id = `call_${name}`) => chat({ content: null, tool_calls: [{ id, type: "function", function: { name, arguments: JSON.stringify(args) } }] }, "tool_calls");
 
 beforeAll(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "architech-models-"));
+  dir = await mkdtemp(path.join(tmpdir(), "architct-models-"));
   server = createServer(async (req, res) => {
     let raw = "";
     for await (const c of req) raw += c;
@@ -183,7 +183,7 @@ describe("automatic model router", () => {
   });
 });
 
-describe("Architech on open models", () => {
+describe("Architect on open models", () => {
   it("plans with the strong model, acts with the fast one, and prices each call", async () => {
     const ws = new WorkspaceInstrument(path.join(dir, "ws"));
     await mkdir(ws.root, { recursive: true });
@@ -200,8 +200,8 @@ describe("Architech on open models", () => {
     ];
     replies["qwen3:8b"] = [call("workspace_write", { path: "hello.txt", content: "hi" }), call("step_complete", { summary: "wrote hello.txt" })];
 
-    const architech = new Architech({ brain: router, instruments: [ws], dataDir: path.join(dir, "data") });
-    const run = await architech.run("Write hello.txt containing hi", { autonomy: "autopilot" });
+    const architct = new Architect({ brain: router, instruments: [ws], dataDir: path.join(dir, "data") });
+    const run = await architct.run("Write hello.txt containing hi", { autonomy: "autopilot" });
 
     expect(run.status, run.error).toBe("succeeded");
     expect(await readFile(path.join(ws.root, "hello.txt"), "utf8")).toBe("hi");
@@ -228,7 +228,7 @@ describe("model configuration", () => {
   });
 
   it("loads the example file", () => {
-    const cfg = loadModelsFile(path.resolve("architech.models.example.json"));
+    const cfg = loadModelsFile(path.resolve("architct.models.example.json"));
     expect(cfg.models).toHaveLength(3);
     expect(cfg.policy?.act).toBe("fast");
   });

@@ -2,8 +2,8 @@
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import path from "node:path";
-import { createArchitech } from "./index.js";
-import { createArchitechServer } from "./server.js";
+import { createArchitect } from "./index.js";
+import { createArchitectServer } from "./server.js";
 import { readFile } from "node:fs/promises";
 import { TriggerRouter } from "./triggers.js";
 import { ScoreLibrary } from "./library.js";
@@ -12,49 +12,49 @@ import { RouterBrain } from "./brains/router.js";
 import { OpenAICompatBrain } from "./brains/openai.js";
 import { PERMISSIONS, type ApprovalHandler, type Autonomy, type Permission, type Run, type RunEvent } from "./types.js";
 
-const HELP = `/ARCHITECH/ — intent in, outcome out.
+const HELP = `/ARCHITCT/ — intent in, outcome out.
 
 Usage
-  architech run "<goal>" [options]    Compose a Score, perform it, verify the result
-  architech compose "<goal>" [opts]   Compose and print the Score without performing it
-  architech recover <runId>           Resume a failed or handed-off run
-  architech encore <runId> -i k=v ... Rerun a Score with new inputs
-  architech runs                      List recent runs
-  architech show <runId>              Print a run as JSON
-  architech serve [--port 7337]       Start the API, triggers, schedules and the Podium
-  architech models                    Show the automatic model routing table and check each model
-  architech mcp                       MCP server (stdio) for Claude Code, Cursor and other agents;
-                                      talks to \`serve\` at ARCHITECH_URL. Approvals stay with people.
+  architct run "<goal>" [options]     Compose a Score, perform it, verify the result
+  architct compose "<goal>" [opts]    Compose and print the Score without performing it
+  architct recover <runId>            Resume a failed or handed-off run
+  architct encore <runId> -i k=v ...  Rerun a Score with new inputs
+  architct runs                       List recent runs
+  architct show <runId>               Print a run as JSON
+  architct serve [--port 7337]        Start the API, triggers, schedules and the Podium
+  architct models                     Show the automatic model routing table and check each model
+  architct mcp                        MCP server (stdio) for Claude Code, Cursor and other agents;
+                                      talks to \`serve\` at ARCHITCT_URL. Approvals stay with people.
 
 Saved Scores (reusable workflows)
-  architech save <runId> <name>       Save a run's Score to the library
-  architech scores                    List saved Scores
-  architech play <name> -i k=v ...    Perform a saved Score with inputs
-  architech export <name>             Print a Marketplace package (JSON) for a saved Score
-  architech import <file.json>        Install a Score package
+  architct save <runId> <name>        Save a run's Score to the library
+  architct scores                     List saved Scores
+  architct play <name> -i k=v ...     Perform a saved Score with inputs
+  architct export <name>              Print a Marketplace package (JSON) for a saved Score
+  architct import <file.json>         Install a Score package
 
 Autopilot schedules (run by \`serve\`)
-  architech schedule add <name> --score <saved> (--every <min> | --daily HH:MM) [-i k=v] [--budget usd]
-  architech schedule list
-  architech schedule remove <name>
+  architct schedule add <name> --score <saved> (--every <min> | --daily HH:MM) [-i k=v] [--budget usd]
+  architct schedule list
+  architct schedule remove <name>
 
 Options
   -a, --autonomy <level>     rehearsal | accompaniment (default) | autopilot
   -u, --url <url>            Start URL for the browser
   -i, --input k=v            Score input (repeatable)
   -p, --permit <perm>        Limit permissions (repeatable): ${PERMISSIONS.join(", ")}
-  -w, --workspace <dir>      Folder Architech may build in (default: .architech/workspace)
+  -w, --workspace <dir>      Folder Architect may build in (default: .architct/workspace)
       --headed               Show the browser window
       --state <file>         Playwright storage state to reuse a session you signed in to yourself
       --allow-host <host>    Restrict the browser to these hosts (repeatable)
   -b, --budget <usd>         Spending limit for the run; it hands off instead of going over
-      --data <dir>           Data directory (default: .architech)
+      --data <dir>           Data directory (default: .architct)
       --json                 Print the final run as JSON
 
 Environment
   ANTHROPIC_API_KEY    (or an \`ant auth login\` profile)
-  ARCHITECH_MODEL         default claude-opus-5-5     ARCHITECH_EFFORT  default high
-  ARCHITECH_API_TOKEN     bearer token for \`serve\`    ARCHITECH_PRODUCT_<KEY>_URL / _TOKEN  ecosystem products`;
+  ARCHITCT_MODEL         default claude-opus-5-5     ARCHITCT_EFFORT  default high
+  ARCHITCT_API_TOKEN     bearer token for \`serve\`    ARCHITCT_PRODUCT_<KEY>_URL / _TOKEN  ecosystem products`;
 
 const C = { dim: "\x1b[2m", bold: "\x1b[1m", green: "\x1b[32m", red: "\x1b[31m", yellow: "\x1b[33m", cyan: "\x1b[36m", off: "\x1b[0m" };
 
@@ -90,7 +90,7 @@ function printEvent(ev: RunEvent) {
       console.log(`${C.dim}  ${mark} ${d.tool} ${input.length > 100 ? `${input.slice(0, 100)}…` : input}${C.off}`);
       break;
     }
-    case "architech.note":
+    case "architct.note":
       console.log(`${C.dim}  ${String(d.text).split("\n")[0]?.slice(0, 160)}${C.off}`);
       break;
     case "run.verified":
@@ -118,7 +118,7 @@ function cliApprovals(): ApprovalHandler {
 }
 
 async function main() {
-  // Pick up ANTHROPIC_API_KEY and ARCHITECH_* from a local .env (gitignored). Real env vars win.
+  // Pick up ANTHROPIC_API_KEY and ARCHITCT_* from a local .env (gitignored). Real env vars win.
   try {
     process.loadEnvFile(".env");
   } catch {
@@ -172,52 +172,52 @@ async function main() {
   const budgetUsd = values.budget !== undefined ? Number(values.budget) : undefined;
   if (budgetUsd !== undefined && !(budgetUsd > 0)) throw new Error("--budget must be a positive number of USD");
 
-  const architech = createArchitech({
+  const architct = createArchitect({
     dataDir: values.data,
     workspace: values.workspace,
     browser: { headless: !values.headed, storageStatePath: values.state, allowedHosts: values["allow-host"] },
     approvalHandler: command === "serve" ? undefined : cliApprovals(),
   });
-  if (command !== "serve" && !values.json) architech.on("event", printEvent);
-  const router = architech.brain instanceof RouterBrain ? architech.brain : undefined;
+  if (command !== "serve" && !values.json) architct.on("event", printEvent);
+  const router = architct.brain instanceof RouterBrain ? architct.brain : undefined;
   if (router && command !== "serve" && !values.json) {
     router.onRoute = (d) => {
       const skipped = d.failures.length ? ` ${C.yellow}(after ${d.failures.map((f) => f.id).join(", ")} failed)${C.off}` : "";
       console.log(`${C.dim}  ⇢ ${d.task} → ${d.used} [${d.tier}]${C.off}${skipped}`);
     };
   }
-  const library = new ScoreLibrary(path.join(architech.store.root, "scores"));
-  const schedules = new ScheduleStore(architech.store.root);
+  const library = new ScoreLibrary(path.join(architct.store.root, "scores"));
+  const schedules = new ScheduleStore(architct.store.root);
 
   const finish = async (run: Run) => {
-    await architech.dispose();
+    await architct.dispose();
     if (values.json) console.log(JSON.stringify(run, null, 2));
-    else console.log(`\n${C.dim}run ${run.id} · ${run.status}${run.error ? ` · ${run.error}` : ""} · ${path.join(architech.store.runDir(run.id))}${C.off}`);
+    else console.log(`\n${C.dim}run ${run.id} · ${run.status}${run.error ? ` · ${run.error}` : ""} · ${path.join(architct.store.runDir(run.id))}${C.off}`);
     process.exitCode = run.status === "succeeded" || run.status === "rehearsed" ? 0 : 1;
   };
 
   switch (command) {
     case "run": {
       const goal = rest.join(" ").trim();
-      if (!goal) throw new Error('give a goal: architech run "…"');
-      return finish(await architech.run(goal, { autonomy, inputs, startUrl: values.url, permissions: permit, budgetUsd }));
+      if (!goal) throw new Error('give a goal: architct run "…"');
+      return finish(await architct.run(goal, { autonomy, inputs, startUrl: values.url, permissions: permit, budgetUsd }));
     }
     case "compose": {
       const goal = rest.join(" ").trim();
-      const score = await architech.compose(goal, { inputs, startUrl: values.url, permissions: permit });
+      const score = await architct.compose(goal, { inputs, startUrl: values.url, permissions: permit });
       console.log(JSON.stringify(score, null, 2));
-      const est = architech.estimate(score);
+      const est = architct.estimate(score);
       console.error(`${C.dim}estimate to perform: $${est.lowUsd.toFixed(2)}–$${est.highUsd.toFixed(2)}${C.off}`);
-      return architech.dispose();
+      return architct.dispose();
     }
     case "recover":
-      return finish(await architech.recover(required(rest[0], "runId"), { budgetUsd }));
+      return finish(await architct.recover(required(rest[0], "runId"), { budgetUsd }));
     case "encore":
       return finish(
-        await architech.encore(required(rest[0], "runId"), inputs, values.autonomy ? autonomy : undefined, budgetUsd),
+        await architct.encore(required(rest[0], "runId"), inputs, values.autonomy ? autonomy : undefined, budgetUsd),
       );
     case "save": {
-      const run = await architech.store.load(required(rest[0], "runId"));
+      const run = await architct.store.load(required(rest[0], "runId"));
       const saved = await library.save(required(rest[1], "name"), run.score);
       console.log(`Saved "${saved.name}"${saved.inputs.length ? ` (inputs: ${saved.inputs.join(", ")})` : ""}`);
       return;
@@ -230,8 +230,8 @@ async function main() {
     }
     case "play": {
       const saved = await library.get(required(rest[0], "name"));
-      const run = await architech.prepare(saved.score, { inputs, autonomy, budgetUsd, source: `score:${saved.name}` });
-      return finish(await architech.perform(run));
+      const run = await architct.prepare(saved.score, { inputs, autonomy, budgetUsd, source: `score:${saved.name}` });
+      return finish(await architct.perform(run));
     }
     case "export": {
       const { savedAt: _s, inputs: _i, ...pkg } = await library.get(required(rest[0], "name"));
@@ -268,14 +268,14 @@ async function main() {
         });
         await library.get(s.score);
         await schedules.upsert(s);
-        console.log(`Scheduled "${s.name}". It runs while \`architech serve\` is running.`);
+        console.log(`Scheduled "${s.name}". It runs while \`architct serve\` is running.`);
         return;
       }
-      throw new Error("usage: architech schedule add|list|remove");
+      throw new Error("usage: architct schedule add|list|remove");
     }
     case "models": {
       if (!router) {
-        console.log(`single model: ${architech.brain.model} (set OMNIROUTE_URL or add architech.models.json to route automatically)`);
+        console.log(`single model: ${architct.brain.model} (set OMNIROUTE_URL or add architct.models.json to route automatically)`);
         return;
       }
       const p = router.policy;
@@ -290,22 +290,22 @@ async function main() {
       return;
     }
     case "runs": {
-      for (const r of await architech.store.list()) {
+      for (const r of await architct.store.list()) {
         console.log(`${r.id}  ${r.status.padEnd(17)} ${r.autonomy.padEnd(13)} ${r.createdAt}  ${r.score.goal.slice(0, 70)}`);
       }
       return;
     }
     case "show":
-      console.log(JSON.stringify(await architech.store.load(required(rest[0], "runId")), null, 2));
+      console.log(JSON.stringify(await architct.store.load(required(rest[0], "runId")), null, 2));
       return;
     case "serve": {
       const port = Number(values.port ?? process.env.PORT ?? 7337);
-      const token = process.env.ARCHITECH_API_TOKEN;
-      const triggers = await TriggerRouter.fromFile(path.resolve("architech.triggers.json"));
-      createArchitechServer({ architech, token, triggers, library, schedules }).listen(port, () => {
-        new Scheduler(architech, library, schedules).start();
-        console.log(`/ARCHITECH/ listening on http://localhost:${port}  (Podium at /)`);
-        if (!token) console.log(`${C.yellow}ARCHITECH_API_TOKEN is not set: the API is open to anyone who can reach this port.${C.off}`);
+      const token = process.env.ARCHITCT_API_TOKEN;
+      const triggers = await TriggerRouter.fromFile(path.resolve("architct.triggers.json"));
+      createArchitectServer({ architct, token, triggers, library, schedules }).listen(port, () => {
+        new Scheduler(architct, library, schedules).start();
+        console.log(`/ARCHITCT/ listening on http://localhost:${port}  (Podium at /)`);
+        if (!token) console.log(`${C.yellow}ARCHITCT_API_TOKEN is not set: the API is open to anyone who can reach this port.${C.off}`);
       });
       return;
     }
@@ -320,6 +320,6 @@ function required(v: string | undefined, name: string): string {
 }
 
 main().catch((err) => {
-  console.error(`${C.red}architech:${C.off} ${err instanceof Error ? err.message : err}`);
+  console.error(`${C.red}architct:${C.off} ${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });
