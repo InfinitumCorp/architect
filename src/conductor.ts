@@ -137,7 +137,7 @@ class BudgetExceeded extends Error {}
  */
 export class Conductor extends EventEmitter {
   readonly store: RunStore;
-  private brain: Brain;
+  readonly brain: Brain;
   private instruments: Instrument[];
   private toolIndex = new Map<string, { instrument: Instrument; spec: ToolSpec }>();
   private ceiling: Permission[];
@@ -175,9 +175,9 @@ export class Conductor extends EventEmitter {
     return estimateCost(score, this.brain.model);
   }
 
-  private async composeWithUsage(goal: string, opts: ComposeOptions): Promise<{ score: Score; usage?: TurnUsage }> {
+  private async composeWithUsage(goal: string, opts: ComposeOptions): Promise<{ score: Score; usage?: TurnUsage; model?: string }> {
     const ceiling = opts.permissions ? this.ceiling.filter((p) => opts.permissions!.includes(p)) : this.ceiling;
-    const { draft, usage } = await this.brain.compose(
+    const { draft, usage, model } = await this.brain.compose(
       composeSystem(this.instruments, ceiling),
       composePrompt(goal, opts.inputs ?? {}, opts.startUrl),
     );
@@ -200,7 +200,7 @@ export class Conductor extends EventEmitter {
       successCriteria: draft.successCriteria,
       createdAt: now(),
     };
-    return { score, usage };
+    return { score, usage, model };
   }
 
   createRun(
@@ -232,13 +232,13 @@ export class Conductor extends EventEmitter {
 
   /** Compose a Score and persist a run without performing it yet. */
   async start(goal: string, opts: PerformOptions = {}): Promise<Run> {
-    const { score, usage } = await this.composeWithUsage(goal, opts);
+    const { score, usage, model } = await this.composeWithUsage(goal, opts);
     const run = this.createRun(score, opts.autonomy ?? "accompaniment", {
       trigger: opts.trigger,
       budgetUsd: opts.budgetUsd,
       source: opts.source,
     });
-    if (usage) addUsage(run.usage, usage, this.brain.model);
+    if (usage) addUsage(run.usage, usage, model ?? this.brain.model);
     await this.store.save(run);
     await this.emitEvent(run.id, "run.composed", { score, estimate: this.estimate(score), budgetUsd: run.budgetUsd });
     return run;
@@ -387,8 +387,8 @@ export class Conductor extends EventEmitter {
       }
       const res = await this.brain.turn({ system, messages, tools });
       if (res.usage) {
-        addUsage(run.usage, res.usage, this.brain.model);
-        void this.emitEvent(run.id, "usage", { ...run.usage });
+        addUsage(run.usage, res.usage, res.model ?? this.brain.model);
+        void this.emitEvent(run.id, "usage", { ...run.usage, model: res.model ?? this.brain.model });
       }
       if (res.stop_reason === "refusal") throw new Error("the model declined to continue this step");
       messages.push({ role: "assistant", content: res.content as ContentBlockParam[] });

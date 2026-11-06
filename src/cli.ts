@@ -8,6 +8,8 @@ import { readFile } from "node:fs/promises";
 import { TriggerRouter } from "./triggers.js";
 import { ScoreLibrary } from "./library.js";
 import { ScheduleStore, Scheduler, validateSchedule } from "./schedules.js";
+import { RouterBrain } from "./brains/router.js";
+import { OpenAICompatBrain } from "./brains/openai.js";
 import { PERMISSIONS, type ApprovalHandler, type Autonomy, type Permission, type Run, type RunEvent } from "./types.js";
 
 const HELP = `/CNDCTR/ — intent in, outcome out.
@@ -20,6 +22,7 @@ Usage
   cndctr runs                         List recent runs
   cndctr show <runId>                 Print a run as JSON
   cndctr serve [--port 7337]          Start the API, triggers, schedules and the Podium
+  cndctr models                       Show the automatic model routing table and check each model
   cndctr mcp                          MCP server (stdio) for Claude Code, Cursor and other agents;
                                       talks to \`serve\` at CNDCTR_URL. Approvals stay with people.
 
@@ -176,6 +179,13 @@ async function main() {
     approvalHandler: command === "serve" ? undefined : cliApprovals(),
   });
   if (command !== "serve" && !values.json) conductor.on("event", printEvent);
+  const router = conductor.brain instanceof RouterBrain ? conductor.brain : undefined;
+  if (router && command !== "serve" && !values.json) {
+    router.onRoute = (d) => {
+      const skipped = d.failures.length ? ` ${C.yellow}(after ${d.failures.map((f) => f.id).join(", ")} failed)${C.off}` : "";
+      console.log(`${C.dim}  ⇢ ${d.task} → ${d.used} [${d.tier}]${C.off}${skipped}`);
+    };
+  }
   const library = new ScoreLibrary(path.join(conductor.store.root, "scores"));
   const schedules = new ScheduleStore(conductor.store.root);
 
@@ -262,6 +272,22 @@ async function main() {
         return;
       }
       throw new Error("usage: cndctr schedule add|list|remove");
+    }
+    case "models": {
+      if (!router) {
+        console.log(`single model: ${conductor.brain.model} (set OMNIROUTE_URL or add cndctr.models.json to route automatically)`);
+        return;
+      }
+      const p = router.policy;
+      console.log(`routing: plan → ${p.plan} · verify → ${p.verify} · act → ${p.act} · escalate after ${p.escalateAfterErrors} errors\n`);
+      for (const c of router.candidates) {
+        const probe = c.brain instanceof OpenAICompatBrain ? await c.brain.probe() : { ok: Boolean(process.env.ANTHROPIC_API_KEY), error: "ANTHROPIC_API_KEY not set" };
+        const state = probe.ok
+          ? `${C.green}up${C.off}${"listed" in probe && probe.listed === false ? ` ${C.yellow}(model not listed)${C.off}` : ""}`
+          : `${C.red}down${C.off} ${C.dim}${probe.error}${C.off}`;
+        console.log(`  ${c.tier.padEnd(9)} ${c.id.padEnd(36)} ${state}`);
+      }
+      return;
     }
     case "runs": {
       for (const r of await conductor.store.list()) {

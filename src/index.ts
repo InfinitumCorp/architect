@@ -1,5 +1,6 @@
 import path from "node:path";
 import { AnthropicBrain, type AnthropicBrainOptions, type Brain } from "./brain.js";
+import { brainFromEnv } from "./brains/config.js";
 import { Conductor, type ConductorOptions } from "./conductor.js";
 import { BrowserInstrument, type BrowserInstrumentOptions } from "./instruments/browser.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
@@ -10,6 +11,9 @@ export * from "./types.js";
 export { Conductor } from "./conductor.js";
 export type { ConductorOptions, ComposeOptions, PerformOptions } from "./conductor.js";
 export { AnthropicBrain, ScoreDraftSchema } from "./brain.js";
+export { OpenAICompatBrain, ModelCallError, type OpenAICompatOptions } from "./brains/openai.js";
+export { RouterBrain, DEFAULT_POLICY, type Candidate, type RouterPolicy, type Tier, type Task } from "./brains/router.js";
+export { brainFromEnv, loadModelsFile, modelsFromEnv, ModelsFileSchema } from "./brains/config.js";
 export type { Brain, ScoreDraft, TurnRequest, TurnResult } from "./brain.js";
 export { RunStore } from "./store.js";
 export { gate, classifyByLabel, classifyCommand } from "./policy.js";
@@ -47,7 +51,7 @@ export function createConductor(opts: CreateConductorOptions = {}): Conductor {
   return new Conductor({
     ...opts,
     dataDir,
-    brain: opts.brain ?? new AnthropicBrain(opts.brainOptions),
+    brain: opts.brain ?? (opts.brainOptions ? new AnthropicBrain(opts.brainOptions) : brainFromEnv()),
     instruments,
   });
 }

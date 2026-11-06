@@ -194,6 +194,42 @@ Bring your own `Instrument` (any object with `tools` and `execute`) or your own 
 | `CNDCTR_DATA_DIR` | `.cndctr` | runs, events, evidence |
 | `CNDCTR_WORKSPACE` | `.cndctr/workspace` | the folder Conductor may build in |
 | `CNDCTR_API_TOKEN` | — | bearer token for `serve` |
+| `CNDCTR_BRAIN` | automatic | `anthropic` forces one Claude model; `auto` requires routed models |
+| `OMNIROUTE_URL` | — | route through OmniRoute, e.g. `http://localhost:20128/v1` (see below) |
+
+## Automatic model selection (OmniRoute, Ollama and other open models)
+
+Conductor can run on open-source and gateway models instead of, or alongside, Claude. A router picks a model for every call:
+
+| Call | Tier | Why |
+|---|---|---|
+| Composing a Score | `strong` | the plan decides everything that follows |
+| Ordinary step turns | `act` tier (default `balanced`) | most clicks and reads are routine |
+| A step whose tool calls keep failing | one tier up | escalate instead of looping |
+| Verification | `strong` | the verdict must be trustworthy |
+
+Within a tier the cheapest healthy model goes first. A model that errors, rate-limits or returns malformed output is skipped, and the call moves to the next one. The failing model then sits out for a cooldown. When no model of the needed tier exists, a stronger one is used, then a weaker one. Every call is priced with the model that actually answered.
+
+**Quickest setup with [OmniRoute](https://github.com/diegosouzapw/OmniRoute)**, a self-hosted, OpenAI-compatible gateway in front of many providers, including free ones:
+
+```bash
+OMNIROUTE_URL=http://localhost:20128/v1      # OmniRoute's "auto" model routes upstream
+OMNIROUTE_API_KEY=...                        # if your OmniRoute requires one
+OMNIROUTE_FAST_MODEL=qwen3:8b                # optional: a cheap model for routine steps
+OMNIROUTE_STRONG_MODEL=...                   # optional: a strong model for plans and verdicts
+```
+
+With `ANTHROPIC_API_KEY` also set, Claude becomes the `strong` model and OmniRoute handles the rest. `CNDCTR_OPENAI_BASE_URL` plus `CNDCTR_OPENAI_MODEL` does the same for any other OpenAI-compatible endpoint, such as Ollama, LM Studio, vLLM, OpenRouter or LiteLLM.
+
+**Full control** comes from a `cndctr.models.json` file (copy `cndctr.models.example.json`). It lists models with a `tier`, an optional `price` in USD per million tokens, a `vision` flag for models that can read screenshots, and `apiKeyEnv`, the *name* of the env var that holds the key. Keys themselves are rejected in this file. You can also override the routing `policy`.
+
+```bash
+cndctr models     # routing table, and whether each model is reachable
+```
+
+During a run the CLI shows each routing decision, such as `⇢ act → ollama/qwen3 [fast]`.
+
+Open models drive the browser well enough for routine steps. Keep a strong model for planning and verification, because that is where weak models make the most expensive mistakes. Text-only models get a note in place of screenshots, so set `vision: true` only for models that can actually read images.
 
 ## Layout
 
@@ -202,6 +238,10 @@ src/
   types.ts            Score, Run, Evidence, Permission, Autonomy
   policy.ts           the autonomy gate and risk classifiers
   brain.ts            Claude (compose with structured output; perform with tool use)
+  brains/openai.ts    any OpenAI-compatible model (OmniRoute, Ollama, vLLM, OpenRouter …)
+  brains/router.ts    automatic model selection: tiers, escalation, failover, cooldowns
+  brains/config.ts    cndctr.models.json and OMNIROUTE_URL / CNDCTR_OPENAI_* shortcuts
+  mcp.ts              MCP server for Claude Code, Cursor and other agents
   conductor.ts        Compose → Perform → Verify, Encore / Recover / Handoff, approvals
   prompts.ts          system prompts and safety rules
   instruments/        browser (Playwright), workspace, http, ecosystem

@@ -38,11 +38,14 @@ export interface TurnResult {
   content: ContentBlock[];
   stop_reason: string | null;
   usage?: TurnUsage;
+  /** The model that actually answered (a router or gateway may pick it). Used for pricing. */
+  model?: string;
 }
 
 export interface ComposeResult {
   draft: ScoreDraft;
   usage?: TurnUsage;
+  model?: string;
 }
 
 /** The model behind Conductor. Swappable so tests (and on-prem #THRONE runs) can supply their own. */

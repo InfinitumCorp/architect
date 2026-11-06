@@ -6,9 +6,11 @@ export interface TurnUsage {
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  /** Exact cost when the brain knows it (open models, gateways). Overrides the price table. */
+  costUsd?: number;
 }
 
-export interface RunUsage extends TurnUsage {
+export interface RunUsage extends Omit<TurnUsage, "costUsd"> {
   calls: number;
   costUsd: number;
 }
@@ -40,7 +42,7 @@ export function addUsage(total: RunUsage, u: TurnUsage, model: string): RunUsage
   total.outputTokens += u.outputTokens;
   total.cacheReadTokens += u.cacheReadTokens;
   total.cacheWriteTokens += u.cacheWriteTokens;
-  total.costUsd = Math.round((total.costUsd + costOf(u, model)) * 1e6) / 1e6;
+  total.costUsd = Math.round((total.costUsd + (u.costUsd ?? costOf(u, model))) * 1e6) / 1e6;
   return total;
 }
 
