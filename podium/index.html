@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>/CNDCTR/ Podium</title>
+<title>/RCHTCT/ Podium</title>
 <style>
   :root { --bg:#0b0d10; --panel:#12161b; --line:#232a33; --text:#e6e9ee; --dim:#8a94a3; --accent:#c9f24b; --ok:#4ade80; --bad:#f87171; --warn:#fbbf24; }
   * { box-sizing:border-box; }
@@ -42,7 +42,7 @@
 </head>
 <body>
 <header>
-  <h1>/CNDCTR/</h1><span class="tag">Podium — you set the direction, Conductor carries it through</span>
+  <h1>/RCHTCT/</h1><span class="tag">Podium — you set the direction, Architect carries it through</span>
 </header>
 <main>
   <aside>
@@ -54,15 +54,15 @@
         <option value="accompaniment" selected>Accompaniment — pause at decisions</option>
         <option value="autopilot">Autopilot — run within standing permissions</option>
       </select>
-      <button class="primary">Conduct</button>
+      <button class="primary">Build</button>
     </form>
     <div id="runs"></div>
   </aside>
   <section id="detail"><p class="empty">Choose a run, or describe an outcome to start one.</p></section>
 </main>
 <script>
-  const token = new URLSearchParams(location.search).get("token") || localStorage.getItem("cndctr.token") || "";
-  if (token) try { localStorage.setItem("cndctr.token", token); } catch {}
+  const token = new URLSearchParams(location.search).get("token") || localStorage.getItem("rchtct.token") || "";
+  if (token) try { localStorage.setItem("rchtct.token", token); } catch {}
   const api = (p, opts = {}) => fetch(p, { ...opts, headers: { "content-type": "application/json", ...(token ? { authorization: "Bearer " + token } : {}) } })
     .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || r.statusText); return d; });
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
@@ -80,7 +80,7 @@
     source?.close();
     source = new EventSource(`/v1/runs/${id}/events${token ? "?token=" + encodeURIComponent(token) : ""}`);
     source.onmessage = () => {};
-    const types = ["run.composed","run.status","step.started","step.completed","step.failed","action","evidence","conductor.note","approval.requested","approval.decided","run.verified","run.handed_off","run.attested","run.encore","run.recovering"];
+    const types = ["run.composed","run.status","step.started","step.completed","step.failed","action","evidence","architect.note","approval.requested","approval.decided","run.verified","run.handed_off","run.attested","run.encore","run.recovering"];
     types.forEach((t) => source.addEventListener(t, (e) => { events.push(JSON.parse(e.data)); render(); }));
     await render(); loadRuns();
   }
@@ -123,7 +123,7 @@
     const t = ev.at.slice(11, 19), d = ev.data;
     const text = {
       "action": () => `${d.outcome} · ${d.tool} ${JSON.stringify(d.input).slice(0, 120)}`,
-      "conductor.note": () => d.text.slice(0, 200),
+      "architect.note": () => d.text.slice(0, 200),
       "step.started": () => `▶ ${d.title}`, "step.completed": () => `✓ ${d.summary}`, "step.failed": () => `✗ ${d.reason}`,
       "run.status": () => `status → ${d.status}`, "approval.requested": () => `⏸ ${d.reason}`,
       "approval.decided": () => d.approved ? "approved" : `declined ${d.note || ""}`,
@@ -157,7 +157,7 @@
       const run = await api("/v1/runs", { method: "POST", body: JSON.stringify({ goal: f.get("goal"), autonomy: f.get("autonomy"), startUrl: f.get("startUrl") || undefined }) });
       e.target.reset(); await open(run.id);
     } catch (err) { alert(err.message); }
-    finally { btn.disabled = false; btn.textContent = "Conduct"; }
+    finally { btn.disabled = false; btn.textContent = "Build"; }
   };
 
   loadRuns().catch((e) => document.getElementById("runs").innerHTML = `<p class="empty">${esc(e.message)}</p>`);

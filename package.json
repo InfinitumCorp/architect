@@ -1,7 +1,7 @@
 {
-  "name": "cndctr",
+  "name": "rchtct",
   "version": "0.1.0",
-  "description": "/CNDCTR/ (Conductor) — Infinitum's autonomous AI execution engine",
+  "description": "/RCHTCT/ (Architect) — Infinitum's autonomous AI execution engine",
   "main": "dist/index.js",
   "scripts": {
     "test": "vitest run",
@@ -38,7 +38,7 @@
   },
   "types": "dist/index.d.ts",
   "bin": {
-    "cndctr": "dist/cli.js"
+    "rchtct": "dist/cli.js"
   },
   "exports": {
     ".": {

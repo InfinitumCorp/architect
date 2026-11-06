@@ -1,14 +1,14 @@
 /**
- * @infinitum/cndctr SDK — how every Infinitum product folds Conductor in.
+ * @infinitum/rchtct SDK — how every Infinitum product folds Architect in.
  *
- *   const cndctr = new CndctrClient({ baseUrl: process.env.CNDCTR_URL, token: process.env.CNDCTR_TOKEN });
+ *   const rchtct = new RchtctClient({ baseUrl: process.env.RCHTCT_URL, token: process.env.RCHTCT_TOKEN });
  *
  *   // Spectre: turn a renewal risk into finished work
- *   await cndctr.signal("spectre", "renewal_risk", { account: "Acme", owner: "dana@acme.example", reason: "usage down 40%" });
+ *   await rchtct.signal("spectre", "renewal_risk", { account: "Acme", owner: "dana@acme.example", reason: "usage down 40%" });
  *
  *   // Any product: describe an outcome directly
- *   const run = await cndctr.run({ goal: "Compare these suppliers and bring me the final price", autonomy: "accompaniment" });
- *   for await (const ev of cndctr.events(run.id)) console.log(ev.type);
+ *   const run = await rchtct.run({ goal: "Compare these suppliers and bring me the final price", autonomy: "accompaniment" });
+ *   for await (const ev of rchtct.events(run.id)) console.log(ev.type);
  *
  * Dependency-free (uses global fetch), so it runs in Node 18+, browsers, VEIL</> and edge runtimes.
  */
@@ -16,7 +16,7 @@ import type { ApprovalRequest, Autonomy, Permission, Run, RunEvent } from "./typ
 
 export type { ApprovalRequest, Autonomy, Permission, Run, RunEvent } from "./types.js";
 
-export interface CndctrClientOptions {
+export interface RchtctClientOptions {
   baseUrl?: string;
   token?: string;
   fetch?: typeof fetch;
@@ -34,7 +34,7 @@ export interface StartRunRequest {
   budgetUsd?: number;
 }
 
-export class CndctrError extends Error {
+export class RchtctError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
   }
@@ -42,12 +42,12 @@ export class CndctrError extends Error {
 
 const TERMINAL = new Set(["succeeded", "failed", "rehearsed", "handed_off"]);
 
-export class CndctrClient {
+export class RchtctClient {
   private baseUrl: string;
   private token?: string;
   private f: typeof fetch;
 
-  constructor(opts: CndctrClientOptions = {}) {
+  constructor(opts: RchtctClientOptions = {}) {
     this.baseUrl = (opts.baseUrl ?? "http://localhost:7337").replace(/\/$/, "");
     this.token = opts.token;
     this.f = opts.fetch ?? fetch;
@@ -64,7 +64,7 @@ export class CndctrClient {
     });
     const text = await res.text();
     const data = text ? JSON.parse(text) : undefined;
-    if (!res.ok) throw new CndctrError(res.status, (data as { error?: string })?.error ?? res.statusText);
+    if (!res.ok) throw new RchtctError(res.status, (data as { error?: string })?.error ?? res.statusText);
     return data as T;
   }
 
@@ -110,7 +110,7 @@ export class CndctrClient {
     for (;;) {
       const run = await this.getRun(runId);
       if (TERMINAL.has(run.status)) return run;
-      if (Date.now() > deadline) throw new CndctrError(408, `run ${runId} still ${run.status}`);
+      if (Date.now() > deadline) throw new RchtctError(408, `run ${runId} still ${run.status}`);
       await new Promise((r) => setTimeout(r, intervalMs));
     }
   }
@@ -119,7 +119,7 @@ export class CndctrClient {
   async *events(runId: string): AsyncGenerator<RunEvent> {
     const qs = this.token ? `?token=${encodeURIComponent(this.token)}` : "";
     const res = await this.f(`${this.baseUrl}/v1/runs/${runId}/events${qs}`);
-    if (!res.ok || !res.body) throw new CndctrError(res.status, "could not open event stream");
+    if (!res.ok || !res.body) throw new RchtctError(res.status, "could not open event stream");
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
     for (;;) {

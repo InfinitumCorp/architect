@@ -106,7 +106,7 @@ export class ScoreLibrary {
 
   /**
    * Install a Score from a Marketplace package. The package is validated, and its digest checked
-   * when it carries one. Permissions are clamped again when the Score is played (Conductor.prepare).
+   * when it carries one. Permissions are clamped again when the Score is played (Architect.prepare).
    */
   async import(raw: unknown): Promise<SavedScore> {
     const parsed = ScoreFileSchema.parse(raw);

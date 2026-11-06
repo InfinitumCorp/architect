@@ -2,8 +2,8 @@
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import path from "node:path";
-import { createConductor } from "./index.js";
-import { createConductorServer } from "./server.js";
+import { createArchitect } from "./index.js";
+import { createArchitectServer } from "./server.js";
 import { readFile } from "node:fs/promises";
 import { TriggerRouter } from "./triggers.js";
 import { ScoreLibrary } from "./library.js";
@@ -12,49 +12,49 @@ import { RouterBrain } from "./brains/router.js";
 import { OpenAICompatBrain } from "./brains/openai.js";
 import { PERMISSIONS, type ApprovalHandler, type Autonomy, type Permission, type Run, type RunEvent } from "./types.js";
 
-const HELP = `/CNDCTR/ — intent in, outcome out.
+const HELP = `/RCHTCT/ — intent in, outcome out.
 
 Usage
-  cndctr run "<goal>" [options]       Compose a Score, perform it, verify the result
-  cndctr compose "<goal>" [options]   Compose and print the Score without performing it
-  cndctr recover <runId>              Resume a failed or handed-off run
-  cndctr encore <runId> -i k=v ...    Rerun a Score with new inputs
-  cndctr runs                         List recent runs
-  cndctr show <runId>                 Print a run as JSON
-  cndctr serve [--port 7337]          Start the API, triggers, schedules and the Podium
-  cndctr models                       Show the automatic model routing table and check each model
-  cndctr mcp                          MCP server (stdio) for Claude Code, Cursor and other agents;
-                                      talks to \`serve\` at CNDCTR_URL. Approvals stay with people.
+  rchtct run "<goal>" [options]       Compose a Score, perform it, verify the result
+  rchtct compose "<goal>" [options]   Compose and print the Score without performing it
+  rchtct recover <runId>              Resume a failed or handed-off run
+  rchtct encore <runId> -i k=v ...    Rerun a Score with new inputs
+  rchtct runs                         List recent runs
+  rchtct show <runId>                 Print a run as JSON
+  rchtct serve [--port 7337]          Start the API, triggers, schedules and the Podium
+  rchtct models                       Show the automatic model routing table and check each model
+  rchtct mcp                          MCP server (stdio) for Claude Code, Cursor and other agents;
+                                      talks to \`serve\` at RCHTCT_URL. Approvals stay with people.
 
 Saved Scores (reusable workflows)
-  cndctr save <runId> <name>          Save a run's Score to the library
-  cndctr scores                       List saved Scores
-  cndctr play <name> -i k=v ...       Perform a saved Score with inputs
-  cndctr export <name>                Print a Marketplace package (JSON) for a saved Score
-  cndctr import <file.json>           Install a Score package
+  rchtct save <runId> <name>          Save a run's Score to the library
+  rchtct scores                       List saved Scores
+  rchtct play <name> -i k=v ...       Perform a saved Score with inputs
+  rchtct export <name>                Print a Marketplace package (JSON) for a saved Score
+  rchtct import <file.json>           Install a Score package
 
 Autopilot schedules (run by \`serve\`)
-  cndctr schedule add <name> --score <saved> (--every <min> | --daily HH:MM) [-i k=v] [--budget usd]
-  cndctr schedule list
-  cndctr schedule remove <name>
+  rchtct schedule add <name> --score <saved> (--every <min> | --daily HH:MM) [-i k=v] [--budget usd]
+  rchtct schedule list
+  rchtct schedule remove <name>
 
 Options
   -a, --autonomy <level>     rehearsal | accompaniment (default) | autopilot
   -u, --url <url>            Start URL for the browser
   -i, --input k=v            Score input (repeatable)
   -p, --permit <perm>        Limit permissions (repeatable): ${PERMISSIONS.join(", ")}
-  -w, --workspace <dir>      Folder Conductor may build in (default: .cndctr/workspace)
+  -w, --workspace <dir>      Folder Architect may build in (default: .rchtct/workspace)
       --headed               Show the browser window
       --state <file>         Playwright storage state to reuse a session you signed in to yourself
       --allow-host <host>    Restrict the browser to these hosts (repeatable)
   -b, --budget <usd>         Spending limit for the run; it hands off instead of going over
-      --data <dir>           Data directory (default: .cndctr)
+      --data <dir>           Data directory (default: .rchtct)
       --json                 Print the final run as JSON
 
 Environment
   ANTHROPIC_API_KEY    (or an \`ant auth login\` profile)
-  CNDCTR_MODEL         default claude-opus-5-5     CNDCTR_EFFORT  default high
-  CNDCTR_API_TOKEN     bearer token for \`serve\`    CNDCTR_PRODUCT_<KEY>_URL / _TOKEN  ecosystem products`;
+  RCHTCT_MODEL         default claude-opus-5-5     RCHTCT_EFFORT  default high
+  RCHTCT_API_TOKEN     bearer token for \`serve\`    RCHTCT_PRODUCT_<KEY>_URL / _TOKEN  ecosystem products`;
 
 const C = { dim: "\x1b[2m", bold: "\x1b[1m", green: "\x1b[32m", red: "\x1b[31m", yellow: "\x1b[33m", cyan: "\x1b[36m", off: "\x1b[0m" };
 
@@ -90,7 +90,7 @@ function printEvent(ev: RunEvent) {
       console.log(`${C.dim}  ${mark} ${d.tool} ${input.length > 100 ? `${input.slice(0, 100)}…` : input}${C.off}`);
       break;
     }
-    case "conductor.note":
+    case "architect.note":
       console.log(`${C.dim}  ${String(d.text).split("\n")[0]?.slice(0, 160)}${C.off}`);
       break;
     case "run.verified":
@@ -118,7 +118,7 @@ function cliApprovals(): ApprovalHandler {
 }
 
 async function main() {
-  // Pick up ANTHROPIC_API_KEY and CNDCTR_* from a local .env (gitignored). Real env vars win.
+  // Pick up ANTHROPIC_API_KEY and RCHTCT_* from a local .env (gitignored). Real env vars win.
   try {
     process.loadEnvFile(".env");
   } catch {
@@ -172,52 +172,52 @@ async function main() {
   const budgetUsd = values.budget !== undefined ? Number(values.budget) : undefined;
   if (budgetUsd !== undefined && !(budgetUsd > 0)) throw new Error("--budget must be a positive number of USD");
 
-  const conductor = createConductor({
+  const architect = createArchitect({
     dataDir: values.data,
     workspace: values.workspace,
     browser: { headless: !values.headed, storageStatePath: values.state, allowedHosts: values["allow-host"] },
     approvalHandler: command === "serve" ? undefined : cliApprovals(),
   });
-  if (command !== "serve" && !values.json) conductor.on("event", printEvent);
-  const router = conductor.brain instanceof RouterBrain ? conductor.brain : undefined;
+  if (command !== "serve" && !values.json) architect.on("event", printEvent);
+  const router = architect.brain instanceof RouterBrain ? architect.brain : undefined;
   if (router && command !== "serve" && !values.json) {
     router.onRoute = (d) => {
       const skipped = d.failures.length ? ` ${C.yellow}(after ${d.failures.map((f) => f.id).join(", ")} failed)${C.off}` : "";
       console.log(`${C.dim}  ⇢ ${d.task} → ${d.used} [${d.tier}]${C.off}${skipped}`);
     };
   }
-  const library = new ScoreLibrary(path.join(conductor.store.root, "scores"));
-  const schedules = new ScheduleStore(conductor.store.root);
+  const library = new ScoreLibrary(path.join(architect.store.root, "scores"));
+  const schedules = new ScheduleStore(architect.store.root);
 
   const finish = async (run: Run) => {
-    await conductor.dispose();
+    await architect.dispose();
     if (values.json) console.log(JSON.stringify(run, null, 2));
-    else console.log(`\n${C.dim}run ${run.id} · ${run.status}${run.error ? ` · ${run.error}` : ""} · ${path.join(conductor.store.runDir(run.id))}${C.off}`);
+    else console.log(`\n${C.dim}run ${run.id} · ${run.status}${run.error ? ` · ${run.error}` : ""} · ${path.join(architect.store.runDir(run.id))}${C.off}`);
     process.exitCode = run.status === "succeeded" || run.status === "rehearsed" ? 0 : 1;
   };
 
   switch (command) {
     case "run": {
       const goal = rest.join(" ").trim();
-      if (!goal) throw new Error('give a goal: cndctr run "…"');
-      return finish(await conductor.run(goal, { autonomy, inputs, startUrl: values.url, permissions: permit, budgetUsd }));
+      if (!goal) throw new Error('give a goal: rchtct run "…"');
+      return finish(await architect.run(goal, { autonomy, inputs, startUrl: values.url, permissions: permit, budgetUsd }));
     }
     case "compose": {
       const goal = rest.join(" ").trim();
-      const score = await conductor.compose(goal, { inputs, startUrl: values.url, permissions: permit });
+      const score = await architect.compose(goal, { inputs, startUrl: values.url, permissions: permit });
       console.log(JSON.stringify(score, null, 2));
-      const est = conductor.estimate(score);
+      const est = architect.estimate(score);
       console.error(`${C.dim}estimate to perform: $${est.lowUsd.toFixed(2)}–$${est.highUsd.toFixed(2)}${C.off}`);
-      return conductor.dispose();
+      return architect.dispose();
     }
     case "recover":
-      return finish(await conductor.recover(required(rest[0], "runId"), { budgetUsd }));
+      return finish(await architect.recover(required(rest[0], "runId"), { budgetUsd }));
     case "encore":
       return finish(
-        await conductor.encore(required(rest[0], "runId"), inputs, values.autonomy ? autonomy : undefined, budgetUsd),
+        await architect.encore(required(rest[0], "runId"), inputs, values.autonomy ? autonomy : undefined, budgetUsd),
       );
     case "save": {
-      const run = await conductor.store.load(required(rest[0], "runId"));
+      const run = await architect.store.load(required(rest[0], "runId"));
       const saved = await library.save(required(rest[1], "name"), run.score);
       console.log(`Saved "${saved.name}"${saved.inputs.length ? ` (inputs: ${saved.inputs.join(", ")})` : ""}`);
       return;
@@ -230,8 +230,8 @@ async function main() {
     }
     case "play": {
       const saved = await library.get(required(rest[0], "name"));
-      const run = await conductor.prepare(saved.score, { inputs, autonomy, budgetUsd, source: `score:${saved.name}` });
-      return finish(await conductor.perform(run));
+      const run = await architect.prepare(saved.score, { inputs, autonomy, budgetUsd, source: `score:${saved.name}` });
+      return finish(await architect.perform(run));
     }
     case "export": {
       const { savedAt: _s, inputs: _i, ...pkg } = await library.get(required(rest[0], "name"));
@@ -268,14 +268,14 @@ async function main() {
         });
         await library.get(s.score);
         await schedules.upsert(s);
-        console.log(`Scheduled "${s.name}". It runs while \`cndctr serve\` is running.`);
+        console.log(`Scheduled "${s.name}". It runs while \`rchtct serve\` is running.`);
         return;
       }
-      throw new Error("usage: cndctr schedule add|list|remove");
+      throw new Error("usage: rchtct schedule add|list|remove");
     }
     case "models": {
       if (!router) {
-        console.log(`single model: ${conductor.brain.model} (set OMNIROUTE_URL or add cndctr.models.json to route automatically)`);
+        console.log(`single model: ${architect.brain.model} (set OMNIROUTE_URL or add rchtct.models.json to route automatically)`);
         return;
       }
       const p = router.policy;
@@ -290,22 +290,22 @@ async function main() {
       return;
     }
     case "runs": {
-      for (const r of await conductor.store.list()) {
+      for (const r of await architect.store.list()) {
         console.log(`${r.id}  ${r.status.padEnd(17)} ${r.autonomy.padEnd(13)} ${r.createdAt}  ${r.score.goal.slice(0, 70)}`);
       }
       return;
     }
     case "show":
-      console.log(JSON.stringify(await conductor.store.load(required(rest[0], "runId")), null, 2));
+      console.log(JSON.stringify(await architect.store.load(required(rest[0], "runId")), null, 2));
       return;
     case "serve": {
       const port = Number(values.port ?? process.env.PORT ?? 7337);
-      const token = process.env.CNDCTR_API_TOKEN;
-      const triggers = await TriggerRouter.fromFile(path.resolve("cndctr.triggers.json"));
-      createConductorServer({ conductor, token, triggers, library, schedules }).listen(port, () => {
-        new Scheduler(conductor, library, schedules).start();
-        console.log(`/CNDCTR/ listening on http://localhost:${port}  (Podium at /)`);
-        if (!token) console.log(`${C.yellow}CNDCTR_API_TOKEN is not set: the API is open to anyone who can reach this port.${C.off}`);
+      const token = process.env.RCHTCT_API_TOKEN;
+      const triggers = await TriggerRouter.fromFile(path.resolve("rchtct.triggers.json"));
+      createArchitectServer({ architect, token, triggers, library, schedules }).listen(port, () => {
+        new Scheduler(architect, library, schedules).start();
+        console.log(`/RCHTCT/ listening on http://localhost:${port}  (Podium at /)`);
+        if (!token) console.log(`${C.yellow}RCHTCT_API_TOKEN is not set: the API is open to anyone who can reach this port.${C.off}`);
       });
       return;
     }
@@ -320,6 +320,6 @@ function required(v: string | undefined, name: string): string {
 }
 
 main().catch((err) => {
-  console.error(`${C.red}cndctr:${C.off} ${err instanceof Error ? err.message : err}`);
+  console.error(`${C.red}rchtct:${C.off} ${err instanceof Error ? err.message : err}`);
   process.exit(1);
 });

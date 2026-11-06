@@ -36,7 +36,7 @@ export interface ToolOutput {
   isError?: boolean;
 }
 
-/** A capability Conductor can play. */
+/** A capability Architect can play. */
 export interface Instrument {
   name: string;
   description: string;

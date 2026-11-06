@@ -1,11 +1,11 @@
 /**
  * Choose the brain from configuration.
  *
- *   cndctr.models.json  – explicit model list and routing policy (see cndctr.models.example.json)
+ *   rchtct.models.json  – explicit model list and routing policy (see rchtct.models.example.json)
  *   OMNIROUTE_URL       – shortcut: route through a local OmniRoute gateway (e.g. http://localhost:20128/v1)
- *   CNDCTR_OPENAI_BASE_URL + CNDCTR_OPENAI_MODEL – shortcut: any other OpenAI-compatible endpoint
+ *   RCHTCT_OPENAI_BASE_URL + RCHTCT_OPENAI_MODEL – shortcut: any other OpenAI-compatible endpoint
  *   ANTHROPIC_API_KEY   – Claude joins as the "strong" model
- *   CNDCTR_BRAIN        – force "anthropic" (single model) or "auto" (router)
+ *   RCHTCT_BRAIN        – force "anthropic" (single model) or "auto" (router)
  *
  * Secrets never live in the models file: entries name the env var that holds the key (apiKeyEnv).
  */
@@ -91,18 +91,18 @@ export function modelsFromEnv(env: Env = process.env): ModelsFile | null {
     if (env.OMNIROUTE_FAST_MODEL) add("fast", env.OMNIROUTE_FAST_MODEL);
     if (env.OMNIROUTE_STRONG_MODEL) add("strong", env.OMNIROUTE_STRONG_MODEL);
   }
-  if (env.CNDCTR_OPENAI_BASE_URL && env.CNDCTR_OPENAI_MODEL) {
+  if (env.RCHTCT_OPENAI_BASE_URL && env.RCHTCT_OPENAI_MODEL) {
     models.push({
       provider: "openai",
-      baseUrl: env.CNDCTR_OPENAI_BASE_URL,
-      model: env.CNDCTR_OPENAI_MODEL,
-      tier: (env.CNDCTR_OPENAI_TIER as "fast" | "balanced" | "strong") ?? "balanced",
-      apiKeyEnv: env.CNDCTR_OPENAI_API_KEY ? "CNDCTR_OPENAI_API_KEY" : undefined,
-      vision: env.CNDCTR_OPENAI_VISION === "on",
+      baseUrl: env.RCHTCT_OPENAI_BASE_URL,
+      model: env.RCHTCT_OPENAI_MODEL,
+      tier: (env.RCHTCT_OPENAI_TIER as "fast" | "balanced" | "strong") ?? "balanced",
+      apiKeyEnv: env.RCHTCT_OPENAI_API_KEY ? "RCHTCT_OPENAI_API_KEY" : undefined,
+      vision: env.RCHTCT_OPENAI_VISION === "on",
     });
   }
   if (!models.length) return null;
-  if (env.ANTHROPIC_API_KEY) models.push({ provider: "anthropic", model: env.CNDCTR_MODEL ?? "claude-opus-5-5", tier: "strong" });
+  if (env.ANTHROPIC_API_KEY) models.push({ provider: "anthropic", model: env.RCHTCT_MODEL ?? "claude-opus-5-5", tier: "strong" });
   return { models };
 }
 
@@ -120,13 +120,13 @@ export function loadModelsFile(file: string): ModelsFile {
   return parsed.data;
 }
 
-/** The brain Conductor uses by default. */
+/** The brain Architect uses by default. */
 export function brainFromEnv(env: Env = process.env, cwd = process.cwd()): Brain {
-  if (env.CNDCTR_BRAIN === "anthropic") return new AnthropicBrain();
-  const file = env.CNDCTR_MODELS_FILE ?? path.join(cwd, "cndctr.models.json");
+  if (env.RCHTCT_BRAIN === "anthropic") return new AnthropicBrain();
+  const file = env.RCHTCT_MODELS_FILE ?? path.join(cwd, "rchtct.models.json");
   const config = existsSync(file) ? loadModelsFile(file) : modelsFromEnv(env);
   if (!config) {
-    if (env.CNDCTR_BRAIN === "auto") throw new Error("CNDCTR_BRAIN=auto needs cndctr.models.json, OMNIROUTE_URL or CNDCTR_OPENAI_BASE_URL");
+    if (env.RCHTCT_BRAIN === "auto") throw new Error("RCHTCT_BRAIN=auto needs rchtct.models.json, OMNIROUTE_URL or RCHTCT_OPENAI_BASE_URL");
     return new AnthropicBrain();
   }
   return new RouterBrain(candidatesFrom(config, env), { ...DEFAULT_POLICY, ...config.policy });

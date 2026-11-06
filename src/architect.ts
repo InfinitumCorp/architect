@@ -27,7 +27,7 @@ import {
   type Verdict,
 } from "./types.js";
 
-export interface ConductorOptions {
+export interface ArchitectOptions {
   brain: Brain;
   instruments: Instrument[];
   /** Where runs, events and evidence are stored. */
@@ -132,10 +132,10 @@ class RunCancelled extends Error {}
 class BudgetExceeded extends Error {}
 
 /**
- * /CNDCTR/ — Compose a Score, Perform it with Instruments, Verify the outcome.
+ * /RCHTCT/ — Compose a Score, Perform it with Instruments, Verify the outcome.
  * Emits "event" with every RunEvent; the same events are persisted for the Podium.
  */
-export class Conductor extends EventEmitter {
+export class Architect extends EventEmitter {
   readonly store: RunStore;
   readonly brain: Brain;
   private instruments: Instrument[];
@@ -145,11 +145,11 @@ export class Conductor extends EventEmitter {
   private cancelled = new Set<string>();
   private active = new Set<string>();
 
-  constructor(private opts: ConductorOptions) {
+  constructor(private opts: ArchitectOptions) {
     super();
     this.brain = opts.brain;
     this.instruments = opts.instruments;
-    this.store = new RunStore(path.resolve(opts.dataDir ?? ".cndctr"));
+    this.store = new RunStore(path.resolve(opts.dataDir ?? ".rchtct"));
     this.ceiling = opts.permissionCeiling ?? PERMISSIONS.filter((p) => p !== "standing.irreversible");
     for (const instrument of opts.instruments) {
       for (const spec of instrument.tools) this.toolIndex.set(spec.name, { instrument, spec });
@@ -306,7 +306,7 @@ export class Conductor extends EventEmitter {
         await this.handoff(
           run,
           err.message,
-          `Raise the limit and resume: cndctr recover ${run.id} --budget <usd>  (or POST /v1/runs/${run.id}/recover { "budgetUsd": … })`,
+          `Raise the limit and resume: rchtct recover ${run.id} --budget <usd>  (or POST /v1/runs/${run.id}/recover { "budgetUsd": … })`,
         );
       } else if (err instanceof RunCancelled) {
         await this.fail(run, "cancelled");
@@ -395,7 +395,7 @@ export class Conductor extends EventEmitter {
 
       for (const block of res.content) {
         if (block.type === "text" && block.text.trim()) {
-          await this.emitEvent(run.id, "conductor.note", { stepId, text: block.text });
+          await this.emitEvent(run.id, "architect.note", { stepId, text: block.text });
         }
       }
       const uses = res.content.filter((b) => b.type === "tool_use");
@@ -675,7 +675,7 @@ export class Conductor extends EventEmitter {
       "",
       `Run: ${run.id}  ·  Autonomy: ${run.autonomy}  ·  ${now()}`,
       "",
-      `## Why Conductor stopped`,
+      `## Why Architect stopped`,
       reason,
       instructions ? `\n## What you need to do\n${instructions}` : "",
       "",
@@ -689,7 +689,7 @@ export class Conductor extends EventEmitter {
       "## Artifacts",
       ...Object.entries(artifacts).map(([k, v]) => `- ${k}: ${v}`),
       "",
-      `When you are done, resume with: \`cndctr recover ${run.id}\``,
+      `When you are done, resume with: \`rchtct recover ${run.id}\``,
     ].join("\n");
     await writeFile(path.join(dir, "HANDOFF.md"), md);
     await this.emitEvent(run.id, "run.handed_off", { reason, instructions, artifacts });

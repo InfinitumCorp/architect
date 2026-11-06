@@ -1,6 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "cndctr-podium", "runtimeExecutable": "node", "runtimeArgs": ["dist/cli.js", "serve", "--port", "7337"], "port": 7337 }
+    { "name": "rchtct-podium", "runtimeExecutable": "node", "runtimeArgs": ["dist/cli.js", "serve", "--port", "7337"], "port": 7337 }
   ]
 }

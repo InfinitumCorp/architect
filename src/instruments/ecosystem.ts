@@ -2,13 +2,13 @@ import { truncate } from "../policy.js";
 import type { Instrument, ToolOutput, ToolSpec } from "./types.js";
 
 /**
- * The Infinitum product catalog Conductor can act through.
- * Each product exposes the Conductor action contract:
+ * The Infinitum product catalog Architect can act through.
+ * Each product exposes the Architect action contract:
  *
- *   GET  {baseUrl}/cndctr/v1/actions              -> [{ name, description, risk }]
- *   POST {baseUrl}/cndctr/v1/actions/{action}     -> body { runId, payload } ; returns JSON
+ *   GET  {baseUrl}/rchtct/v1/actions              -> [{ name, description, risk }]
+ *   POST {baseUrl}/rchtct/v1/actions/{action}     -> body { runId, payload } ; returns JSON
  *
- * Products are configured with CNDCTR_PRODUCT_<KEY>_URL and CNDCTR_PRODUCT_<KEY>_TOKEN.
+ * Products are configured with RCHTCT_PRODUCT_<KEY>_URL and RCHTCT_PRODUCT_<KEY>_TOKEN.
  */
 export const INFINITUM_PRODUCTS: Record<string, { name: string; role: string }> = {
   scalvs: { name: "SCALVS.ai", role: "AI workforce: the intelligence behind every step" },
@@ -17,7 +17,7 @@ export const INFINITUM_PRODUCTS: Record<string, { name: string; role: string }> 
   metatron: { name: "METATRON¹⁰⁰", role: "Consumer command suite and prediction engine" },
   cumulus: { name: "Cumulus://Cloud", role: "AI cloud, storage and secure execution environments" },
   firmament: { name: "Firmament Network", role: "Blockchain trust layer: verified-outcome records" },
-  veil: { name: "VEIL</>", role: "Tor-first secure browser with the Conductor sidebar" },
+  veil: { name: "VEIL</>", role: "Tor-first secure browser with the Architect sidebar" },
   throne: { name: "#THRONE", role: "Infinitum hardware for local, on-premises runs" },
   fabric: { name: "FABRIC", role: "Secure communications and data economy" },
   eidetic: { name: "ei·det·ic", role: "Identity intelligence" },
@@ -33,8 +33,8 @@ export interface ProductEndpoint {
 
 export function productsFromEnv(env: NodeJS.ProcessEnv = process.env): ProductEndpoint[] {
   return Object.keys(INFINITUM_PRODUCTS).flatMap((key) => {
-    const baseUrl = env[`CNDCTR_PRODUCT_${key.toUpperCase()}_URL`];
-    return baseUrl ? [{ key, baseUrl: baseUrl.replace(/\/$/, ""), token: env[`CNDCTR_PRODUCT_${key.toUpperCase()}_TOKEN`] }] : [];
+    const baseUrl = env[`RCHTCT_PRODUCT_${key.toUpperCase()}_URL`];
+    return baseUrl ? [{ key, baseUrl: baseUrl.replace(/\/$/, ""), token: env[`RCHTCT_PRODUCT_${key.toUpperCase()}_TOKEN`] }] : [];
   });
 }
 
@@ -46,7 +46,7 @@ export class EcosystemInstrument implements Instrument {
   constructor(endpoints: ProductEndpoint[] = productsFromEnv()) {
     this.endpoints = new Map(endpoints.map((e) => [e.key, e]));
     const listed = endpoints.map((e) => `${e.key} (${INFINITUM_PRODUCTS[e.key]?.name})`).join(", ");
-    this.description = `Other Infinitum products, through the Conductor action contract. Connected: ${listed || "none yet"}.`;
+    this.description = `Other Infinitum products, through the Architect action contract. Connected: ${listed || "none yet"}.`;
   }
 
   get connected(): string[] {
@@ -87,7 +87,7 @@ export class EcosystemInstrument implements Instrument {
 
   async call(product: string, action: string, payload: unknown, runId: string): Promise<{ status: number; body: string }> {
     const ep = this.endpoint(product);
-    const res = await fetch(`${ep.baseUrl}/cndctr/v1/actions/${encodeURIComponent(action)}`, {
+    const res = await fetch(`${ep.baseUrl}/rchtct/v1/actions/${encodeURIComponent(action)}`, {
       method: "POST",
       headers: { "content-type": "application/json", ...(ep.token ? { authorization: `Bearer ${ep.token}` } : {}) },
       body: JSON.stringify({ runId, payload: payload ?? {} }),
@@ -100,7 +100,7 @@ export class EcosystemInstrument implements Instrument {
     const product = String(input.product);
     if (tool === "ecosystem_actions") {
       const ep = this.endpoint(product);
-      const res = await fetch(`${ep.baseUrl}/cndctr/v1/actions`, {
+      const res = await fetch(`${ep.baseUrl}/rchtct/v1/actions`, {
         headers: ep.token ? { authorization: `Bearer ${ep.token}` } : {},
         signal: AbortSignal.timeout(20_000),
       });

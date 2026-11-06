@@ -3,18 +3,18 @@ import type { Server } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Conductor } from "../src/conductor.js";
+import { Architect } from "../src/architect.js";
 import { WorkspaceInstrument } from "../src/instruments/workspace.js";
-import { createConductorServer } from "../src/server.js";
-import { CndctrClient, CndctrError } from "../src/sdk.js";
+import { createArchitectServer } from "../src/server.js";
+import { RchtctClient, RchtctError } from "../src/sdk.js";
 import { ScriptedBrain, toolUse } from "./helpers.js";
 
 let dir: string;
 let server: Server;
-let client: CndctrClient;
+let client: RchtctClient;
 
 beforeAll(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "cndctr-server-"));
+  dir = await mkdtemp(path.join(tmpdir(), "rchtct-server-"));
   const ws = new WorkspaceInstrument(path.join(dir, "ws"));
   await mkdir(ws.root, { recursive: true });
   const brain = new ScriptedBrain(
@@ -32,10 +32,10 @@ beforeAll(async () => {
       () => [toolUse("submit_verdict", { passed: true, summary: "ok", criteria: [{ criterion: "note exists", met: true, evidence: "x" }] })],
     ],
   );
-  const conductor = new Conductor({ brain, instruments: [ws], dataDir: path.join(dir, "data"), approvalTimeoutMs: 20_000 });
-  server = createConductorServer({ conductor, token: "secret" });
+  const architect = new Architect({ brain, instruments: [ws], dataDir: path.join(dir, "data"), approvalTimeoutMs: 20_000 });
+  server = createArchitectServer({ architect, token: "secret" });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  client = new CndctrClient({ baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, token: "secret" });
+  client = new RchtctClient({ baseUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, token: "secret" });
 });
 afterAll(async () => {
   server.close();
@@ -44,8 +44,8 @@ afterAll(async () => {
 
 describe("HTTP API + SDK", () => {
   it("rejects requests without the token", async () => {
-    const anon = new CndctrClient({ baseUrl: (client as unknown as { baseUrl: string }).baseUrl });
-    await expect(anon.listRuns()).rejects.toBeInstanceOf(CndctrError);
+    const anon = new RchtctClient({ baseUrl: (client as unknown as { baseUrl: string }).baseUrl });
+    await expect(anon.listRuns()).rejects.toBeInstanceOf(RchtctError);
   });
 
   it("runs a Score, surfaces the approval, and finishes after it is approved", async () => {

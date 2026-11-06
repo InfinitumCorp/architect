@@ -1,10 +1,10 @@
 /**
- * cndctr/adapter — let an Infinitum product be played by Conductor.
+ * rchtct/adapter — let an Infinitum product be played by Architect.
  *
- *   import { createActionHandler } from "cndctr/adapter";
+ *   import { createActionHandler } from "rchtct/adapter";
  *
- *   const cndctr = createActionHandler({
- *     token: process.env.CNDCTR_PRODUCT_TOKEN,
+ *   const rchtct = createActionHandler({
+ *     token: process.env.RCHTCT_PRODUCT_TOKEN,
  *     actions: {
  *       find_account: { description: "Look up an account by name", risk: "read",
  *                       run: async ({ name }) => crm.find(String(name)) },
@@ -13,11 +13,11 @@
  *     },
  *   });
  *
- *   http.createServer(async (req, res) => { if (await cndctr(req, res)) return; ...your app... });
+ *   http.createServer(async (req, res) => { if (await rchtct(req, res)) return; ...your app... });
  *
- * Implements the Conductor action contract:
- *   GET  /cndctr/v1/actions            -> [{ name, description, risk }]
- *   POST /cndctr/v1/actions/{action}   <- { runId, payload } -> JSON result
+ * Implements the Architect action contract:
+ *   GET  /rchtct/v1/actions            -> [{ name, description, risk }]
+ *   POST /rchtct/v1/actions/{action}   <- { runId, payload } -> JSON result
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
@@ -31,9 +31,9 @@ export interface ProductAction {
 
 export interface ActionHandlerOptions {
   actions: Record<string, ProductAction>;
-  /** Bearer token Conductor must present. Strongly recommended. */
+  /** Bearer token Architect must present. Strongly recommended. */
   token?: string;
-  /** Path prefix (default "/cndctr/v1"). */
+  /** Path prefix (default "/rchtct/v1"). */
   basePath?: string;
 }
 
@@ -54,7 +54,7 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> 
 
 /** Returns true when it handled the request, false when the path is not part of the contract. */
 export function createActionHandler(opts: ActionHandlerOptions) {
-  const base = (opts.basePath ?? "/cndctr/v1").replace(/\/$/, "");
+  const base = (opts.basePath ?? "/rchtct/v1").replace(/\/$/, "");
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (!url.pathname.startsWith(`${base}/actions`)) return false;

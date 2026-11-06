@@ -1,8 +1,8 @@
 node_modules/
 dist/
-.cndctr/
+.rchtct/
 *.tsbuildinfo
 .env
 .env.*
 !.env.example
-cndctr.triggers.json
+rchtct.triggers.json
