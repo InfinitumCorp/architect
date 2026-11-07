@@ -50,6 +50,13 @@ public class MainActivity extends Activity {
         prefs = getSharedPreferences("architect", MODE_PRIVATE);
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
+
+        root = new FrameLayout(this);
+        root.setBackgroundColor(BG);
+        applyInsets(root);
+        setContentView(root);
+
+        // The decor view exists only after setContentView; asking for the insets controller earlier crashes.
         if (Build.VERSION.SDK_INT >= 30) {
             android.view.WindowInsetsController c = getWindow().getInsetsController();
             if (c != null) c.setSystemBarsAppearance(
@@ -58,11 +65,6 @@ public class MainActivity extends Activity {
         } else if (Build.VERSION.SDK_INT >= 26) {
             getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         }
-
-        root = new FrameLayout(this);
-        root.setBackgroundColor(BG);
-        applyInsets(root);
-        setContentView(root);
 
         String server = prefs.getString("server", null);
         if (server == null) showSetup(null);

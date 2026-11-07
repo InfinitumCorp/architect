@@ -140,6 +140,19 @@ Configure with `ARCHITECT_PRODUCT_<KEY>_URL` / `ARCHITECT_PRODUCT_<KEY>_TOKEN` f
 
 `:\ARCHITECT\ MIL` (ODIN° Decide layer) is a separate product on accredited infrastructure and is **not** built from this repository.
 
+## Web app and Android app
+
+**Web app (Podium).** `architect serve` serves the Podium at http://localhost:7337. It is an installable web app: in Chrome or Edge choose *Install app*, or on a phone *Add to Home screen*. The page shell works offline, and runs always go to the live API.
+
+**Android app.** `com.infinitum.architect` is a native shell around the Podium. It shows a connect screen for the server address and token, and the token stays on the phone. Build it without Gradle (you need the Android SDK build-tools and a JDK):
+
+```bash
+bash android/build.sh          # -> android/build/architect.apk (debug-signed)
+adb install -r android/build/architect.apk
+```
+
+To reach the server over USB, run `adb reverse tcp:7337 tcp:7337` and use http://localhost:7337. If port 7337 is already taken on the phone, map another one, for example `adb reverse tcp:7338 tcp:7337` and http://localhost:7338. Over Wi-Fi, use http://<computer-ip>:7337 and run `architect serve` with a token. Screenshots are in [android/screenshots](android/screenshots).
+
 ## HTTP API
 
 | Method | Path | |
