@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { evaluateCommand, riskOf } from "./sandbox/execpolicy.js";
 import type { Autonomy, Permission, Risk } from "./types.js";
 
 export const newId = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
@@ -54,11 +55,13 @@ export function classifyByLabel(label: string): Risk {
   return IRREVERSIBLE_WORDS.test(label) ? "irreversible" : "write";
 }
 
-const IRREVERSIBLE_COMMANDS =
-  /\b(rm\s+-[a-z]*r|rmdir|del\s+\/|git\s+push|git\s+reset\s+--hard|npm\s+publish|vercel\s+(?:--prod|deploy)|kubectl\s+(?:delete|apply)|terraform\s+(?:apply|destroy)|drop\s+(?:table|database)|shutdown|format\s+[a-z]:)/i;
+/** SQL that destroys data, wherever it appears in a command line (psql -c, sqlite3, …). */
+const DESTRUCTIVE_SQL = /\b(drop\s+(?:table|database|schema)|truncate\s+table)\b/i;
 
+/** Risk of a shell command under the default command policy (see sandbox/execpolicy.ts). */
 export function classifyCommand(command: string): Risk {
-  return IRREVERSIBLE_COMMANDS.test(command) ? "irreversible" : "write";
+  if (DESTRUCTIVE_SQL.test(command)) return "irreversible";
+  return riskOf(evaluateCommand(command).decision);
 }
 
 /** Bad input from a caller (API body, CLI flag, imported package). Maps to HTTP 400. */
