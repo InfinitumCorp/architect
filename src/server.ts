@@ -104,10 +104,23 @@ export function createArchitectServer(opts: ServerOptions): Server {
   };
 
   return createServer(async (req, res) => {
+    res.setHeader("referrer-policy", "no-referrer");
+    res.setHeader("x-content-type-options", "nosniff");
+    res.setHeader("cache-control", "no-store");
     const url = new URL(req.url ?? "/", "http://localhost");
     const parts = url.pathname.split("/").filter(Boolean);
     try {
       if (url.pathname === "/api/labyrinth") return await serveNodeLabyrinthProxy(req, res, opts.lbrnthEndpoint ?? process.env.LBRNTH_ENDPOINT, "architect");
+      const assets: Record<string, string> = {
+        "app.js": "text/javascript; charset=utf-8", "app.css": "text/css; charset=utf-8",
+        "icon.svg": "image/svg+xml", "manifest.webmanifest": "application/manifest+json",
+      };
+      if (req.method === "GET" && parts.length === 2 && parts[0] === "podium" && assets[parts[1]]) {
+        const data = await readFile(path.join(here, "..", "podium", parts[1]));
+        res.writeHead(200, { "content-type": assets[parts[1]] });
+        res.end(data);
+        return;
+      }
       if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/podium")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(await readFile(path.join(here, "..", "podium", "index.html"), "utf8"));
@@ -118,6 +131,8 @@ export function createArchitectServer(opts: ServerOptions): Server {
       if (!authorized(req, url)) throw new HttpError(401, "missing or invalid bearer token");
 
       const [, resource, id, action, file] = parts;
+      if (resource === "runs" && id && !/^run_[a-z0-9]+$/i.test(id)) throw new HttpError(400, "invalid run id");
+
 
       if (resource === "runs" && !id) {
         if (req.method === "GET") return json(res, 200, await architect.store.list(Number(url.searchParams.get("limit") ?? 50)));
@@ -125,6 +140,7 @@ export function createArchitectServer(opts: ServerOptions): Server {
           const b = await body(req);
           const goal = String(b.goal ?? "").trim();
           if (!goal) throw new HttpError(400, "goal is required");
+          if (goal.length > 10_000) throw new HttpError(400, "goal must be 10000 characters or fewer");
           const autonomy = (AUTONOMY.includes(b.autonomy as Autonomy) ? b.autonomy : "accompaniment") as Autonomy;
           const run = await architect.start(goal, {
             autonomy,
@@ -140,6 +156,14 @@ export function createArchitectServer(opts: ServerOptions): Server {
 
       if (resource === "runs" && id) {
         if (req.method === "GET" && !action) return json(res, 200, await architect.store.load(id));
+        if (req.method === "GET" && action === "handoff") {
+          await architect.store.load(id);
+          return json(res, 200, { markdown: await readFile(path.join(architect.store.runDir(id), "handoff", "HANDOFF.md"), "utf8") });
+        }
+        if (req.method === "GET" && action === "estimate") {
+          const run = await architect.store.load(id);
+          return json(res, 200, architect.estimate(run.score));
+        }
         if (req.method === "GET" && action === "events") return streamEvents(req, res, architect, id);
         if (req.method === "GET" && action === "evidence" && file) {
           if (!/^[\w.-]+\.png$/.test(file)) throw new HttpError(400, "bad evidence name");
@@ -151,21 +175,27 @@ export function createArchitectServer(opts: ServerOptions): Server {
           const b = await body(req);
           if (action === "perform") {
             const run = await architect.store.load(id);
+            if (architect.isActive(id)) throw new HttpError(409, "run is already performing");
             if (run.status !== "composed") throw new HttpError(409, `run is ${run.status}`);
             background(architect.perform(run));
             return json(res, 202, { ok: true });
           }
           if (action === "recover") {
             if (architect.isActive(id)) throw new HttpError(409, "run is still performing");
+            const run = await architect.store.load(id);
+            if (!["failed", "handed_off"].includes(run.status)) throw new HttpError(409, `cannot recover a ${run.status} run`);
             background(architect.recover(id, { budgetUsd: budget(b.budgetUsd) }));
             return json(res, 202, { ok: true });
           }
           if (action === "encore") {
             const autonomy = AUTONOMY.includes(b.autonomy as Autonomy) ? (b.autonomy as Autonomy) : undefined;
-            background(architect.encore(id, stringMap(b.inputs), autonomy, budget(b.budgetUsd)));
-            return json(res, 202, { ok: true });
+            const run = await architect.prepareEncore(id, stringMap(b.inputs), autonomy, budget(b.budgetUsd));
+            background(architect.perform(run));
+            return json(res, 202, { ...run, ok: true });
           }
           if (action === "cancel") {
+            await architect.store.load(id);
+            if (!architect.isActive(id)) throw new HttpError(409, "run is not performing");
             architect.cancel(id);
             return json(res, 202, { ok: true });
           }
@@ -231,6 +261,7 @@ export function createArchitectServer(opts: ServerOptions): Server {
         if (req.method === "GET" && !id) return json(res, 200, architect.pendingApprovals);
         if (req.method === "POST" && id) {
           const b = await body(req);
+          if (typeof b.approved !== "boolean") throw new HttpError(400, "approved must be a boolean");
           const ok = architect.decide(id, {
             approved: b.approved === true,
             note: b.note ? String(b.note) : undefined,

@@ -1,0 +1,33 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.infinitum.conductor'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.infinitum.conductor'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.2.0'
+        testInstrumentationRunner 'android.test.InstrumentationTestRunner'
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Release signing is supplied by the owner; debug keys never sign a release.
+            def storePath = System.getenv('CONDUCTOR_KEYSTORE')
+            if (storePath) {
+                signingConfigs.create('owner') {
+                    storeFile file(storePath)
+                    storePassword System.getenv('CONDUCTOR_STORE_PASSWORD')
+                    keyAlias System.getenv('CONDUCTOR_KEY_ALIAS')
+                    keyPassword System.getenv('CONDUCTOR_KEY_PASSWORD')
+                }
+                signingConfig signingConfigs.owner
+            }
+        }
+    }
+    buildFeatures { buildConfig true }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies { testImplementation 'junit:junit:4.13.2' }

@@ -6,3 +6,9 @@ dist/
 .env.*
 !.env.example
 architect.triggers.json
+android/.gradle/
+android/local.properties
+android/**/build/
+android/*.jks
+android/*.keystore
+test-results/

@@ -610,6 +610,11 @@ export class Architect extends EventEmitter {
 
   /** Rerun a Score with new inputs. */
   async encore(runId: string, inputs: Record<string, string>, autonomy?: Autonomy, budgetUsd?: number): Promise<Run> {
+    return this.perform(await this.prepareEncore(runId, inputs, autonomy, budgetUsd));
+  }
+
+  /** Prepare an Encore so HTTP clients receive its ID before performance begins. */
+  async prepareEncore(runId: string, inputs: Record<string, string>, autonomy?: Autonomy, budgetUsd?: number): Promise<Run> {
     const prev = await this.store.load(runId);
     const run = await this.prepare(prev.score, {
       inputs,
@@ -618,7 +623,7 @@ export class Architect extends EventEmitter {
       parentRunId: prev.id,
     });
     await this.emitEvent(run.id, "run.encore", { from: prev.id, inputs });
-    return this.perform(run);
+    return run;
   }
 
   /**

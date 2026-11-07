@@ -84,7 +84,7 @@ export class ArchitectClient {
     return this.req<{ ok: true }>("POST", `/v1/runs/${runId}/recover`, { budgetUsd });
   }
   encore(runId: string, inputs: Record<string, string>, autonomy?: Autonomy) {
-    return this.req<{ ok: true }>("POST", `/v1/runs/${runId}/encore`, { inputs, autonomy });
+    return this.req<Run & { ok: true }>("POST", `/v1/runs/${runId}/encore`, { inputs, autonomy });
   }
   cancel(runId: string) {
     return this.req<{ ok: true }>("POST", `/v1/runs/${runId}/cancel`, {});
@@ -117,8 +117,9 @@ export class ArchitectClient {
 
   /** Stream a run's events (replay, then live) until the run finishes. */
   async *events(runId: string): AsyncGenerator<RunEvent> {
-    const qs = this.token ? `?token=${encodeURIComponent(this.token)}` : "";
-    const res = await this.f(`${this.baseUrl}/v1/runs/${runId}/events${qs}`);
+    const res = await this.f(`${this.baseUrl}/v1/runs/${runId}/events`, {
+      headers: this.token ? { authorization: `Bearer ${this.token}` } : {},
+    });
     if (!res.ok || !res.body) throw new ArchitectError(res.status, "could not open event stream");
     const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";

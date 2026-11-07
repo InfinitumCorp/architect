@@ -1,4 +1,6 @@
-# :\ARCHITECT\™ — Architect
+# Conductor · :\ARCHITECT\™
+
+Browser and Android setup: [Conductor Podium](BROWSER.md) · [Android client](android/README.md).
 
 **Intent in. Outcome out.** :\ARCHITECT\ is Infinitum's AI execution engine. Describe an outcome; Architect writes the plan, operates the interfaces (a real browser, your project folder, APIs and other Infinitum products), and proves the result is done before it says so.
 
