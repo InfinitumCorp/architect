@@ -376,6 +376,10 @@ export class Architect extends EventEmitter {
     const messages: MessageParam[] = [{ role: "user", content: firstMessage }];
     const maxTurns = this.opts.maxTurnsPerStep ?? 60;
     let nudges = 0;
+    // Smaller models sometimes report a step done without touching anything. A step that has tools
+    // must use at least one before step_complete is accepted (refused up to twice, then trusted).
+    let actions = 0;
+    let earlyFinishRefusals = 0;
 
     for (let turn = 0; turn < maxTurns; turn++) {
       if (this.cancelled.has(run.id)) throw new RunCancelled();
@@ -418,6 +422,18 @@ export class Architect extends EventEmitter {
         const input = (use.input ?? {}) as Record<string, unknown>;
         if (CONTROL_TOOLS[use.name] && allowed.has(use.name)) {
           if (CONTROL_TOOLS[use.name]!.terminal) {
+            if (use.name === "step_complete" && specs.length && actions === 0 && earlyFinishRefusals < 2) {
+              earlyFinishRefusals++;
+              results.push({
+                type: "tool_result",
+                tool_use_id: use.id,
+                is_error: true,
+                content:
+                  "Not accepted: you have not used any tool in this step, so nothing has been done or observed yet. " +
+                  "Use the tools to do the step and look at the real result, then call step_complete with what you saw.",
+              });
+              continue;
+            }
             terminal ??= { name: use.name, input };
             results.push({ type: "tool_result", tool_use_id: use.id, content: "Recorded." });
           } else {
@@ -426,6 +442,7 @@ export class Architect extends EventEmitter {
           }
           continue;
         }
+        actions++;
         results.push(await this.act(run, stepId, use.id, use.name, input, allowed));
       }
       await this.persist(run);

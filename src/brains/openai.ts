@@ -33,7 +33,7 @@ export class ModelCallError extends Error {
   }
 }
 
-type OAMessage =
+export type OAMessage =
   | { role: "system" | "user"; content: string | OAPart[] }
   | { role: "assistant"; content: string | null; tool_calls?: OAToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
@@ -78,6 +78,35 @@ export function toOpenAIMessages(system: string, messages: MessageParam[], visio
       else if (b.type === "image") pushImage(b, vision, parts);
     }
     if (parts.length) out.push({ role: "user", content: parts.every((p) => p.type === "text") ? parts.map((p) => (p as { text: string }).text).join("\n") : parts });
+  }
+  return out;
+}
+
+/**
+ * Some gateways (OmniRoute's DuckDuckGo adapter, for one) accept tool definitions but reject any
+ * history that contains tool calls or tool results. Replay that history as plain text instead;
+ * the model still answers with native tool calls.
+ */
+export function toTextToolHistory(msgs: OAMessage[]): OAMessage[] {
+  const out: OAMessage[] = [];
+  const names = new Map<string, string>();
+  const pushUser = (text: string) => {
+    const last = out[out.length - 1];
+    if (last?.role === "user" && typeof last.content === "string") last.content += `\n\n${text}`;
+    else out.push({ role: "user", content: text });
+  };
+  for (const m of msgs) {
+    if (m.role === "assistant" && m.tool_calls?.length) {
+      const calls = m.tool_calls.map((c) => {
+        names.set(c.id, c.function.name);
+        return `[tool call ${c.function.name} ${c.function.arguments}]`;
+      });
+      out.push({ role: "assistant", content: [m.content, ...calls].filter(Boolean).join("\n") });
+    } else if (m.role === "tool") {
+      pushUser(`[tool result for ${names.get(m.tool_call_id) ?? "tool"}]\n${m.content}`);
+    } else if (m.role === "user" && typeof m.content === "string") {
+      pushUser(m.content);
+    } else out.push(m);
   }
   return out;
 }
@@ -139,6 +168,8 @@ export class OpenAICompatBrain implements Brain {
         headers: { ...(this.opts.apiKey ? { authorization: `Bearer ${this.opts.apiKey}` } : {}), ...this.opts.headers },
         signal: AbortSignal.timeout(5_000),
       });
+      // Some gateways (OmniRoute) lock the model list but serve chat without a key: try one tiny chat call.
+      if (res.status === 401 || res.status === 403) return await this.probeChat(res.status);
       if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
       const body = (await res.json()) as { data?: Array<{ id?: string }> };
       const ids = (body.data ?? []).map((m) => m.id);
@@ -146,6 +177,20 @@ export class OpenAICompatBrain implements Brain {
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  private async probeChat(listStatus: number): Promise<{ ok: boolean; error?: string }> {
+    const res = await this.f(`${this.opts.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(this.opts.apiKey ? { authorization: `Bearer ${this.opts.apiKey}` } : {}),
+        ...this.opts.headers,
+      },
+      body: JSON.stringify({ model: this.model, messages: [{ role: "user", content: "ping" }], max_tokens: 1 }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    return res.ok ? { ok: true } : { ok: false, error: `HTTP ${listStatus} on /models, HTTP ${res.status} on chat` };
   }
 
   private cost(u: TurnUsage): number {
@@ -217,12 +262,26 @@ export class OpenAICompatBrain implements Brain {
     throw new ModelCallError(`${this.model}: could not produce a valid Score (${lastErr})`);
   }
 
+  /** Set once this endpoint has rejected native tool history (see toTextToolHistory). */
+  private textToolHistory = false;
+
   async turn(req: TurnRequest): Promise<TurnResult> {
-    const { res, usage, model } = await this.chat({
-      messages: toOpenAIMessages(req.system, req.messages, this.opts.vision ?? false),
-      tools: req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description ?? "", parameters: t.input_schema } })),
-      tool_choice: "auto",
-    });
+    const native = toOpenAIMessages(req.system, req.messages, this.opts.vision ?? false);
+    const tools = req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description ?? "", parameters: t.input_schema } }));
+    const hasToolHistory = native.some((m) => m.role === "tool");
+    const send = (messages: OAMessage[]) => this.chat({ messages, tools, tool_choice: "auto" });
+    let reply: Awaited<ReturnType<OpenAICompatBrain["chat"]>>;
+    if (this.textToolHistory && hasToolHistory) reply = await send(toTextToolHistory(native));
+    else {
+      try {
+        reply = await send(native);
+      } catch (err) {
+        if (!(err instanceof ModelCallError) || err.status !== 400 || !hasToolHistory) throw err;
+        reply = await send(toTextToolHistory(native));
+        this.textToolHistory = true;
+      }
+    }
+    const { res, usage, model } = reply;
     const choice = res.choices?.[0];
     if (!choice?.message) throw new ModelCallError(`${this.model}: empty response`);
     const content: ContentBlock[] = [];
