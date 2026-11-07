@@ -1,0 +1,29 @@
+// :\ARCHITECT\ on Cloudflare Workers. See src/worker.ts.
+// Production domain cndctr.app is added under "routes" only after a person approves it.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "architect",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "assets": {
+    "directory": "podium",
+    "binding": "ASSETS",
+    "run_worker_first": ["/v1/*", "/v1", "/healthz"],
+    "html_handling": "drop-trailing-slash"
+  },
+  "browser": { "binding": "BROWSER" },
+  "durable_objects": { "bindings": [{ "name": "CONDUCTOR", "class_name": "Conductor" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Conductor"] }],
+  // The Worker reuses the Node build of the browser instrument; this swaps in Browser Rendering.
+  "alias": { "playwright": "@cloudflare/playwright" },
+  "vars": {
+    // Shared "Infinitum Corp" Supabase project (public URL, not a secret).
+    "SUPABASE_URL": "https://ivqiskeziohbbtkcvlun.supabase.co"
+  },
+  "observability": { "enabled": true }
+  // Secrets (wrangler secret put): ARCHITECT_API_TOKEN, SUPABASE_SERVICE_ROLE_KEY,
+  // and a model: ANTHROPIC_API_KEY or OMNIROUTE_URL / ARCHITECT_OPENAI_* settings.
+}

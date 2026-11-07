@@ -1,13 +1,12 @@
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { Brain, ContentBlockParam, MessageParam, ToolDef, ToolResultBlockParam } from "./brain.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { ToolInputError, validateInput, type Instrument, type ToolContext, type ToolSpec } from "./instruments/types.js";
 import { gate, newId, now, truncate } from "./policy.js";
 import { composePrompt, composeSystem, interpolate, performSystem, verifySystem } from "./prompts.js";
-import { RunStore } from "./store.js";
+import { RunStore, type RunStoreLike } from "./store.js";
 import { addUsage, emptyUsage, estimateCost, type TurnUsage } from "./usage.js";
 import {
   PERMISSIONS,
@@ -32,6 +31,8 @@ export interface ArchitectOptions {
   instruments: Instrument[];
   /** Where runs, events and evidence are stored. */
   dataDir?: string;
+  /** Storage to use instead of files under dataDir (the Worker passes a Supabase store). */
+  store?: RunStoreLike;
   /** Upper bound on what any Score may be granted. Defaults to everything except standing.irreversible. */
   permissionCeiling?: Permission[];
   /** Decides approvals interactively (CLI). Without one, approvals wait for `decide()` (server / Podium). */
@@ -136,7 +137,7 @@ class BudgetExceeded extends Error {}
  * Emits "event" with every RunEvent; the same events are persisted for the Podium.
  */
 export class Architect extends EventEmitter {
-  readonly store: RunStore;
+  readonly store: RunStoreLike;
   readonly brain: Brain;
   private instruments: Instrument[];
   private toolIndex = new Map<string, { instrument: Instrument; spec: ToolSpec }>();
@@ -149,7 +150,7 @@ export class Architect extends EventEmitter {
     super();
     this.brain = opts.brain;
     this.instruments = opts.instruments;
-    this.store = new RunStore(path.resolve(opts.dataDir ?? ".architect"));
+    this.store = opts.store ?? new RunStore(path.resolve(opts.dataDir ?? ".architect"));
     this.ceiling = opts.permissionCeiling ?? PERMISSIONS.filter((p) => p !== "standing.irreversible");
     for (const instrument of opts.instruments) {
       for (const spec of instrument.tools) this.toolIndex.set(spec.name, { instrument, spec });
@@ -547,6 +548,7 @@ export class Architect extends EventEmitter {
       runId: run.id,
       stepId,
       runDir: this.store.runDir(run.id),
+      putFile: (rel, data) => this.store.putFile(run.id, rel, data),
       addEvidence: (e) => this.addEvidence(run, stepId, e),
     };
   }
@@ -584,7 +586,7 @@ export class Architect extends EventEmitter {
     const lastShot = [...run.evidence].reverse().find((e) => e.kind === "screenshot" && e.path);
     if (lastShot?.path) {
       try {
-        const data = (await readFile(path.join(this.store.runDir(run.id), lastShot.path))).toString("base64");
+        const data = toBase64(await this.store.getFile(run.id, lastShot.path));
         content.push({ type: "text", text: `Last screenshot (${lastShot.label}, ${lastShot.content ?? ""}):` });
         content.push({ type: "image", source: { type: "base64", media_type: "image/png", data } });
       } catch {
@@ -681,8 +683,6 @@ export class Architect extends EventEmitter {
 
   /** Package the run's state so a person can take over. */
   async handoff(run: Run, reason: string, instructions?: string): Promise<string> {
-    const dir = path.join(this.store.runDir(run.id), "handoff");
-    await mkdir(dir, { recursive: true });
     const ctx = this.toolContext(run, "handoff");
     const artifacts: Record<string, string> = {};
     for (const i of this.instruments) Object.assign(artifacts, await i.handoff?.(ctx).catch(() => ({})));
@@ -708,10 +708,10 @@ export class Architect extends EventEmitter {
       "",
       `When you are done, resume with: \`architect recover ${run.id}\``,
     ].join("\n");
-    await writeFile(path.join(dir, "HANDOFF.md"), md);
+    await this.store.putFile(run.id, "handoff/HANDOFF.md", md);
     await this.emitEvent(run.id, "run.handed_off", { reason, instructions, artifacts });
     await this.setStatus(run, "handed_off");
-    return path.join(dir, "HANDOFF.md");
+    return path.join(this.store.runDir(run.id), "handoff", "HANDOFF.md");
   }
 
   cancel(runId: string) {
@@ -795,4 +795,10 @@ export class Architect extends EventEmitter {
   async dispose() {
     await Promise.all(this.instruments.map((i) => i.dispose?.()));
   }
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }

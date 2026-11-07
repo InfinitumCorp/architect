@@ -21,6 +21,8 @@ export interface ToolContext {
   runId: string;
   stepId: string;
   runDir: string;
+  /** Save a file with the run (evidence, handoff state), by path relative to the run. */
+  putFile(rel: string, data: Uint8Array | string): Promise<void>;
   addEvidence(e: { kind: EvidenceKind; label: string; content?: string; path?: string }): Evidence;
 }
 

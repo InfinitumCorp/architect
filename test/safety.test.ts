@@ -6,7 +6,7 @@ import { HttpInstrument, isBlockedAddress } from "../src/instruments/http.js";
 import { WorkspaceInstrument } from "../src/instruments/workspace.js";
 import type { ToolContext } from "../src/instruments/types.js";
 
-const ctx = { runId: "r", stepId: "s", runDir: ".", addEvidence: () => ({}) } as unknown as ToolContext;
+const ctx = { runId: "r", stepId: "s", runDir: ".", putFile: async () => {}, addEvidence: () => ({}) } as unknown as ToolContext;
 
 describe("public HTTP", () => {
   it("treats loopback, private, and link-local addresses as blocked", () => {

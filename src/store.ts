@@ -12,7 +12,33 @@ import type { Run, RunEvent } from "./types.js";
  *   <root>/runs/<runId>/events.jsonl   – append-only event log
  *   <root>/runs/<runId>/evidence/      – screenshots and other binary evidence
  */
-export class RunStore {
+/** What Architect needs from storage. RunStore keeps runs on disk; the Worker uses Supabase. */
+export interface RunStoreLike {
+  /** Base location (a directory on disk; a label for remote stores). */
+  readonly root: string;
+  /** Where a run's files live (a directory on disk, or a key prefix elsewhere). */
+  runDir(runId: string): string;
+  save(run: Run): Promise<void>;
+  load(runId: string): Promise<Run>;
+  exists(runId: string): Promise<boolean>;
+  appendEvent(ev: RunEvent): Promise<void>;
+  events(runId: string): Promise<RunEvent[]>;
+  list(limit?: number): Promise<Run[]>;
+  /** Evidence, handoff notes and other files, by path relative to the run. */
+  putFile(runId: string, rel: string, data: Uint8Array | string): Promise<void>;
+  getFile(runId: string, rel: string): Promise<Uint8Array>;
+}
+
+/** Reject absolute paths and `..` so a run file can never escape its run. */
+export function safeRel(rel: string): string {
+  const clean = rel.replace(/\\/g, "/");
+  if (!clean || clean.startsWith("/") || /^[a-z]:/i.test(clean) || clean.split("/").includes("..")) {
+    throw new Error(`invalid run file path ${rel}`);
+  }
+  return clean;
+}
+
+export class RunStore implements RunStoreLike {
   constructor(readonly root: string) {}
 
   runDir(runId: string) {
@@ -87,5 +113,15 @@ export class RunStore {
       .filter((r): r is Run => !!r)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit);
+  }
+
+  async putFile(runId: string, rel: string, data: Uint8Array | string) {
+    const file = path.join(this.runDir(runId), safeRel(rel));
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, data);
+  }
+
+  async getFile(runId: string, rel: string): Promise<Uint8Array> {
+    return new Uint8Array(await readFile(path.join(this.runDir(runId), safeRel(rel))));
   }
 }

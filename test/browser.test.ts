@@ -1,5 +1,5 @@
 import { createServer, type Server } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -24,6 +24,10 @@ const ctx = (): ToolContext => ({
   runId: "run_test",
   stepId: "s1",
   runDir: dir,
+  putFile: async (rel, data) => {
+    await mkdir(path.dirname(path.join(dir, rel)), { recursive: true });
+    await writeFile(path.join(dir, rel), data);
+  },
   addEvidence: (e) => {
     evidence.push(e);
     return { id: "ev", stepId: "s1", at: "", ...e };

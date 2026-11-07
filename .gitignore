@@ -7,3 +7,4 @@ dist/
 !.env.example
 architect.triggers.json
 android/build/
+.wrangler/
