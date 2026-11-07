@@ -8,3 +8,4 @@ dist/
 architect.triggers.json
 android/build/
 .wrangler/
+.dev.vars

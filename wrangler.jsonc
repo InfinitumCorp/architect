@@ -14,7 +14,9 @@
     "run_worker_first": ["/v1/*", "/v1", "/healthz"],
     "html_handling": "drop-trailing-slash"
   },
-  "browser": { "binding": "BROWSER" },
+  "browser": { "binding": "BROWSER", "remote": true },
+  // Workers AI: the model when no other model is configured (no API key needed).
+  "ai": { "binding": "AI", "remote": true },
   "durable_objects": { "bindings": [{ "name": "CONDUCTOR", "class_name": "Conductor" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Conductor"] }],
   // The Worker reuses the Node build of the browser instrument; this swaps in Browser Rendering.

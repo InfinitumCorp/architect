@@ -12,6 +12,7 @@
 <style>
   :root { --bg:#ffffff; --panel:#ffffff; --line:#e4e4e4; --text:#000000; --dim:#6e6e6e; --accent:#000000; --ok:#000000; --bad:#c62828; --warn:#000000; --soft:#f5f5f5; }
   * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
   header { display:flex; align-items:center; gap:16px; padding:14px 20px; border-bottom:1px solid var(--line); }
   header h1 { font:600 16px ui-monospace,monospace; margin:0; letter-spacing:.04em; }
@@ -76,15 +77,36 @@
       <button class="primary">Build</button>
       <p id="form-error" class="error" role="alert" hidden></p>
     </form>
+    <form id="token-form" hidden>
+      <label for="token-input">This server needs its API token (ARCHITECT_API_TOKEN). It stays in this browser.</label>
+      <input id="token-input" name="token" type="password" autocomplete="off" placeholder="API token" required />
+      <button class="primary">Save token</button>
+    </form>
     <div id="runs"></div>
   </aside>
   <section id="detail"><p class="empty">Choose a run, or describe an outcome to start one.</p></section>
 </main>
 <script>
-  const token = new URLSearchParams(location.search).get("token") || localStorage.getItem("architect.token") || "";
+  let token = "";
+  try { token = new URLSearchParams(location.search).get("token") || localStorage.getItem("architect.token") || ""; } catch {}
   if (token) try { localStorage.setItem("architect.token", token); } catch {}
+  // Keep the token out of the address bar and browser history once it is stored.
+  if (new URLSearchParams(location.search).has("token")) history.replaceState(null, "", location.pathname);
   const api = (p, opts = {}) => fetch(p, { ...opts, headers: { "content-type": "application/json", ...(token ? { authorization: "Bearer " + token } : {}) } })
-    .then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || r.statusText); return d; });
+    .then(async (r) => {
+      const d = await r.json();
+      if (r.status === 401) document.getElementById("token-form").hidden = false;
+      if (!r.ok) throw new Error(d.error || r.statusText);
+      return d;
+    });
+  document.getElementById("token-form").onsubmit = (e) => {
+    e.preventDefault();
+    token = document.getElementById("token-input").value.trim();
+    try { localStorage.setItem("architect.token", token); } catch {}
+    e.target.hidden = true;
+    e.target.reset();
+    loadRuns().catch((err) => document.getElementById("runs").innerHTML = `<p class="empty">${esc(err.message)}</p>`);
+  };
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   let current = null, source = null, events = [];
 
