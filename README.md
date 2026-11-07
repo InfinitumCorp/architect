@@ -202,7 +202,7 @@ Bring your own `Instrument` (any object with `tools` and `execute`) or your own 
 |---|---|---|
 | `OMNIROUTE_URL` | `http://localhost:20128/v1` | OmniRoute gateway; model `auto` unless `OMNIROUTE_MODEL` is set |
 | `OMNIROUTE_API_KEY` | — | OmniRoute key |
-| `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_AI_TOKEN`, `GROQ_API_KEY` | — | open-model backups (gpt-oss, Llama) |
+| `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_AI_TOKEN`, `GROQ_API_KEY` | — | open-model backups (gpt-oss, Qwen3) |
 | `ARCHITECT_EFFORT` | `high` | `low` … `max` |
 | `ARCHITECT_FALLBACKS` | on | server-side refusal fallback; set `off` on Bedrock / Vertex / Foundry |
 | `ARCHITECT_DATA_DIR` | `.architect` | runs, events, evidence |

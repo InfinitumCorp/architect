@@ -8,7 +8,7 @@
  *   architect.models.json  – explicit model list and routing policy (see architect.models.example.json)
  *   OMNIROUTE_URL       – OmniRoute gateway; default http://localhost:20128/v1, model "auto"
  *   CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN – backup: Cloudflare Workers AI open models
- *   GROQ_API_KEY        – backup: Groq open models
+ *   GROQ_API_KEY        – backup: Groq open models (gpt-oss, Qwen3)
  *   ARCHITECT_OPENAI_BASE_URL + ARCHITECT_OPENAI_MODEL – any other OpenAI-compatible endpoint (self-hosted vLLM, Ollama)
  *   ARCHITECT_BRAIN        – "anthropic" forces the single Claude brain (opt-in only); "auto" is the default router
  *
@@ -117,7 +117,7 @@ export function modelsFromEnv(env: Env = process.env): ModelsFile {
     const baseUrl = "https://api.groq.com/openai/v1";
     models.push(
       { provider: "openai", id: "groq/gpt-oss-120b", baseUrl, model: "openai/gpt-oss-120b", tier: "strong", apiKeyEnv: "GROQ_API_KEY" },
-      { provider: "openai", id: "groq/llama-3.3-70b", baseUrl, model: "llama-3.3-70b-versatile", tier: "balanced", apiKeyEnv: "GROQ_API_KEY" },
+      { provider: "openai", id: "groq/qwen3-32b", baseUrl, model: "qwen/qwen3-32b", tier: "balanced", apiKeyEnv: "GROQ_API_KEY" },
       { provider: "openai", id: "groq/gpt-oss-20b", baseUrl, model: "openai/gpt-oss-20b", tier: "fast", apiKeyEnv: "GROQ_API_KEY" },
     );
   }
