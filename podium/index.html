@@ -2,10 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#ffffff" />
+<meta name="mobile-web-app-capable" content="yes" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icon-192.png" />
 <title>:\ARCHITECT\™ Podium</title>
 <style>
-  :root { --bg:#0b0d10; --panel:#12161b; --line:#232a33; --text:#e6e9ee; --dim:#8a94a3; --accent:#c9f24b; --ok:#4ade80; --bad:#f87171; --warn:#fbbf24; }
+  :root { --bg:#ffffff; --panel:#ffffff; --line:#e4e4e4; --text:#000000; --dim:#6e6e6e; --accent:#000000; --ok:#000000; --bad:#c62828; --warn:#000000; --soft:#f5f5f5; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
   header { display:flex; align-items:center; gap:16px; padding:14px 20px; border-bottom:1px solid var(--line); }
@@ -19,7 +24,9 @@
   textarea,input,select,button { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px 10px; }
   textarea { min-height:80px; resize:vertical; }
   button { cursor:pointer; }
-  button.primary { background:var(--accent); color:#111; border-color:var(--accent); font-weight:600; }
+  button.primary { background:#000; color:#fff; border-color:#000; font-weight:600; }
+  button:disabled { opacity:.5; }
+  textarea:focus,input:focus,select:focus { outline:2px solid #000; outline-offset:-1px; }
   .run { padding:8px 10px; border:1px solid var(--line); border-radius:6px; margin-bottom:6px; cursor:pointer; }
   .run:hover,.run.active { border-color:var(--accent); }
   .run .goal { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -28,16 +35,28 @@
   .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:14px; }
   .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:0 0 10px; }
   .steps li { margin:4px 0; } .steps .done { color:var(--ok); } .steps .failed { color:var(--bad); } .steps .running { color:var(--accent); }
-  .approval { border-color:var(--warn); }
-  .approval pre { white-space:pre-wrap; word-break:break-word; background:#0006; padding:8px; border-radius:6px; }
+  .approval { border:2px solid #000; }
+  .approval pre { white-space:pre-wrap; word-break:break-word; background:var(--soft); padding:8px; border-radius:6px; }
   .log { font:12px/1.6 ui-monospace,monospace; max-height:420px; overflow:auto; }
-  .log div { border-bottom:1px solid #ffffff08; padding:2px 0; }
+  .log div { border-bottom:1px solid #0000000f; padding:2px 0; }
   .log .t { color:var(--dim); margin-right:8px; }
   .shots { display:flex; gap:8px; flex-wrap:wrap; } .shots img { width:220px; border:1px solid var(--line); border-radius:6px; }
   .crit.met::before { content:"✓ "; color:var(--ok); } .crit.unmet::before { content:"✗ "; color:var(--bad); }
   .row { display:flex; gap:8px; }
   .empty { color:var(--dim); }
+  .error { margin:0; padding:10px 12px; border:1px solid var(--bad); border-radius:6px; color:var(--bad); background:#fff5f5; }
   @media (max-width: 800px) { main { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
+  @media (max-width: 520px) {
+    body { font-size:15px; }
+    header { padding:12px 16px; padding-top:max(12px, env(safe-area-inset-top)); flex-wrap:wrap; gap:4px 12px; }
+    header .tag { font-size:11px; }
+    aside, section { padding:14px 16px; }
+    textarea,input,select,button { padding:12px; font-size:16px; } /* 16px stops mobile zoom on focus */
+    .run { padding:12px; }
+    .shots img { width:100%; }
+    .log { max-height:300px; }
+    .row { flex-wrap:wrap; } .row > button { flex:1 1 auto; min-height:44px; }
+  }
 </style>
 </head>
 <body>
@@ -55,6 +74,7 @@
         <option value="autopilot">Autopilot — run within standing permissions</option>
       </select>
       <button class="primary">Build</button>
+      <p id="form-error" class="error" role="alert" hidden></p>
     </form>
     <div id="runs"></div>
   </aside>
@@ -152,16 +172,18 @@
   document.getElementById("new").onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
+    document.getElementById("form-error").hidden = true;
     const btn = e.target.querySelector("button"); btn.disabled = true; btn.textContent = "Composing…";
     try {
       const run = await api("/v1/runs", { method: "POST", body: JSON.stringify({ goal: f.get("goal"), autonomy: f.get("autonomy"), startUrl: f.get("startUrl") || undefined }) });
       e.target.reset(); await open(run.id);
-    } catch (err) { alert(err.message); }
+    } catch (err) { const el = document.getElementById("form-error"); el.textContent = err.message; el.hidden = false; }
     finally { btn.disabled = false; btn.textContent = "Build"; }
   };
 
   loadRuns().catch((e) => document.getElementById("runs").innerHTML = `<p class="empty">${esc(e.message)}</p>`);
   setInterval(() => { loadRuns().catch(() => {}); if (current) render(); }, 5000);
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 </script>
 </body>
 </html>

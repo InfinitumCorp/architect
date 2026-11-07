@@ -11,6 +11,14 @@ import { PERMISSIONS, type Autonomy, type Permission, type RunEvent, type Signal
 import { InputError, NotFoundError, now } from "./policy.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+
+const PODIUM_ASSETS: Record<string, { file: string; type: string }> = {
+  "/manifest.webmanifest": { file: "manifest.webmanifest", type: "application/manifest+json" },
+  "/sw.js": { file: "sw.js", type: "text/javascript; charset=utf-8" },
+  "/icon.svg": { file: "icon.svg", type: "image/svg+xml" },
+  "/icon-192.png": { file: "icon-192.png", type: "image/png" },
+  "/icon-512.png": { file: "icon-512.png", type: "image/png" },
+};
 const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
 
 export interface ServerOptions {
@@ -107,6 +115,13 @@ export function createArchitectServer(opts: ServerOptions): Server {
       if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/podium")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(await readFile(path.join(here, "..", "podium", "index.html"), "utf8"));
+        return;
+      }
+      // Installable web app: manifest, service worker and icons (public, no secrets).
+      const asset = req.method === "GET" ? PODIUM_ASSETS[url.pathname] : undefined;
+      if (asset) {
+        res.writeHead(200, { "content-type": asset.type, "cache-control": "no-cache" });
+        res.end(await readFile(path.join(here, "..", "podium", asset.file)));
         return;
       }
       if (url.pathname === "/healthz") return json(res, 200, { ok: true, at: now() });
@@ -265,7 +280,12 @@ export function createArchitectServer(opts: ServerOptions): Server {
         : err instanceof NotFoundError || (err as NodeJS.ErrnoException).code === "ENOENT" ? 404
         : 500;
       if (status === 500) console.error("[architect]", err);
-      if (!res.headersSent) json(res, status, { error: err instanceof Error ? err.message : String(err) });
+      let message = err instanceof Error ? err.message : String(err);
+      // The model client has no credentials: say how to fix it instead of passing the SDK's wording on.
+      if (/authentication method|api[_ ]?key|401/i.test(message) && status === 500) {
+        message = "No AI model is configured on the server. Add ANTHROPIC_API_KEY (or OMNIROUTE_URL) to its .env and restart `architect serve`.";
+      }
+      if (!res.headersSent) json(res, status, { error: message });
       else res.end();
     }
   });
