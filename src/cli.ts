@@ -52,8 +52,9 @@ Options
       --json                 Print the final run as JSON
 
 Environment
-  ANTHROPIC_API_KEY    (or an \`ant auth login\` profile)
-  ARCHITECT_MODEL         default claude-opus-5-5     ARCHITECT_EFFORT  default high
+  OMNIROUTE_URL        default http://localhost:20128/v1 (open-weight models, model "auto")
+  OMNIROUTE_API_KEY    OmniRoute key           CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN, GROQ_API_KEY  backups
+  ARCHITECT_EFFORT        default high
   ARCHITECT_API_TOKEN     bearer token for \`serve\`    ARCHITECT_PRODUCT_<KEY>_URL / _TOKEN  ecosystem products`;
 
 const C = { dim: "\x1b[2m", bold: "\x1b[1m", green: "\x1b[32m", red: "\x1b[31m", yellow: "\x1b[33m", cyan: "\x1b[36m", off: "\x1b[0m" };
@@ -118,7 +119,7 @@ function cliApprovals(): ApprovalHandler {
 }
 
 async function main() {
-  // Pick up ANTHROPIC_API_KEY and ARCHITECT_* from a local .env (gitignored). Real env vars win.
+  // Pick up OMNIROUTE_* and ARCHITECT_* from a local .env (gitignored). Real env vars win.
   try {
     process.loadEnvFile(".env");
   } catch {
@@ -281,7 +282,7 @@ async function main() {
       const p = router.policy;
       console.log(`routing: plan → ${p.plan} · verify → ${p.verify} · act → ${p.act} · escalate after ${p.escalateAfterErrors} errors\n`);
       for (const c of router.candidates) {
-        const probe = c.brain instanceof OpenAICompatBrain ? await c.brain.probe() : { ok: Boolean(process.env.ANTHROPIC_API_KEY), error: "ANTHROPIC_API_KEY not set" };
+        const probe = c.brain instanceof OpenAICompatBrain ? await c.brain.probe() : { ok: Boolean(process.env.ANTHROPIC_API_KEY), error: "ANTHROPIC_API_KEY not set (Claude is opt-in only)" };
         const state = probe.ok
           ? `${C.green}up${C.off}${"listed" in probe && probe.listed === false ? ` ${C.yellow}(model not listed)${C.off}` : ""}`
           : `${C.red}down${C.off} ${C.dim}${probe.error}${C.off}`;

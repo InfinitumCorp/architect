@@ -283,7 +283,7 @@ export function createArchitectServer(opts: ServerOptions): Server {
       let message = err instanceof Error ? err.message : String(err);
       // The model client has no credentials: say how to fix it instead of passing the SDK's wording on.
       if (/authentication method|api[_ ]?key|401/i.test(message) && status === 500) {
-        message = "No AI model is configured on the server. Add ANTHROPIC_API_KEY (or OMNIROUTE_URL) to its .env and restart `architect serve`.";
+        message = "No AI model is configured on the server. Start OmniRoute (or set OMNIROUTE_URL and OMNIROUTE_API_KEY) in its .env and restart `architect serve`.";
       }
       if (!res.headersSent) json(res, status, { error: message });
       else res.end();

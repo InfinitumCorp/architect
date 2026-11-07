@@ -60,7 +60,7 @@ A Score installed from someone else is untrusted: when it is played, its permiss
 ```bash
 npm install
 npx playwright install chromium
-export ANTHROPIC_API_KEY=...        # or an `ant auth login` profile
+export OMNIROUTE_API_KEY=...        # OmniRoute at http://localhost:20128 (open-weight models)
 npm run build
 ```
 
@@ -200,8 +200,9 @@ Bring your own `Instrument` (any object with `tools` and `execute`) or your own 
 
 | Variable | Default | |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | — | or an `ant auth login` profile |
-| `ARCHITECT_MODEL` | `claude-opus-5-5` | |
+| `OMNIROUTE_URL` | `http://localhost:20128/v1` | OmniRoute gateway; model `auto` unless `OMNIROUTE_MODEL` is set |
+| `OMNIROUTE_API_KEY` | — | OmniRoute key |
+| `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_AI_TOKEN`, `GROQ_API_KEY` | — | open-model backups (gpt-oss, Llama) |
 | `ARCHITECT_EFFORT` | `high` | `low` … `max` |
 | `ARCHITECT_FALLBACKS` | on | server-side refusal fallback; set `off` on Bedrock / Vertex / Foundry |
 | `ARCHITECT_DATA_DIR` | `.architect` | runs, events, evidence |
@@ -232,7 +233,7 @@ OMNIROUTE_FAST_MODEL=qwen3:8b                # optional: a cheap model for routi
 OMNIROUTE_STRONG_MODEL=...                   # optional: a strong model for plans and verdicts
 ```
 
-With `ANTHROPIC_API_KEY` also set, Claude becomes the `strong` model and OmniRoute handles the rest. `ARCHITECT_OPENAI_BASE_URL` plus `ARCHITECT_OPENAI_MODEL` does the same for any other OpenAI-compatible endpoint, such as Ollama, LM Studio, vLLM, OpenRouter or LiteLLM.
+Architect uses open-weight models only by default. Claude is used only if `architect.models.json` names it or `ARCHITECT_BRAIN=anthropic` is set. `ARCHITECT_OPENAI_BASE_URL` plus `ARCHITECT_OPENAI_MODEL` does the same for any other OpenAI-compatible endpoint, such as Ollama, LM Studio, vLLM, OpenRouter or LiteLLM.
 
 **Full control** comes from a `architect.models.json` file (copy `architect.models.example.json`). It lists models with a `tier`, an optional `price` in USD per million tokens, a `vision` flag for models that can read screenshots, and `apiKeyEnv`, the *name* of the env var that holds the key. Keys themselves are rejected in this file. You can also override the routing `policy`.
 
