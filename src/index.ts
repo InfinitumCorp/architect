@@ -6,8 +6,12 @@ import { BrowserInstrument, type BrowserInstrumentOptions } from "./instruments/
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { HttpInstrument } from "./instruments/http.js";
 import { WorkspaceInstrument } from "./instruments/workspace.js";
+import { RunSupervisor, supervisorFromEnv } from "./supervisor.js";
 
 export * from "./types.js";
+export { RunSupervisor, supervisorFromEnv, workspaceKey, type SupervisorOptions, type WorkspaceSeed, type RetainPolicy } from "./supervisor.js";
+export { evaluateCommand, policyFrom, loadPolicyFile, DEFAULT_POLICY as DEFAULT_COMMAND_POLICY, type CommandPolicy, type CommandRule, type CommandDecision } from "./sandbox/execpolicy.js";
+export { sandboxFor, PassthroughSandbox, RuntimeSandbox, type CommandSandbox, type SandboxLimits, type SandboxMode } from "./sandbox/runtime.js";
 export { Architect } from "./architect.js";
 export type { ArchitectOptions, ComposeOptions, PerformOptions } from "./architect.js";
 export { AnthropicBrain, ScoreDraftSchema } from "./brain.js";
@@ -34,6 +38,8 @@ export interface CreateArchitectOptions extends Partial<Omit<ArchitectOptions, "
   browser?: BrowserInstrumentOptions | false;
   /** Folder Architect may read, write and run commands in. Defaults to <dataDir>/workspace. */
   workspace?: string | false;
+  /** Give each run its own folder under the workspace. Defaults to ARCHITECT_ISOLATION=per-run. */
+  supervisor?: RunSupervisor | false;
   http?: boolean;
   ecosystem?: boolean;
 }
@@ -44,7 +50,10 @@ export function createArchitect(opts: CreateArchitectOptions = {}): Architect {
   const instruments = [];
   if (opts.browser !== false) instruments.push(new BrowserInstrument(opts.browser ?? {}));
   if (opts.workspace !== false) {
-    instruments.push(new WorkspaceInstrument(opts.workspace ?? process.env.ARCHITECT_WORKSPACE ?? path.join(dataDir, "workspace")));
+    const root = path.resolve(opts.workspace ?? process.env.ARCHITECT_WORKSPACE ?? path.join(dataDir, "workspace"));
+    const supervisor = opts.supervisor === false ? undefined : (opts.supervisor ?? supervisorFromEnv(root));
+    void supervisor?.reclaimStale().catch(() => {});
+    instruments.push(new WorkspaceInstrument(root, { supervisor }));
   }
   if (opts.http !== false) instruments.push(new HttpInstrument());
   if (opts.ecosystem !== false) instruments.push(new EcosystemInstrument());

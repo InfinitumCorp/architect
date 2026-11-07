@@ -11,6 +11,7 @@ import {
   type SandboxLimits,
   type SandboxMode,
 } from "../sandbox/runtime.js";
+import type { RunSupervisor } from "../supervisor.js";
 import type { Instrument, ToolContext, ToolOutput, ToolSpec } from "./types.js";
 
 export interface WorkspaceOptions {
@@ -23,6 +24,8 @@ export interface WorkspaceOptions {
   limits?: Partial<SandboxLimits>;
   /** Secret-looking environment variables that commands may still see (e.g. NPM_TOKEN). */
   passEnv?: string[];
+  /** Give every run its own folder under this supervisor instead of sharing `root`. */
+  supervisor?: RunSupervisor;
 }
 
 export interface CommandResult {
@@ -97,14 +100,34 @@ export class WorkspaceInstrument implements Instrument {
     },
   ];
 
+  /** The folder a run works in: its own folder under the supervisor, or the shared root. */
+  async rootFor(ctx?: Pick<ToolContext, "runId">): Promise<string> {
+    const sup = this.opts.supervisor;
+    if (!sup || !ctx) {
+      await mkdir(this.root, { recursive: true });
+      return this.root;
+    }
+    return (await sup.acquire(ctx.runId)).root;
+  }
+
+  /** Called by Architect when a run ends: the supervisor keeps or removes its folder. */
+  async endRun(runId: string, outcome: string) {
+    await this.opts.supervisor?.release(runId, outcome);
+  }
+
+  async handoff(ctx: ToolContext): Promise<Record<string, string>> {
+    // Point at the folder without creating one for a run that never used the workspace.
+    return { workspace: this.opts.supervisor ? this.opts.supervisor.rootFor(ctx.runId) : this.root };
+  }
+
   /** Resolve a model-supplied path and refuse anything outside the workspace, including through a symlink. */
-  async resolve(p: string): Promise<string> {
-    const full = path.resolve(this.root, p || ".");
-    const rel = path.relative(this.root, full);
+  async resolve(p: string, root: string = this.root): Promise<string> {
+    const full = path.resolve(root, p || ".");
+    const rel = path.relative(root, full);
     if (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
       throw new Error(`path "${p}" is outside the workspace`);
     }
-    const rootReal = await realpath(this.root);
+    const rootReal = await realpath(root);
     let cursor = full;
     for (;;) {
       try {
@@ -124,9 +147,10 @@ export class WorkspaceInstrument implements Instrument {
   }
 
   async execute(tool: string, input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput> {
+    const root = await this.rootFor(ctx);
     switch (tool) {
       case "workspace_list": {
-        const dir = await this.resolve(String(input.path ?? "."));
+        const dir = await this.resolve(String(input.path ?? "."), root);
         const entries = await readdir(dir, { withFileTypes: true });
         const lines = entries
           .filter((e) => e.name !== "node_modules" && e.name !== ".git")
@@ -134,17 +158,17 @@ export class WorkspaceInstrument implements Instrument {
         return { text: lines.join("\n") || "(empty)" };
       }
       case "workspace_read": {
-        const file = await this.resolve(String(input.path));
+        const file = await this.resolve(String(input.path), root);
         const info = await stat(file);
         if (info.size > 2_000_000) return { text: "File is larger than 2 MB; read a smaller file.", isError: true };
         return { text: truncate(await readFile(file, "utf8"), 40_000) };
       }
       case "workspace_write": {
-        const file = await this.resolve(String(input.path));
+        const file = await this.resolve(String(input.path), root);
         await mkdir(path.dirname(file), { recursive: true });
         await writeFile(file, String(input.content), "utf8");
-        ctx.addEvidence({ kind: "file", label: "wrote", content: path.relative(this.root, file) });
-        return { text: `Wrote ${path.relative(this.root, file)} (${String(input.content).length} chars).` };
+        ctx.addEvidence({ kind: "file", label: "wrote", content: path.relative(root, file) });
+        return { text: `Wrote ${path.relative(root, file)} (${String(input.content).length} chars).` };
       }
       case "workspace_run": {
         const command = String(input.command);
@@ -153,7 +177,7 @@ export class WorkspaceInstrument implements Instrument {
           ctx.addEvidence({ kind: "command", label: command, content: `refused by command policy: ${verdict.reason}` });
           return { text: `Refused by the command policy: ${verdict.reason}. This command never runs.`, isError: true };
         }
-        const result = await this.run(command);
+        const result = await this.run(command, { cwd: root });
         ctx.addEvidence({
           kind: "command",
           label: command,

@@ -317,6 +317,7 @@ export class Architect extends EventEmitter {
       return run;
     } finally {
       this.active.delete(run.id);
+      await Promise.all(this.instruments.map((i) => i.endRun?.(run.id, run.status).catch(() => {})));
     }
   }
 

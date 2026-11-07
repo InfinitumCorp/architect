@@ -46,6 +46,8 @@ export interface Instrument {
   execute(tool: string, input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;
   /** Called when a run is packaged for a person to take over. */
   handoff?(ctx: ToolContext): Promise<Record<string, string>>;
+  /** Called when a run stops performing (any final status, including handed off), to free per-run resources. */
+  endRun?(runId: string, status: string): Promise<void>;
   dispose?(): Promise<void>;
 }
 
