@@ -269,3 +269,8 @@ npm run dev -- run "…" -a rehearsal
 ---
 
 © Infinitum Corporation. Proprietary. AI-powered · Blockchain-governed™.
+
+## Labyrinth client repositories
+
+Explicit Cumulus ID-authenticated artifact save/load SDK and `/api/labyrinth` relay.
+Existing product auth remains unchanged. [Integration and rollout contract](LABYRINTH.md).
