@@ -8,44 +8,47 @@
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/icon-192.png" />
-<title>:\ARCHITECT\™ Podium</title>
+<title>:\ARCHITECT\ Podium</title>
 <style>
-  :root { --bg:#ffffff; --panel:#ffffff; --line:#e4e4e4; --text:#000000; --dim:#6e6e6e; --accent:#000000; --ok:#000000; --bad:#c62828; --warn:#000000; --soft:#f5f5f5; }
+  :root {
+  --brand-accent: #2454dd; /* //RULES// interactive blue */ --bg: #ffffff; --panel: #ffffff; --line: #d6dce1; --text: #111820; --dim: #52606b; --accent: #111820; --ok: #1a7f37; --bad: #c62828; --warn: #9a6700; --soft: rgba(17, 24, 32, .04); }
   * { box-sizing:border-box; }
   [hidden] { display:none !important; }
-  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  body { margin:0; background:var(--bg); color:var(--text); font: 14px/1.5 'Helvetica Neue', Helvetica, Arial, sans-serif; }
   header { display:flex; align-items:center; gap:16px; padding:14px 20px; border-bottom:1px solid var(--line); }
-  header h1 { font:600 16px ui-monospace,monospace; margin:0; letter-spacing:.04em; }
+  header h1 { font-weight:400; font-size:18px; margin:0; letter-spacing:-.03em; }
+  sup.tm { font-size:.38em; vertical-align:super; line-height:0; margin-left:.08em; }
   header .tag { color:var(--dim); font-size:12px; }
   main { display:grid; grid-template-columns:minmax(0,320px) minmax(0,1fr); min-height:calc(100vh - 53px); }
   aside { border-right:1px solid var(--line); padding:16px; overflow:auto; min-width:0; }
   form > * { width:100%; }
   section { padding:20px; overflow:auto; }
   form { display:grid; gap:8px; margin-bottom:18px; }
-  textarea,input,select,button { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px 10px; }
+  textarea,input,select,button { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius: 0; padding:8px 10px; }
   textarea { min-height:80px; resize:vertical; }
   button { cursor:pointer; }
-  button.primary { background:#000; color:#fff; border-color:#000; font-weight:600; }
+  button.primary { background:var(--text); color:#fff; border-color:var(--text); font-weight:400; }
+  button.primary:hover:not(:disabled) { background:var(--brand-accent); border-color:var(--brand-accent); }
   button:disabled { opacity:.5; }
-  textarea:focus,input:focus,select:focus { outline:2px solid #000; outline-offset:-1px; }
-  .run { padding:8px 10px; border:1px solid var(--line); border-radius:6px; margin-bottom:6px; cursor:pointer; }
+  textarea:focus,input:focus,select:focus { outline:2px solid var(--text); outline-offset:-1px; }
+  .run { padding:8px 10px; border:1px solid var(--line); border-radius: 0; margin-bottom:6px; cursor:pointer; }
   .run:hover,.run.active { border-color:var(--accent); }
   .run .goal { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .status { font:11px ui-monospace,monospace; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
   .status.succeeded { color:var(--ok); } .status.failed { color:var(--bad); } .status.awaiting_approval,.status.handed_off { color:var(--warn); }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:14px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius: 0; padding:14px 16px; margin-bottom:14px; }
   .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:0 0 10px; }
   .steps li { margin:4px 0; } .steps .done { color:var(--ok); } .steps .failed { color:var(--bad); } .steps .running { color:var(--accent); }
-  .approval { border:2px solid #000; }
-  .approval pre { white-space:pre-wrap; word-break:break-word; background:var(--soft); padding:8px; border-radius:6px; }
+  .approval { border:2px solid var(--text); }
+  .approval pre { white-space:pre-wrap; word-break:break-word; background:var(--soft); padding:8px; border-radius: 0; }
   .log { font:12px/1.6 ui-monospace,monospace; max-height:420px; overflow:auto; }
-  .log div { border-bottom:1px solid #0000000f; padding:2px 0; }
+  .log div { border-bottom:1px solid rgba(17,24,32,.06); padding:2px 0; }
   .log .t { color:var(--dim); margin-right:8px; }
-  .shots { display:flex; gap:8px; flex-wrap:wrap; } .shots img { width:220px; border:1px solid var(--line); border-radius:6px; }
+  .shots { display:flex; gap:8px; flex-wrap:wrap; } .shots img { width:220px; border:1px solid var(--line); border-radius: 0; }
   .crit.met::before { content:"✓ "; color:var(--ok); } .crit.unmet::before { content:"✗ "; color:var(--bad); }
   .row { display:flex; gap:8px; }
   .empty { color:var(--dim); }
-  .error { margin:0; padding:10px 12px; border:1px solid var(--bad); border-radius:6px; color:var(--bad); background:#fff5f5; }
+  .error { margin:0; padding:10px 12px; border:1px solid var(--bad); border-radius: 0; color:var(--bad); background:transparent; }
   @media (max-width: 800px) { main { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
   @media (max-width: 520px) {
     body { font-size:15px; }
@@ -62,7 +65,7 @@
 </head>
 <body>
 <header>
-  <h1>:\ARCHITECT\™</h1><span class="tag">Podium — you set the direction, Architect carries it through</span>
+  <h1>:\ARCHITECT\<sup class="tm">™</sup></h1><span class="tag">Podium — you set the direction, Architect carries it through</span>
 </header>
 <main>
   <aside>
