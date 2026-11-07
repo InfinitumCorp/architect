@@ -1,5 +1,5 @@
 // :\ARCHITECT\ on Cloudflare Workers. See src/worker.ts.
-// Production domain cndctr.app is added under "routes" only after a person approves it.
+// Production domain: cndctr.app (custom domain, approved 2026-11-07).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "architect",
@@ -7,6 +7,8 @@
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
+  // Production domain (Cloudflare zone cndctr.app); Wrangler creates the DNS record and certificate.
+  "routes": [{ "pattern": "cndctr.app", "custom_domain": true }],
   "preview_urls": true,
   "assets": {
     "directory": "podium",
