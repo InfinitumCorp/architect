@@ -23,6 +23,9 @@ export function workersAiFetch(ai: AiBinding): typeof fetch {
     if (!url.endsWith("/chat/completions")) return reply(404, { error: { message: "only /chat/completions is served" } });
     const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
     const { model, ...rest } = body;
+    // JSON mode (composing a Score): reasoning models spend the whole budget thinking about a
+    // large schema and return no content, so thinking is switched off for these calls.
+    if (rest.response_format && rest.chat_template_kwargs === undefined) rest.chat_template_kwargs = { enable_thinking: false };
     const run = (args: Record<string, unknown>) => ai.run(String(model), args);
     let out: unknown;
     try {

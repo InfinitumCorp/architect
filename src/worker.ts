@@ -95,7 +95,7 @@ export class Conductor extends DurableObject<Env> {
             baseUrl: WORKERS_AI_BASE_URL,
             model: this.env.ARCHITECT_WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL,
             fetch: workersAiFetch(this.env.AI),
-            maxTokens: 4_000,
+            maxTokens: 8_000,
           });
     // Storage: Supabase once its key is set; until then the Durable Object's own storage.
     const store = this.env.SUPABASE_SERVICE_ROLE_KEY
