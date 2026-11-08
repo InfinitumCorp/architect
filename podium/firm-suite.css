@@ -32,6 +32,7 @@ firm-suite { display: block; }
 .firm-suite .fs-balances b { font-size: 22px; font-weight: 400; }
 .firm-suite .fs-balances span { font-size: 12px; color: var(--fs-ink-2); }
 .firm-suite .fs-tokens li { display: grid; grid-template-columns: 72px 1fr auto; gap: 12px; padding: 8px 0; border-top: 1px solid var(--fs-line); font-size: 13px; }
+.firm-suite .fs-tokens a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .firm-suite .fs-ticker { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .firm-suite .fs-muted { color: var(--fs-ink-2); }
 .firm-suite .fs-actions { display: flex; flex-wrap: wrap; gap: 8px; }

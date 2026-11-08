@@ -24,7 +24,7 @@ export const PRODUCTS = {
   scalvs: { wordmark: `SCALVS.ai${TM}`, token: "SCLV", network: "Base" },
   architect: { wordmark: `:\\ARCHITECT\\${TM}`, token: "ARCT", network: "Base" },
   spectre: { wordmark: `+SPCTR${TM}`, token: "SPCTR", network: "Base" },
-  metatron: { wordmark: `METATRON¹⁰⁰${TM}`, token: "MTRN", network: "Base" },
+  metatron: { wordmark: `METATRON¹⁰⁰${TM}`, token: "MTRN", network: "Base", url: "https://mttrn.app" },
   fabric: { wordmark: `FABRIC${TM}`, token: "FAB", network: "Solana" },
   "cumulus-cloud": { wordmark: `Cumulus://Cloud${TM}`, token: "CMLS", network: "Base" },
   "cumulus-mail": { wordmark: `Cumulus://Mail${TM}`, token: "CMLS", network: "Base" },
@@ -96,7 +96,9 @@ export function render({ product, state = "early", wallet = null, signinHref = "
     const p = PRODUCTS[id];
     if (!p?.token || seen.has(p.token)) continue;
     seen.add(p.token);
-    tokens.push(`<li><span class="fs-ticker">$${esc(p.token)}</span><span>${p.wordmark}</span><span class="fs-muted">${esc(p.network)}</span></li>`);
+    // `url` is the product's canonical site, when it has one (METATRON¹⁰⁰: mttrn.app).
+    const name = p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">${p.wordmark}</a>` : p.wordmark;
+    tokens.push(`<li><span class="fs-ticker">$${esc(p.token)}</span><span>${name}</span><span class="fs-muted">${esc(p.network)}</span></li>`);
   }
   tokens.push(`<li><span class="fs-ticker">$FIRM</span><span>Settles every Infinitum product</span><span class="fs-muted">Solana (CPO) → Ethereum</span></li>`);
   const primary =
