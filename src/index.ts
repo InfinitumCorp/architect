@@ -15,6 +15,21 @@ export { SafetyInstrument } from "./instruments/safety.js";
 export { PlaywrightMcpInstrument, type PlaywrightMcpOptions } from "./instruments/playwright-mcp.js";
 export { runSafetyChecks, formatResults, installGitSecretsHooks, CHECKS as SAFETY_CHECKS, type CheckResult } from "./safety/scanners.js";
 
+export {
+  runEval,
+  execProgram,
+  passAtK,
+  buildProgram,
+  extractCode,
+  loadTasks,
+  brainSampler,
+  fileSampler,
+  formatReport,
+  type EvalTask,
+  type EvalReport,
+  type Sampler,
+} from "./evals/humaneval.js";
+
 export * from "./types.js";
 export { RunSupervisor, supervisorFromEnv, workspaceKey, type SupervisorOptions, type WorkspaceSeed, type RetainPolicy } from "./supervisor.js";
 export { evaluateCommand, policyFrom, loadPolicyFile, DEFAULT_POLICY as DEFAULT_COMMAND_POLICY, type CommandPolicy, type CommandRule, type CommandDecision } from "./sandbox/execpolicy.js";

@@ -6,6 +6,17 @@ import { createArchitect } from "./index.js";
 import { WorkspaceInstrument } from "./instruments/workspace.js";
 import { PlaywrightMcpInstrument } from "./instruments/playwright-mcp.js";
 import { formatResults, installGitSecretsHooks, runSafetyChecks } from "./safety/scanners.js";
+import { sandboxFor } from "./sandbox/runtime.js";
+import { brainFromEnv } from "./brains/config.js";
+import {
+  brainSampler,
+  CompletionSchema,
+  fileSampler,
+  formatReport,
+  loadTasks,
+  readJsonl,
+  runEval,
+} from "./evals/humaneval.js";
 import { createArchitectServer } from "./server.js";
 import { readFile } from "node:fs/promises";
 import { TriggerRouter } from "./triggers.js";
@@ -200,6 +211,28 @@ async function main() {
       console.log(`\n${C.bold}${r.id}${C.off}\n${r.output ?? ""}`);
     }
     process.exitCode = results.some((r) => r.status === "findings" || r.status === "error") ? 1 : 0;
+    return;
+  }
+
+  if (command === "eval") {
+    const tasks = await loadTasks(required(rest[0], "tasks.jsonl"));
+    const samplesPerTask = values.samples ? Number(values.samples) : 1;
+    if (!Number.isInteger(samplesPerTask) || samplesPerTask < 1) throw new Error("--samples must be a positive whole number");
+    const brain = values.completions ? undefined : brainFromEnv();
+    const sampler = values.completions
+      ? fileSampler(await readJsonl(values.completions, CompletionSchema))
+      : brainSampler(brain!);
+    // Model-written code runs only inside the OS sandbox, whatever ARCHITECT_SANDBOX says.
+    const sandbox = await sandboxFor("required");
+    const report = await runEval({
+      tasks,
+      sampler,
+      sandbox,
+      samplesPerTask,
+      model: brain?.model ?? path.basename(values.completions!),
+      onTask: values.json ? undefined : (t) => console.log(`${t.correct ? C.green : C.red}${t.task_id} ${t.correct}/${t.samples.length}${C.off}`),
+    });
+    console.log(values.json ? JSON.stringify(report, null, 2) : `\n${formatReport(report)}`);
     return;
   }
 

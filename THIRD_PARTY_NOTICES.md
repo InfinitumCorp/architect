@@ -149,6 +149,27 @@ How each item reaches a user:
 - Copyright (c) 2023 Leon Derczynski; Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES
 - NOTICE file: none.
 
+## openai/human-eval (format and method reference)
+
+- Use: design reference for the evals harness (`src/evals/humaneval.ts`): the task format
+  (`task_id`, `prompt`, `test`, `entry_point`), the program layout and the unbiased pass@k
+  estimator. Reimplemented in TypeScript; no code or data was copied, and the HumanEval dataset
+  is not shipped.
+- Source: https://github.com/openai/human-eval
+- License: MIT (text: [MIT: human-eval](#mit-license-openaihuman-eval))
+- Copyright (c) OpenAI (https://openai.com)
+- NOTICE file: none.
+
+## openai/simple-evals (method reference)
+
+- Use: design reference for how the eval report presents metrics. No code was copied.
+- Source: https://github.com/openai/simple-evals
+- License: MIT (text: [MIT: simple-evals](#mit-license-openaisimple-evals))
+- Copyright (c) 2024 OpenAI
+- NOTICE file: none.
+
+Not used: openai/evals datasets (CC-BY-SA and GFDL). None are included.
+
 ---
 
 # License texts
@@ -387,4 +408,56 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE
 
+```
+
+## MIT License (openai/human-eval)
+
+```text
+The MIT License
+
+Copyright (c) OpenAI (https://openai.com)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+## MIT License (openai/simple-evals)
+
+```text
+MIT License
+
+Copyright (c) 2024 OpenAI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
