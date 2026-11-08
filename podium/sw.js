@@ -1,5 +1,5 @@
 // Podium service worker: keeps the app shell available offline. API calls (/v1) always go to the network.
-const SHELL = "architect-podium-v1";
+const SHELL = "architect-podium-v2";
 const FILES = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (e) => {
