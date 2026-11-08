@@ -14,7 +14,10 @@ import { DurableObject } from "cloudflare:workers";
 import { launch, type BrowserWorker } from "@cloudflare/playwright";
 import type { Browser } from "playwright";
 import { Architect } from "./architect.js";
-import { brainFromEnv } from "./brains/config.js";
+import { brainFromEnv, modelsFromEnv } from "./brains/config.js";
+import { OpenAICompatBrain } from "./brains/openai.js";
+import { DEFAULT_WORKERS_AI_MODEL, WORKERS_AI_BASE_URL, workersAiFetch, type AiBinding } from "./brains/workersai.js";
+import { DurableRunStore } from "./stores/durable.js";
 import { BrowserInstrument } from "./instruments/browser.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { HttpInstrument } from "./instruments/http.js";
@@ -27,6 +30,10 @@ export interface Env {
   ASSETS: Fetcher;
   CONDUCTOR: DurableObjectNamespace<Conductor>;
   BROWSER: BrowserWorker;
+  /** Workers AI: the model when no ANTHROPIC_API_KEY / OMNIROUTE_URL / ARCHITECT_OPENAI_* is set. */
+  AI?: AiBinding;
+  /** Workers AI model id (default DEFAULT_WORKERS_AI_MODEL). */
+  ARCHITECT_WORKERS_AI_MODEL?: string;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   ARCHITECT_API_TOKEN?: string;
@@ -78,11 +85,25 @@ export class Conductor extends DurableObject<Env> {
 
   private get arch(): Architect {
     if (this.architect) return this.architect;
-    if (!this.env.SUPABASE_SERVICE_ROLE_KEY) throw new HttpError(503, "The server has no SUPABASE_SERVICE_ROLE_KEY secret yet.");
     const env = this.env as unknown as Record<string, string | undefined>;
+    // Model: explicit settings win; otherwise Workers AI through the binding (no key needed).
+    const configured = !!env.ANTHROPIC_API_KEY || !!modelsFromEnv(env);
+    const brain =
+      configured || !this.env.AI
+        ? brainFromEnv(env, "/")
+        : new OpenAICompatBrain({
+            baseUrl: WORKERS_AI_BASE_URL,
+            model: this.env.ARCHITECT_WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL,
+            fetch: workersAiFetch(this.env.AI),
+            maxTokens: 8_000,
+          });
+    // Storage: Supabase once its key is set; until then the Durable Object's own storage.
+    const store = this.env.SUPABASE_SERVICE_ROLE_KEY
+      ? new SupabaseRunStore({ url: this.env.SUPABASE_URL, serviceKey: this.env.SUPABASE_SERVICE_ROLE_KEY })
+      : new DurableRunStore(this.ctx.storage);
     this.architect = new Architect({
-      brain: brainFromEnv(env, "/"),
-      store: new SupabaseRunStore({ url: this.env.SUPABASE_URL, serviceKey: this.env.SUPABASE_SERVICE_ROLE_KEY }),
+      brain,
+      store,
       instruments: [
         new BrowserInstrument({ launch: async () => (await launch(this.env.BROWSER)) as unknown as Browser }),
         new HttpInstrument(),
