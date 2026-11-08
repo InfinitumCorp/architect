@@ -9,6 +9,7 @@
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="/firm-suite.css" />
 <script type="module" src="/firm-suite.js"></script>
+<script type="module" src="/billing.js"></script>
 <link rel="apple-touch-icon" href="/icon-192.png" />
 <title>:\ARCHITECT\ Podium</title>
 <style>
@@ -97,6 +98,17 @@
     .shots img { width:100%; }
     .log { max-height:300px; }
   }
+  architect-plan { display:block; margin-top:32px; }
+  .plan-list { display:grid; gap:8px; margin-bottom:14px; }
+  .plan-option { display:grid; gap:2px; text-align:left; padding:12px 14px; }
+  .plan-option.current { box-shadow:inset 0 0 0 1px var(--ink); }
+  .plan-option:hover .plan-price, .plan-option:hover .plan-detail { color:#fff; }
+  .plan-name { letter-spacing:-.01em; }
+  .plan-price { font-size:14px; }
+  .plan-detail, .plan-meta { font-size:13px; color:var(--muted); }
+  .plan-meta { margin:10px 0 0; }
+  button.link { border:0; padding:0; background:none; text-decoration:underline; color:inherit; font-size:inherit; min-height:0; }
+  button.link:hover { background:none; color:var(--accent); }
 </style>
 </head>
 <body>
@@ -126,6 +138,7 @@
       <button class="primary">Save token</button>
     </form>
     <div id="runs"></div>
+    <architect-plan class="plan"></architect-plan>
     <firm-suite class="firm" product="architect" compact></firm-suite>
   </aside>
   <section id="detail" tabindex="-1" aria-live="polite"><p class="empty">Choose a run, or describe an outcome to start one.</p></section>
