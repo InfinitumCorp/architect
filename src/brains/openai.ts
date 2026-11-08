@@ -146,6 +146,50 @@ export function extractJson(text: string): unknown {
   return JSON.parse(body.slice(start, end + 1));
 }
 
+/** A filled-in Score draft, shown to models that would otherwise echo the schema back. */
+export const DRAFT_EXAMPLE = {
+  summary: "Open the page in the browser, read the value and report it.",
+  permissions: ["browser"],
+  startUrl: "https://example.com/",
+  steps: [
+    {
+      title: "Open the page",
+      instruction: "Navigate to https://example.com/ and take a snapshot.",
+      instruments: ["browser"],
+      checkpoint: false,
+    },
+  ],
+  successCriteria: ["The value shown on the page is reported exactly"],
+};
+
+class SchemaEcho extends Error {}
+
+/** True when the reply is a JSON Schema (e.g. the one in the prompt) rather than an instance of it. */
+export function isSchemaEcho(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const o = value as Record<string, unknown>;
+  return "$schema" in o || (o.type === "object" && typeof o.properties === "object" && !("steps" in o));
+}
+
+/** Small models often wrap the answer, e.g. {"score": {...}}: use the single inner object. */
+export function unwrapDraft(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const o = value as Record<string, unknown>;
+  if ("steps" in o || "summary" in o) return o;
+  const keys = Object.keys(o);
+  const inner = keys.length === 1 ? o[keys[0]!] : undefined;
+  return inner && typeof inner === "object" && !Array.isArray(inner) ? inner : value;
+}
+
+/** A short correction for the model: which fields are wrong, not a raw validator dump. */
+function describeDraftError(err: unknown): string {
+  const issues = (err as { issues?: Array<{ path: PropertyKey[]; message: string }> })?.issues;
+  if (Array.isArray(issues) && issues.length) {
+    return issues.slice(0, 8).map((i) => `${i.path.map(String).join(".") || "(root)"}: ${i.message}`).join("; ");
+  }
+  return err instanceof Error ? err.message.slice(0, 500) : String(err);
+}
+
 export class OpenAICompatBrain implements Brain {
   readonly model: string;
   private opts: OpenAICompatOptions;
@@ -243,23 +287,35 @@ export class OpenAICompatBrain implements Brain {
   async compose(system: string, prompt: string): Promise<ComposeResult> {
     const schema = z.toJSONSchema(ScoreDraftSchema);
     const messages: OAMessage[] = [
-      { role: "system", content: `${system}\n\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(schema)}` },
+      {
+        role: "system",
+        content:
+          `${system}\n\nReply with only a JSON object matching this JSON Schema:\n${JSON.stringify(schema)}\n\n` +
+          `Do not repeat the schema. Fill it in: your reply has the same shape as this example (with your own values):\n${JSON.stringify(DRAFT_EXAMPLE)}`,
+      },
       { role: "user", content: prompt },
     ];
     let lastErr = "";
-    for (let attempt = 0; attempt < 2; attempt++) {
-      if (lastErr) messages.push({ role: "user", content: `That was not valid: ${lastErr}. Reply with only the corrected JSON object.` });
+    let lastContent = "";
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (lastErr) messages.push({ role: "user", content: `That was not valid: ${lastErr}. Reply with only the corrected JSON object, with every required field at the top level.` });
       const { res, usage, model } = await this.chat({ messages, response_format: { type: "json_object" } });
       const content = res.choices?.[0]?.message?.content ?? "";
       try {
-        const draft = ScoreDraftSchema.parse(extractJson(content));
+        lastContent = content;
+        const parsed = extractJson(content);
+        if (isSchemaEcho(parsed)) throw new SchemaEcho();
+        const draft = ScoreDraftSchema.parse(unwrapDraft(parsed));
         return { draft, usage, model };
       } catch (err) {
-        lastErr = err instanceof Error ? err.message.slice(0, 500) : String(err);
+        lastErr =
+          err instanceof SchemaEcho
+            ? `you returned the JSON Schema itself instead of a Score. Reply with a filled-in object shaped like ${JSON.stringify(DRAFT_EXAMPLE)}`
+            : describeDraftError(err);
         messages.push({ role: "assistant", content });
       }
     }
-    throw new ModelCallError(`${this.model}: could not produce a valid Score (${lastErr})`);
+    throw new ModelCallError(`${this.model}: could not produce a valid Score (${lastErr}); last reply began: ${lastContent.replace(/\s+/g, " ").slice(0, 300)}`);
   }
 
   /** Set once this endpoint has rejected native tool history (see toTextToolHistory). */
