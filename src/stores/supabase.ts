@@ -43,7 +43,8 @@ export function postgresCaller(sql: UnsafeSql): RpcCaller {
     });
     const list = names.map((n, i) => {
       const v = args[n];
-      const cast = v !== null && typeof v === "object" ? "::jsonb" : typeof v === "number" ? "::int" : "::text";
+      // JSON goes over the wire as text: a param typed jsonb would be JSON-encoded a second time.
+      const cast = v !== null && typeof v === "object" ? "::text::jsonb" : typeof v === "number" ? "::int" : "::text";
       return `${n} => $${i + 1}${cast}`;
     });
     const rows = await sql.unsafe(`select public.${fn}(${list.join(", ")}) as r`, params);

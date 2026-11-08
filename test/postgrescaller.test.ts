@@ -12,7 +12,7 @@ describe("postgresCaller", () => {
     await postgresCaller(sql)("architect_save_run", { p_run: { id: "run_x", n: 1 } });
     await postgresCaller(sql)("architect_list_runs", { p_limit: 5 });
     await postgresCaller(sql)("architect_get_file", { p_run_id: "run_x", p_path: "a.png" });
-    expect(sql.calls[0]).toEqual({ q: "select public.architect_save_run(p_run => $1::jsonb) as r", p: ['{"id":"run_x","n":1}'] });
+    expect(sql.calls[0]).toEqual({ q: "select public.architect_save_run(p_run => $1::text::jsonb) as r", p: ['{"id":"run_x","n":1}'] });
     expect(sql.calls[1]!.q).toBe("select public.architect_list_runs(p_limit => $1::int) as r");
     expect(sql.calls[2]).toEqual({ q: "select public.architect_get_file(p_run_id => $1::text, p_path => $2::text) as r", p: ["run_x", "a.png"] });
   });
