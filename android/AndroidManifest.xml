@@ -10,7 +10,8 @@
     <!-- Cleartext is allowed so the app can reach an Architect server on this phone (adb reverse) or the local network. -->
     <application
         android:label="Architect"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher"
         android:allowBackup="false"
         android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
