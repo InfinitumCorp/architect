@@ -21,6 +21,7 @@
   header .tag { color:var(--dim); font-size:12px; }
   main { display:grid; grid-template-columns:minmax(0,320px) minmax(0,1fr); min-height:calc(100vh - 53px); }
   aside { border-right:1px solid var(--line); padding:16px; overflow:auto; min-width:0; }
+  aside .firm { margin-top:16px; }
   form > * { width:100%; }
   section { padding:20px; overflow:auto; }
   form { display:grid; gap:8px; margin-bottom:18px; }
@@ -85,10 +86,10 @@
       <button class="primary">Save token</button>
     </form>
     <div id="runs"></div>
+    <firm-suite class="firm" product="architect" compact></firm-suite>
   </aside>
   <section id="detail"><p class="empty">Choose a run, or describe an outcome to start one.</p></section>
 </main>
-<footer class="firm"><firm-suite product="architect" compact></firm-suite></footer>
 <script>
   let token = "";
   try { token = new URLSearchParams(location.search).get("token") || localStorage.getItem("architect.token") || ""; } catch {}

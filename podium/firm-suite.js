@@ -106,14 +106,14 @@ export function render({ product, state = "early", wallet = null, signinHref = "
         ? `<a class="fs-btn fs-solid" href="${esc(l.wallet)}" target="_blank" rel="noopener">Open FIRM Wallet${TM}</a>`
         : `<a class="fs-btn fs-solid" href="${esc(l.wallet)}" target="_blank" rel="noopener">Get early access</a>`;
   return (
-    `<section class="firm-suite${compact ? " fs-compact" : ""}" aria-label="FIRM Suite" data-state="${esc(state)}">` +
-    `<header class="fs-head"><span class="fs-wordmark">FIRM Wallet${TM}</span>` +
-    `<span class="fs-tag">${state === "wallet" ? "Preview" : "Coming soon"}</span></header>` +
+    `<div class="firm-suite${compact ? " fs-compact" : ""}" role="region" aria-label="FIRM Suite" data-state="${esc(state)}">` +
+    `<div class="fs-head"><span class="fs-wordmark">FIRM Wallet${TM}</span>` +
+    `<span class="fs-tag">${state === "wallet" ? "Preview" : "Coming soon"}</span></div>` +
     body +
     (compact ? "" : `<ul class="fs-tokens">${tokens.join("")}</ul>`) +
     `<div class="fs-actions">${primary}` +
     `<a class="fs-btn" href="${esc(l.network)}" target="_blank" rel="noopener">Firmament Network${TM} CPO ↗</a></div>` +
-    `</section>`
+    `</div>`
   );
 }
 
