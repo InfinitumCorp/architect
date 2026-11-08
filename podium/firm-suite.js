@@ -74,8 +74,9 @@ const short = (address) => (address.length > 16 ? `${address.slice(0, 8)}…${ad
 
 /** Render the suite as an HTML string. Every dynamic value is escaped. */
 export function render({ product, state = "early", wallet = null, signinHref = "/", compact = false }) {
-  const p = PRODUCTS[product] ?? null;
-  const l = links(product);
+  // `product` may list several products ("spectre metatron"); the first one tags the links.
+  const ids = String(product || "firm").split(/[\s,]+/).filter(Boolean);
+  const l = links(ids[0]);
   let body;
   if (state === "wallet" && wallet) {
     const rows = Object.entries(wallet.balances)
@@ -90,7 +91,11 @@ export function render({ product, state = "early", wallet = null, signinHref = "
     body = `<p class="fs-sub">Self-custody for Solana, Ethereum and Base. Early access is open.</p>`;
   }
   const tokens = [];
-  if (p?.token && p.token !== "FIRM") {
+  const seen = new Set(["FIRM"]);
+  for (const id of ids) {
+    const p = PRODUCTS[id];
+    if (!p?.token || seen.has(p.token)) continue;
+    seen.add(p.token);
     tokens.push(`<li><span class="fs-ticker">$${esc(p.token)}</span><span>${p.wordmark}</span><span class="fs-muted">${esc(p.network)}</span></li>`);
   }
   tokens.push(`<li><span class="fs-ticker">$FIRM</span><span>Settles every Infinitum product</span><span class="fs-muted">Solana (CPO) → Ethereum</span></li>`);
