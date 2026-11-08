@@ -8,7 +8,9 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx src/cli.ts",
-    "serve": "tsx src/cli.ts serve"
+    "serve": "tsx src/cli.ts serve",
+    "extension:icons": "node scripts/extension.mjs icons",
+    "extension:zip": "node scripts/extension.mjs zip"
   },
   "keywords": [
     "ai-agent",

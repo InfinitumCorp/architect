@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>:\ARCHITECT\</title>
+  <link rel="stylesheet" href="shell.css" />
+</head>
+<body>
+  <header class="app-bar">
+    <a class="app-wordmark" href="https://rchtch.app/" target="_blank" rel="noopener">:\ARCHITECT\<sup class="tm">™</sup></a>
+    <nav class="app-actions">
+      <a href="https://rchtch.app/" target="_blank" rel="noopener">Podium</a>
+      <a href="options.html" target="_blank">Options</a>
+    </nav>
+  </header>
+
+  <main class="app-main">
+    <div id="notice" class="notice" hidden></div>
+
+    <section class="section" aria-labelledby="new-h">
+      <form id="new-run">
+        <div class="field">
+          <label class="label" id="new-h" for="goal">Goal</label>
+          <textarea class="input" id="goal" name="goal" required placeholder="What should :\ARCHITECT\ get done?"></textarea>
+        </div>
+        <div class="field">
+          <label class="label" for="start-url">Start URL</label>
+          <div class="row">
+            <input class="input" id="start-url" name="startUrl" type="url" placeholder="https://" />
+            <button class="btn" type="button" id="use-tab" title="Use the current tab's address">This tab</button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="label" for="autonomy">Autonomy</label>
+          <select class="input" id="autonomy" name="autonomy">
+            <option value="rehearsal">Rehearsal: plan only</option>
+            <option value="accompaniment" selected>Accompaniment: ask before risky steps</option>
+            <option value="autopilot">Autopilot</option>
+          </select>
+        </div>
+        <button class="btn primary" id="start" type="submit">Start run</button>
+      </form>
+    </section>
+
+    <section class="section" aria-labelledby="appr-h" id="approvals-section" hidden>
+      <h2 class="label" id="appr-h">Waiting for you</h2>
+      <ul class="rows" id="approvals"></ul>
+    </section>
+
+    <section class="section" aria-labelledby="runs-h">
+      <div class="row" style="justify-content:space-between">
+        <h2 class="label" id="runs-h">Recent runs</h2>
+        <button class="btn" type="button" id="refresh">Refresh</button>
+      </div>
+      <ul class="rows" id="runs"><li class="empty">Loading…</li></ul>
+    </section>
+  </main>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>
