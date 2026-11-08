@@ -47,8 +47,13 @@ export interface SafetyCheck {
   notApplicable?(root: string, env: NodeJS.ProcessEnv): Promise<string | undefined>;
   command(env: NodeJS.ProcessEnv): string;
   interpret(out: RunOutput): { status: CheckStatus; summary: string };
+  /** Secret-looking environment variables the scanner needs (normally withheld from commands). */
   passEnv?(env: NodeJS.ProcessEnv): string[];
+  /** More hosts from configuration (e.g. the model endpoint garak probes). */
+  extraHosts?(env: NodeJS.ProcessEnv): string[];
 }
+
+const list = (v: string | undefined) => (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
 const exists = (p: string) => stat(p).then(() => true, () => false);
 
@@ -133,7 +138,8 @@ export const CHECKS: SafetyCheck[] = [
     notApplicable: async (_root, env) =>
       env.ARCHITECT_GARAK_ARGS ? undefined : "set ARCHITECT_GARAK_ARGS to say which model endpoint to probe",
     command: (env) => `python -m garak ${env.ARCHITECT_GARAK_ARGS ?? ""}`.trim(),
-    passEnv: (env) => (env.ARCHITECT_GARAK_PASS_ENV ?? "").split(",").map((s) => s.trim()).filter(Boolean),
+    passEnv: (env) => list(env.ARCHITECT_GARAK_PASS_ENV),
+    extraHosts: (env) => list(env.ARCHITECT_GARAK_HOSTS),
     interpret: ({ code, stdout, stderr }) => {
       if (code !== 0) return { status: "error", summary: `garak exited with ${code}` };
       const failed = /\bFAIL\b/.test(stdout + stderr);
@@ -173,7 +179,8 @@ export async function runSafetyChecks(workspace: WorkspaceInstrument, root: stri
     const out = await workspace.run(check.command(env), {
       cwd: root,
       timeoutMs: opts.timeoutMs ?? 600_000,
-      limits: { allowedDomains: check.hosts },
+      limits: { allowedDomains: [...check.hosts, ...(check.extraHosts?.(env) ?? [])] },
+      passEnv: check.passEnv?.(env),
     });
     const verdict = check.interpret(out);
     results.push({ ...base, ...verdict, output: tail(`${out.stdout}${out.stderr ? `\n${out.stderr}` : ""}`.trim()) });

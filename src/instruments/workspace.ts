@@ -197,7 +197,10 @@ export class WorkspaceInstrument implements Instrument {
    * Run a command line in the workspace, through the sandbox. The command policy is not
    * consulted here: callers that take commands from a model go through `workspace_run`.
    */
-  async run(command: string, opts: { cwd?: string; timeoutMs?: number; limits?: Partial<SandboxLimits> } = {}): Promise<CommandResult> {
+  async run(
+    command: string,
+    opts: { cwd?: string; timeoutMs?: number; limits?: Partial<SandboxLimits>; passEnv?: string[] } = {},
+  ): Promise<CommandResult> {
     const cwd = opts.cwd ?? this.root;
     const sandbox = await this.sandboxReady();
     let wrapped;
@@ -207,7 +210,7 @@ export class WorkspaceInstrument implements Instrument {
       return { code: 1, stdout: "", stderr: `[architect] sandbox refused the command: ${String(err)}`, sandbox: sandbox.name };
     }
     const timeoutMs = opts.timeoutMs ?? this.opts.commandTimeoutMs ?? 180_000;
-    const env = { ...scrubEnv(process.env, this.opts.passEnv), ...wrapped.env };
+    const env = { ...scrubEnv(process.env, [...(this.opts.passEnv ?? []), ...(opts.passEnv ?? [])]), ...wrapped.env };
     const result = await new Promise<CommandResult>((resolve) => {
       const child = spawn(wrapped.command, { cwd, shell: true, env });
       let stdout = "";
