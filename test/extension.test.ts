@@ -65,3 +65,23 @@ describe("extension API client", () => {
     expect(draftFrom({ pageUrl: "https://a.test/p", pageTitle: "P" })).toEqual({ goal: 'Work on this page: "P".', startUrl: "https://a.test/p" });
   });
 });
+
+describe("extension agent features", () => {
+  it("sends review policy and a one-site allow list, and refuses a site limit without a start URL", () => {
+    expect(runRequest({ goal: "x", startUrl: "https://shop.acme.io/p", review: "request_review", sameSite: true })).toEqual({
+      goal: "x", autonomy: "accompaniment", startUrl: "https://shop.acme.io/p", hosts: { allow: ["shop.acme.io"] }, review: "request_review",
+    });
+    expect(runRequest({ goal: "x", review: "bogus" })).toEqual({ goal: "x", autonomy: "accompaniment" });
+    expect(() => runRequest({ goal: "x", sameSite: true })).toThrow(/start URL/);
+  });
+
+  it("approves plans and posts comments", async () => {
+    const calls: Array<[string, RequestInit]> = [];
+    const client = createClient({ token: "t", fetchImpl: (async (u: string, init: RequestInit) => { calls.push([u, init]); return jsonRes(201, { id: "cmt_1" }); }) as unknown as typeof fetch });
+    await client.perform("run_1");
+    await client.comment("run_1", "  use the blue form  ", "step:s2");
+    expect(calls[0]![0]).toBe("https://rchtch.app/v1/runs/run_1/perform");
+    expect(JSON.parse(String(calls[1]![1].body))).toEqual({ target: "step:s2", text: "use the blue form", by: "chrome-extension" });
+    expect(() => client.comment("run_1", "  ")).toThrow(/comment/);
+  });
+});

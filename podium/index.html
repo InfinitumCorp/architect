@@ -109,6 +109,20 @@
   .plan-meta { margin:10px 0 0; }
   button.link { border:0; padding:0; background:none; text-decoration:underline; color:inherit; font-size:inherit; min-height:0; }
   button.link:hover { background:none; color:var(--accent); }
+  /* Agent manager: inbox tabs, plan review, comments, walkthrough */
+  .tabs { display:flex; gap:18px; margin:0 0 8px; }
+  .tabs button { border:0; padding:4px 0; min-height:0; background:none; color:var(--muted); font-size:13px; border-bottom:1px solid transparent; }
+  .tabs button:hover { background:none; color:var(--ink); }
+  .tabs button[aria-pressed="true"] { color:var(--ink); border-bottom-color:var(--ink); }
+  .badge { color:var(--accent); }
+  details.limits summary { cursor:pointer; color:var(--muted); font-size:13px; }
+  details.limits[open] { display:grid; gap:12px; }
+  .comments { margin:0; padding:0; list-style:none; } .comments li { border-top:1px solid var(--line); padding:8px 0; }
+  .comments .meta { color:var(--muted); font-size:12px; }
+  .comment-form { display:grid; gap:10px; margin:12px 0 0; }
+  .comment-form textarea { min-height:64px; }
+  .walk { max-height:520px; overflow:auto; }
+  .hint { color:var(--muted); font-size:13px; margin:-4px 0 0; }
 </style>
 </head>
 <body>
@@ -121,6 +135,7 @@
     <form id="new" aria-label="New run">
       <label class="label" for="goal">Outcome</label>
       <textarea id="goal" name="goal" placeholder="Describe the outcome you want…" required></textarea>
+      <p class="hint">Start with /plan to review the plan first, /fast to skip review, /rehearse or /autopilot to set autonomy.</p>
       <label class="label" for="start-url">Start URL</label>
       <input id="start-url" name="startUrl" placeholder="Optional" />
       <label class="label" for="autonomy">Autonomy</label>
@@ -129,6 +144,18 @@
         <option value="accompaniment" selected>Accompaniment — pause at decisions</option>
         <option value="autopilot">Autopilot — run within standing permissions</option>
       </select>
+      <label class="label" for="review">Plan review</label>
+      <select id="review" name="review">
+        <option value="agent_decides" selected>Agent decides — ask when the plan is risky or long</option>
+        <option value="request_review">Request review — always show me the plan first</option>
+        <option value="always_proceed">Always proceed — perform straight away</option>
+      </select>
+      <details class="limits"><summary>Site limits</summary>
+        <label class="label" for="allow-hosts">Allowed sites</label>
+        <input id="allow-hosts" name="allow" placeholder="Optional, e.g. acme.com, docs.acme.com" />
+        <label class="label" for="block-hosts">Blocked sites</label>
+        <input id="block-hosts" name="block" placeholder="Optional, e.g. ads.example.com" />
+      </details>
       <button class="primary">Build</button>
       <p id="form-error" class="error" role="alert" hidden></p>
     </form>
@@ -165,12 +192,20 @@
     loadRuns().catch((err) => document.getElementById("runs").innerHTML = `<p class="empty">${esc(err.message)}</p>`);
   };
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
-  let current = null, source = null, events = [];
+  let current = null, source = null, events = [], view = "all";
+  const planWaiting = (r) => r.status === "composed" && r.planReview && r.planReview.required && !r.planReview.approvedAt;
+  const needsMe = (r) => r.status === "awaiting_approval" || planWaiting(r);
+  const statusText = (r) => planWaiting(r) ? "plan review" : r.status.replace(/_/g, " ");
 
   async function loadRuns() {
     const runs = await api("/v1/runs");
-    document.getElementById("runs").innerHTML = (runs.length ? '<h2 class="runs-title">Runs</h2>' : "") + runs.map((r) =>
-      `<div class="run ${r.id === current ? "active" : ""}" data-id="${r.id}" tabindex="0" role="button"><div class="status ${r.status}">${esc(r.status)} · ${esc(r.autonomy)}</div><div class="goal">${esc(r.score.goal)}</div></div>`).join("") || '<p class="empty">No runs yet.</p>';
+    const inbox = runs.filter(needsMe);
+    const active = runs.filter((r) => ["performing","verifying","awaiting_approval","composing"].includes(r.status));
+    const shown = view === "inbox" ? inbox : view === "active" ? active : runs;
+    const tab = (k, label) => `<button type="button" data-view="${k}" aria-pressed="${view === k}">${label}</button>`;
+    document.getElementById("runs").innerHTML = (runs.length ? `<div class="tabs" role="group" aria-label="Runs">${tab("all", "All runs")}${tab("active", `Active${active.length ? " " + active.length : ""}`)}${tab("inbox", `Inbox${inbox.length ? ' <span class="badge">' + inbox.length + "</span>" : ""}`)}</div>` : "") + shown.map((r) =>
+      `<div class="run ${r.id === current ? "active" : ""}" data-id="${r.id}" tabindex="0" role="button"><div class="status ${needsMe(r) ? "awaiting_approval" : r.status}">${esc(statusText(r))} · ${esc(r.autonomy)}</div><div class="goal">${esc(r.score.goal)}</div></div>`).join("") || `<p class="empty">${view === "inbox" ? "Nothing needs you." : "No runs yet."}</p>`;
+    document.querySelectorAll("[data-view]").forEach((b) => b.onclick = () => { view = b.dataset.view; loadRuns(); });
     document.querySelectorAll(".run").forEach((el) => { el.onclick = () => open(el.dataset.id); el.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(el.dataset.id); } }; });
   }
 
@@ -179,7 +214,7 @@
     source?.close();
     source = new EventSource(`/v1/runs/${id}/events${token ? "?token=" + encodeURIComponent(token) : ""}`);
     source.onmessage = () => {};
-    const types = ["run.composed","run.status","step.started","step.completed","step.failed","action","evidence","architect.note","approval.requested","approval.decided","run.verified","run.handed_off","run.attested","run.encore","run.recovering"];
+    const types = ["run.composed","run.status","step.started","step.completed","step.failed","action","evidence","architect.note","approval.requested","approval.decided","run.verified","run.handed_off","run.attested","run.encore","run.recovering","plan.review_requested","plan.approved","comment","comment.delivered"];
     types.forEach((t) => source.addEventListener(t, (e) => { events.push(JSON.parse(e.data)); render(); }));
     await render(); loadRuns();
   }
@@ -189,10 +224,16 @@
 
   async function draw() {
     if (!current) return;
+    // Do not redraw under someone typing a comment; the next refresh catches up.
+    if (document.activeElement && document.activeElement.closest && document.activeElement.closest(".comment-form")) return;
     const [run, approvals] = await Promise.all([api(`/v1/runs/${current}`), api("/v1/approvals")]);
     const mine = approvals.filter((a) => a.runId === current);
     const shots = run.evidence.filter((e) => e.kind === "screenshot" && e.path);
     const stateOf = (id) => run.steps.find((s) => s.id === id) || {};
+    const comments = run.comments || [];
+    const targetName = (t) => t === "score" ? "the plan" : t.startsWith("step:") ? "step " + t.slice(6) : t;
+    const draftComment = document.querySelector(".comment-form textarea")?.value || "";
+    const draftTarget = document.querySelector(".comment-form select")?.value || "score";
     document.getElementById("detail").innerHTML = `
       <div class="card"><h2>Goal</h2><div>${esc(run.score.goal)}</div>
         <div class="status ${run.status}" style="margin-top:8px">${esc(run.status)} · ${esc(run.autonomy)}${run.error ? " · " + esc(run.error) : ""}</div>
@@ -202,19 +243,44 @@
           ${["succeeded","failed","rehearsed"].includes(run.status) ? '<button data-act="encore">Encore</button>' : ""}
           ${["performing","awaiting_approval","verifying"].includes(run.status) ? '<button data-act="cancel">Cancel</button>' : ""}
         </div></div>
+      ${planWaiting(run) ? `<div class="card approval"><h2>Plan waiting for your review</h2>
+        <div>Review the Score below (${esc(run.planReview.reason)}). Comment on the plan or a step, then approve it to perform.</div>
+        <div class="row" style="margin-top:12px"><button class="primary" data-act="perform">Approve plan and perform</button></div></div>` : ""}
       ${mine.map((a) => `<div class="card approval"><h2>Decision waiting for you</h2>
         <div>${esc(a.reason)}</div>${a.tool ? `<pre>${esc(a.tool)} ${esc(JSON.stringify(a.input, null, 2))}</pre>` : ""}
         <div class="row"><button class="primary" data-approve="${a.id}">Approve</button><button data-decline="${a.id}">Decline</button></div></div>`).join("")}
       <div class="card"><h2>Score</h2><div style="color:var(--dim);margin-bottom:8px">${esc(run.score.summary)}</div>
         <ol class="steps">${run.score.steps.map((s) => `<li class="${stateOf(s.id).status}"><b>${esc(s.title)}</b>${s.checkpoint ? " ⏸" : ""}<br><span style="color:var(--dim)">${esc(stateOf(s.id).summary || s.instruction)}</span></li>`).join("")}</ol>
-        <div style="color:var(--dim);font-size:12px">permissions: ${esc(run.score.permissions.join(", "))}</div></div>
+        <div style="color:var(--dim);font-size:12px">permissions: ${esc(run.score.permissions.join(", "))}${run.score.hosts && run.score.hosts.allow ? " · allowed: " + esc(run.score.hosts.allow.join(", ")) : ""}${run.score.hosts && run.score.hosts.block ? " · blocked: " + esc(run.score.hosts.block.join(", ")) : ""}</div></div>
+      <div class="card"><h2>Comments</h2>
+        ${comments.length ? `<ul class="comments">${comments.map((c) => `<li><div class="meta">on ${esc(targetName(c.target))} · ${esc(c.at.slice(11, 16))}${c.deliveredAt ? " · seen by Architect" : ""}</div>${esc(c.text)}</li>`).join("")}</ul>` : '<p class="empty">Comment on the plan or a step. While the run performs, Architect takes comments into account without stopping.</p>'}
+        <form class="comment-form" aria-label="Add a comment">
+          <label class="label" for="comment-target">On</label>
+          <select id="comment-target">${[["score", "The plan"], ...run.score.steps.map((s) => ["step:" + s.id, "Step " + s.id.slice(1) + ": " + s.title])].map(([v, l]) => `<option value="${esc(v)}" ${v === draftTarget ? "selected" : ""}>${esc(l)}</option>`).join("")}</select>
+          <label class="label" for="comment-text">Comment</label>
+          <textarea id="comment-text" required>${esc(draftComment)}</textarea>
+          <button>Add comment</button>
+        </form></div>
       ${run.verdict ? `<div class="card"><h2>Verification — ${run.verdict.passed ? "passed" : "not passed"}</h2><div>${esc(run.verdict.summary)}</div>
         <ul>${run.verdict.criteria.map((c) => `<li class="crit ${c.met ? "met" : "unmet"}">${esc(c.criterion)} <span style="color:var(--dim)">— ${esc(c.evidence)}</span></li>`).join("")}</ul></div>` : ""}
       ${shots.length ? `<div class="card"><h2>Evidence</h2><div class="shots">${shots.slice(-8).map((e) => `<a href="/v1/runs/${run.id}/evidence/${e.path.split(/[\\/]/).pop()}${token ? "?token=" + encodeURIComponent(token) : ""}" target="_blank"><img src="/v1/runs/${run.id}/evidence/${e.path.split(/[\\/]/).pop()}${token ? "?token=" + encodeURIComponent(token) : ""}" alt="${esc(e.label)}" title="${esc(e.label)}"></a>`).join("")}</div></div>` : ""}
+      ${["succeeded","failed","rehearsed","handed_off"].includes(run.status) ? `<div class="card"><h2>Walkthrough</h2><pre class="walk" id="walk">Loading…</pre></div>` : ""}
       <div class="card"><h2>Performance</h2><div class="log">${events.slice(-300).map(line).join("")}</div></div>`;
     document.querySelectorAll("[data-approve]").forEach((b) => b.onclick = () => decide(b.dataset.approve, true));
     document.querySelectorAll("[data-decline]").forEach((b) => b.onclick = () => decide(b.dataset.decline, false));
     document.querySelectorAll("[data-act]").forEach((b) => b.onclick = () => act(b.dataset.act));
+    const cf = document.querySelector(".comment-form");
+    if (cf) cf.onsubmit = async (e) => {
+      e.preventDefault();
+      const text = cf.querySelector("textarea").value.trim();
+      if (!text) return;
+      await api(`/v1/runs/${current}/comments`, { method: "POST", body: JSON.stringify({ target: cf.querySelector("select").value, text, by: "podium" }) });
+      cf.querySelector("textarea").value = "";
+      render();
+    };
+    const walk = document.getElementById("walk");
+    if (walk) fetch(`/v1/runs/${current}/walkthrough`, { headers: token ? { authorization: "Bearer " + token } : {} })
+      .then((r) => r.ok ? r.text() : Promise.reject()).then((t) => { walk.textContent = t; }).catch(() => { walk.textContent = "Walkthrough not available."; });
     const log = document.querySelector(".log"); if (log) log.scrollTop = log.scrollHeight;
   }
 
@@ -226,6 +292,8 @@
       "step.started": () => `▶ ${d.title}`, "step.completed": () => `✓ ${d.summary}`, "step.failed": () => `✗ ${d.reason}`,
       "run.status": () => `status → ${d.status}`, "approval.requested": () => `⏸ ${d.reason}`,
       "approval.decided": () => d.approved ? "approved" : `declined ${d.note || ""}`,
+      "plan.review_requested": () => `⏸ plan waiting for review: ${d.reason}`, "plan.approved": () => "plan approved",
+      "comment": () => `comment · ${d.text.slice(0, 120)}`, "comment.delivered": () => "comments delivered to Architect",
       "evidence": () => `evidence · ${d.kind} · ${d.label}`, "run.verified": () => d.passed ? "verified ✓" : "not verified ✗",
     }[ev.type];
     return text ? `<div><span class="t">${t}</span>${esc(text())}</div>` : "";
@@ -248,13 +316,17 @@
     setTimeout(() => { loadRuns(); render(); }, 800);
   }
 
+  const hostsOf = (v) => String(v || "").split(/[\s,]+/).map((h) => h.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "")).filter(Boolean);
   document.getElementById("new").onsubmit = async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
     document.getElementById("form-error").hidden = true;
     const btn = e.target.querySelector("button"); btn.disabled = true; btn.textContent = "Composing…";
     try {
-      const run = await api("/v1/runs", { method: "POST", body: JSON.stringify({ goal: f.get("goal"), autonomy: f.get("autonomy"), startUrl: f.get("startUrl") || undefined }) });
+      const run = await api("/v1/runs", { method: "POST", body: JSON.stringify({
+        goal: f.get("goal"), autonomy: f.get("autonomy"), review: f.get("review"), startUrl: f.get("startUrl") || undefined,
+        hosts: { allow: hostsOf(f.get("allow")), block: hostsOf(f.get("block")) },
+      }) });
       e.target.reset(); await open(run.id);
     } catch (err) { const el = document.getElementById("form-error"); el.textContent = err.message; el.hidden = false; }
     finally { btn.disabled = false; btn.textContent = "Build"; }

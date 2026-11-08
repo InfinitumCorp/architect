@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import type { Brain, ContentBlockParam, MessageParam, ToolDef, ToolResultBlockParam } from "./brain.js";
+import { commentsMessage, hostRefusal, knowledgePrompt, planReview, relatedKnowledge, validTarget } from "./agentic.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { ToolInputError, validateInput, type Instrument, type ToolContext, type ToolSpec } from "./instruments/types.js";
 import { gate, newId, now, truncate } from "./policy.js";
@@ -17,8 +18,10 @@ import {
   type Autonomy,
   type Evidence,
   type Permission,
+  type ReviewPolicy,
   type Risk,
   type Run,
+  type RunComment,
   type RunEvent,
   type Score,
   type ScoreStep,
@@ -47,6 +50,10 @@ export interface ComposeOptions {
   /** Narrow the permissions for this Score further than the account ceiling. */
   permissions?: Permission[];
   trigger?: Signal;
+  /** Hosts the run may or may never reach (set by the person). */
+  hosts?: Score["hosts"];
+  /** Use verified earlier runs of similar goals when composing. Default true. */
+  knowledge?: boolean;
 }
 
 export interface PerformOptions extends ComposeOptions {
@@ -55,6 +62,8 @@ export interface PerformOptions extends ComposeOptions {
   budgetUsd?: number;
   /** Saved Score or schedule name that started the run. */
   source?: string;
+  /** Whether the composed plan waits for a person's review. Default: always_proceed (callers opt in). */
+  review?: ReviewPolicy;
 }
 
 interface ControlTool {
@@ -145,6 +154,8 @@ export class Architect extends EventEmitter {
   private pending = new Map<string, { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void }>();
   private cancelled = new Set<string>();
   private active = new Set<string>();
+  /** The in-memory run of each performing run, so comments reach the performer straight away. */
+  private live = new Map<string, Run>();
 
   constructor(private opts: ArchitectOptions) {
     super();
@@ -178,10 +189,14 @@ export class Architect extends EventEmitter {
 
   private async composeWithUsage(goal: string, opts: ComposeOptions): Promise<{ score: Score; usage?: TurnUsage; model?: string }> {
     const ceiling = opts.permissions ? this.ceiling.filter((p) => opts.permissions!.includes(p)) : this.ceiling;
-    const { draft, usage, model } = await this.brain.compose(
-      composeSystem(this.instruments, ceiling),
-      composePrompt(goal, opts.inputs ?? {}, opts.startUrl),
-    );
+    let prompt = composePrompt(goal, opts.inputs ?? {}, opts.startUrl);
+    if (opts.knowledge !== false) {
+      const known = await this.knowledge(goal).catch(() => []);
+      if (known.length) prompt += `
+
+${knowledgePrompt(known)}`;
+    }
+    const { draft, usage, model } = await this.brain.compose(composeSystem(this.instruments, ceiling), prompt);
     const known = new Set(this.instruments.map((i) => i.name));
     const score: Score = {
       id: newId("score"),
@@ -199,6 +214,7 @@ export class Architect extends EventEmitter {
         checkpoint: s.checkpoint,
       })),
       successCriteria: draft.successCriteria,
+      hosts: opts.hosts,
       createdAt: now(),
     };
     return { score, usage, model };
@@ -207,7 +223,7 @@ export class Architect extends EventEmitter {
   createRun(
     score: Score,
     autonomy: Autonomy,
-    extra: Partial<Pick<Run, "trigger" | "parentRunId" | "budgetUsd" | "source">> = {},
+    extra: Partial<Pick<Run, "trigger" | "parentRunId" | "budgetUsd" | "source" | "review">> = {},
   ): Run {
     const t = now();
     return {
@@ -238,11 +254,52 @@ export class Architect extends EventEmitter {
       trigger: opts.trigger,
       budgetUsd: opts.budgetUsd,
       source: opts.source,
+      review: opts.review ?? "always_proceed",
     });
+    run.planReview = planReview(score, run.review!, run.autonomy);
     if (usage) addUsage(run.usage, usage, model ?? this.brain.model);
     await this.store.save(run);
     await this.emitEvent(run.id, "run.composed", { score, estimate: this.estimate(score), budgetUsd: run.budgetUsd });
+    if (run.planReview.required) await this.emitEvent(run.id, "plan.review_requested", { reason: run.planReview.reason });
     return run;
+  }
+
+  /** True when the plan is waiting for a person's review (perform it with approvePlan). */
+  awaitingPlanReview(run: Run): boolean {
+    return Boolean(run.planReview?.required && !run.planReview.approvedAt);
+  }
+
+  /** A person approved the plan: record it and perform the run. */
+  async approvePlan(runId: string, by?: string): Promise<Run> {
+    const run = await this.store.load(runId);
+    if (run.status !== "composed") throw new Error(`run is ${run.status}`);
+    run.planReview = { ...(run.planReview ?? { required: true, reason: "reviewed" }), approvedAt: now(), by };
+    await this.persist(run);
+    await this.emitEvent(run.id, "plan.approved", { by });
+    return run;
+  }
+
+  // ───────────────────────────── Comments & knowledge ─────────────────────────────
+
+  /**
+   * A person comments on an artifact (the plan, a step, evidence, the walkthrough). While the run
+   * performs, the comment reaches the performer on its next turn without stopping the run.
+   */
+  async comment(runId: string, target: string, text: string, by?: string): Promise<RunComment> {
+    const run = this.live.get(runId) ?? (await this.store.load(runId));
+    const clean = text.trim().slice(0, 4_000);
+    if (!clean) throw new Error("comment text is required");
+    if (!validTarget(run, target)) throw new Error(`unknown comment target ${target}`);
+    const c: RunComment = { id: newId("cmt"), target, text: clean, by, at: now() };
+    (run.comments ??= []).push(c);
+    await this.persist(run);
+    await this.emitEvent(run.id, "comment", { ...c });
+    return c;
+  }
+
+  /** Verified earlier runs that resemble a goal. */
+  async knowledge(goal: string) {
+    return relatedKnowledge(goal, await this.store.list(100));
   }
 
   // ───────────────────────────── Perform ─────────────────────────────
@@ -250,6 +307,7 @@ export class Architect extends EventEmitter {
   async perform(run: Run): Promise<Run> {
     if (this.active.has(run.id)) throw new Error(`run ${run.id} is already performing`);
     this.active.add(run.id);
+    this.live.set(run.id, run);
     this.cancelled.delete(run.id);
     try {
       await this.setStatus(run, "performing");
@@ -317,6 +375,7 @@ export class Architect extends EventEmitter {
       return run;
     } finally {
       this.active.delete(run.id);
+      this.live.delete(run.id);
       await Promise.all(this.instruments.map((i) => i.endRun?.(run.id, run.status).catch(() => {})));
     }
   }
@@ -390,6 +449,16 @@ export class Architect extends EventEmitter {
         throw new BudgetExceeded(
           `Spending limit reached: $${run.usage.costUsd.toFixed(2)} spent of a $${run.budgetUsd.toFixed(2)} limit`,
         );
+      }
+      const fresh = (run.comments ?? []).filter((c) => !c.deliveredAt);
+      if (fresh.length) {
+        const last = messages[messages.length - 1]!;
+        const blocks: ContentBlockParam[] = typeof last.content === "string" ? [{ type: "text", text: last.content }] : [...(last.content as ContentBlockParam[])];
+        blocks.push({ type: "text", text: commentsMessage(fresh, run) });
+        last.content = blocks;
+        const at = now();
+        for (const c of fresh) c.deliveredAt = at;
+        void this.emitEvent(run.id, "comment.delivered", { ids: fresh.map((c) => c.id), stepId });
       }
       const res = await this.brain.turn({ system, messages, tools });
       if (res.usage) {
@@ -500,6 +569,11 @@ export class Architect extends EventEmitter {
         return errorResult(`Invalid input: ${err.message}`);
       }
       throw err;
+    }
+    const refused = hostRefusal(input, run.score.hosts);
+    if (refused) {
+      record("read", "blocked", refused);
+      return errorResult(`Blocked: ${refused}. Do not try to reach it another way.`);
     }
     const risk = typeof entry.spec.risk === "function" ? await entry.spec.risk(input) : entry.spec.risk;
     const decision = gate({ autonomy: run.autonomy, risk, required: entry.spec.permission, granted: run.score.permissions });

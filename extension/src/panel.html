@@ -39,6 +39,16 @@
             <option value="autopilot">Autopilot</option>
           </select>
         </div>
+        <div class="field">
+          <label class="label" for="review">Plan review</label>
+          <select class="input" id="review" name="review">
+            <option value="agent_decides" selected>Agent decides</option>
+            <option value="request_review">Show me the plan first</option>
+            <option value="always_proceed">Always proceed</option>
+          </select>
+        </div>
+        <label class="small"><input type="checkbox" id="same-site" /> Stay on the start URL's site</label>
+        <p class="small muted">Tip: start the goal with /plan, /fast, /rehearse or /autopilot.</p>
         <button class="btn primary" id="start" type="submit">Start run</button>
       </form>
     </section>

@@ -33,12 +33,12 @@ import android.widget.TextView;
  */
 public class MainActivity extends Activity {
     private static final int BG = Color.WHITE;
-    private static final int PANEL = Color.parseColor("#f5f5f5");
-    private static final int LINE = Color.parseColor("#e4e4e4");
-    private static final int TEXT = Color.BLACK;
-    private static final int DIM = Color.parseColor("#6e6e6e");
-    private static final int ACCENT = Color.BLACK;
-    private static final int BAD = Color.parseColor("#c62828");
+    private static final int PANEL = Color.parseColor("#ffffff");
+    private static final int LINE = Color.parseColor("#d6dce1");
+    private static final int TEXT = Color.parseColor("#111820");
+    private static final int DIM = Color.parseColor("#52606b");
+    private static final int ACCENT = Color.parseColor("#111820");
+    private static final int BAD = Color.parseColor("#111820");
 
     private FrameLayout root;
     private WebView web;
@@ -129,7 +129,7 @@ public class MainActivity extends Activity {
         box.addView(tag);
 
         box.addView(label("Architect server", TEXT, 14, false));
-        final EditText server = field("http://localhost:7337", prefs.getString("server", "http://localhost:7337"), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        final EditText server = field("https://rchtch.app", prefs.getString("server", "https://rchtch.app"), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         server.setContentDescription("Architect server address");
         box.addView(server);
 
@@ -158,7 +158,7 @@ public class MainActivity extends Activity {
         connect.setLayoutParams(lp);
         connect.setOnClickListener(v -> {
             String s = server.getText().toString().trim().replaceAll("/+$", "");
-            if (!s.startsWith("http://") && !s.startsWith("https://")) s = "http://" + s;
+            if (!s.startsWith("http://") && !s.startsWith("https://")) s = "https://" + s;
             String t = token.getText().toString().trim();
             prefs.edit().putString("server", s).putString("token", t).apply();
             openPodium(s, t);
@@ -199,7 +199,7 @@ public class MainActivity extends Activity {
             @Override
             public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
                 if (req.isForMainFrame()) {
-                    showSetup("Could not reach " + server + " (" + err.getDescription() + "). Is `architect serve` running?");
+                    showSetup("Could not reach " + server + " (" + err.getDescription() + "). Check the address and your connection.");
                 }
             }
         });

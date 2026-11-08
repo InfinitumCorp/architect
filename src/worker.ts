@@ -23,7 +23,8 @@ import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { HttpInstrument } from "./instruments/http.js";
 import postgres from "postgres";
 import { postgresCaller, SupabaseRunStore, type UnsafeSql } from "./stores/supabase.js";
-import { PERMISSIONS, type Autonomy, type Permission, type RunEvent } from "./types.js";
+import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
+import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type RunEvent } from "./types.js";
 
 const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
 
@@ -151,23 +152,35 @@ export class Conductor extends DurableObject<Env> {
         if (req.method === "GET") return json(200, await a.store.list(Number(url.searchParams.get("limit") ?? 50)));
         if (req.method === "POST") {
           const b = await body();
-          const goal = String(b.goal ?? "").trim();
+          // Slash commands at the start of the goal (/plan, /fast, /rehearse, /autopilot) set options.
+          const parsed = parseGoal(String(b.goal ?? ""));
+          const goal = parsed.goal;
           if (!goal) throw new HttpError(400, "goal is required");
-          const autonomy = (AUTONOMY.includes(b.autonomy as Autonomy) ? b.autonomy : "accompaniment") as Autonomy;
+          const autonomy = (AUTONOMY.includes(b.autonomy as Autonomy) ? b.autonomy : parsed.autonomy ?? "accompaniment") as Autonomy;
+          const review = (REVIEW_POLICIES.includes(b.review as ReviewPolicy) ? b.review : parsed.review) as ReviewPolicy | undefined;
+          const hostsIn = (b.hosts ?? {}) as Record<string, unknown>;
+          const hosts = { allow: hostList(hostsIn.allow), block: hostList(hostsIn.block) };
           const run = await a.start(goal, {
             autonomy,
             inputs: stringMap(b.inputs),
             startUrl: b.startUrl ? String(b.startUrl) : undefined,
             permissions: permissions(b.permissions),
             budgetUsd: budget(b.budgetUsd),
+            review,
+            hosts: hosts.allow || hosts.block ? hosts : undefined,
+            knowledge: b.knowledge !== false,
           });
-          if (!b.composeOnly) this.background(a.perform(run));
+          if (!b.composeOnly && !a.awaitingPlanReview(run)) this.background(a.perform(run));
           return json(202, run);
         }
       }
 
       if (resource === "runs" && id) {
         if (req.method === "GET" && !action) return json(200, await a.store.load(id));
+        if (req.method === "GET" && action === "walkthrough") {
+          const md = walkthrough(await a.store.load(id));
+          return new Response(md, { headers: { "content-type": "text/markdown; charset=utf-8" } });
+        }
         if (req.method === "GET" && action === "events") return this.events(a, id);
         if (req.method === "GET" && action === "evidence" && file) {
           if (!/^[\w.-]+\.png$/.test(file)) throw new HttpError(400, "bad evidence name");
@@ -176,8 +189,9 @@ export class Conductor extends DurableObject<Env> {
         if (req.method === "POST") {
           const b = await body();
           if (action === "perform") {
-            const run = await a.store.load(id);
+            let run = await a.store.load(id);
             if (run.status !== "composed") throw new HttpError(409, `run is ${run.status}`);
+            if (a.awaitingPlanReview(run)) run = await a.approvePlan(id, b.by ? String(b.by) : undefined);
             this.background(a.perform(run));
             return json(202, { ok: true });
           }
@@ -191,11 +205,26 @@ export class Conductor extends DurableObject<Env> {
             this.background(a.encore(id, stringMap(b.inputs) ?? {}, autonomy, budget(b.budgetUsd)));
             return json(202, { ok: true });
           }
+          if (action === "comments") {
+            const text = String(b.text ?? "");
+            const target = String(b.target ?? "score");
+            try {
+              return json(201, await a.comment(id, target, text, b.by ? String(b.by).slice(0, 80) : undefined));
+            } catch (err) {
+              if (err instanceof Error && /required|unknown comment target/.test(err.message)) throw new HttpError(400, err.message);
+              throw err;
+            }
+          }
           if (action === "cancel") {
             a.cancel(id);
             return json(202, { ok: true });
           }
         }
+      }
+
+      if (resource === "knowledge" && req.method === "GET") {
+        const q = String(url.searchParams.get("q") ?? "").slice(0, 500);
+        return json(200, q ? await a.knowledge(q) : []);
       }
 
       if (resource === "approvals") {

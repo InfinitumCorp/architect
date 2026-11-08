@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": ":\\ARCHITECT\\™",
   "short_name": "ARCHITECT",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Give :\\ARCHITECT\\ a goal from any page: send the selection or the current page, follow the run and answer approvals.",
   "minimum_chrome_version": "116",
   "icons": {

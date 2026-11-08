@@ -4,6 +4,7 @@
 
 export const DEFAULT_BASE = "https://rchtch.app";
 export const AUTONOMY = ["rehearsal", "accompaniment", "autopilot"];
+export const REVIEW = ["agent_decides", "request_review", "always_proceed"];
 export const FINAL = new Set(["succeeded", "failed", "rehearsed", "handed_off"]);
 const MAX_GOAL = 8000;
 
@@ -43,7 +44,7 @@ export async function readResponse(res) {
 }
 
 /** Validate and shape the body for POST /v1/runs. */
-export function runRequest({ goal, autonomy, startUrl } = {}) {
+export function runRequest({ goal, autonomy, startUrl, review, sameSite } = {}) {
   const g = String(goal ?? "").trim();
   if (!g) throw new ApiError("http", "Write a goal first.");
   const body = {
@@ -54,7 +55,12 @@ export function runRequest({ goal, autonomy, startUrl } = {}) {
   if (url) {
     if (!/^https?:\/\//i.test(url)) throw new ApiError("http", "The start URL must begin with http:// or https://.");
     body.startUrl = url;
+    // "Stay on this site": the run may only reach the start URL's host (and its subdomains).
+    if (sameSite) body.hosts = { allow: [new URL(url).hostname] };
+  } else if (sameSite) {
+    throw new ApiError("http", "Add a start URL to keep the run on one site.");
   }
+  if (REVIEW.includes(review)) body.review = review;
   return body;
 }
 
@@ -96,6 +102,12 @@ export function createClient({ base = DEFAULT_BASE, token = "", fetchImpl = glob
     runs: (limit = 20) => call(`/v1/runs?limit=${limit}`),
     run: (id) => call(`/v1/runs/${encodeURIComponent(id)}`),
     start: (draft) => call("/v1/runs", { method: "POST", body: runRequest(draft) }),
+    perform: (id) => call(`/v1/runs/${encodeURIComponent(id)}/perform`, { method: "POST", body: { by: "chrome-extension" } }),
+    comment: (id, text, target = "score") => {
+      const t = String(text ?? "").trim();
+      if (!t) throw new ApiError("http", "Write a comment first.");
+      return call(`/v1/runs/${encodeURIComponent(id)}/comments`, { method: "POST", body: { target, text: t.slice(0, 4000), by: "chrome-extension" } });
+    },
     cancel: (id) => call(`/v1/runs/${encodeURIComponent(id)}/cancel`, { method: "POST", body: {} }),
     approvals: () => call("/v1/approvals"),
     decide: (id, approved, note) =>
@@ -104,6 +116,10 @@ export function createClient({ base = DEFAULT_BASE, token = "", fetchImpl = glob
 }
 
 /** One-line description of a run for lists. */
+export function planWaiting(run) {
+  return run?.status === "composed" && Boolean(run.planReview?.required) && !run.planReview?.approvedAt;
+}
+
 export function runLabel(run) {
   const goal = run?.score?.goal || run?.score?.summary || "(no goal)";
   return goal.length > 90 ? goal.slice(0, 89) + "…" : goal;

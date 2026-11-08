@@ -7,7 +7,8 @@ import type { Architect } from "./architect.js";
 import { TriggerRouter } from "./triggers.js";
 import { ScoreLibrary } from "./library.js";
 import { ScheduleStore, validateSchedule } from "./schedules.js";
-import { PERMISSIONS, type Autonomy, type Permission, type RunEvent, type Signal } from "./types.js";
+import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
+import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type RunEvent, type Signal } from "./types.js";
 import { InputError, NotFoundError, now } from "./policy.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -136,23 +137,37 @@ export function createArchitectServer(opts: ServerOptions): Server {
         if (req.method === "GET") return json(res, 200, await architect.store.list(Number(url.searchParams.get("limit") ?? 50)));
         if (req.method === "POST") {
           const b = await body(req);
-          const goal = String(b.goal ?? "").trim();
+          // Slash commands at the start of the goal (/plan, /fast, /rehearse, /autopilot) set options.
+          const parsed = parseGoal(String(b.goal ?? ""));
+          const goal = parsed.goal;
           if (!goal) throw new HttpError(400, "goal is required");
-          const autonomy = (AUTONOMY.includes(b.autonomy as Autonomy) ? b.autonomy : "accompaniment") as Autonomy;
+          const autonomy = (AUTONOMY.includes(b.autonomy as Autonomy) ? b.autonomy : parsed.autonomy ?? "accompaniment") as Autonomy;
+          const review = (REVIEW_POLICIES.includes(b.review as ReviewPolicy) ? b.review : parsed.review) as ReviewPolicy | undefined;
+          const hostsIn = (b.hosts ?? {}) as Record<string, unknown>;
+          const hosts = { allow: hostList(hostsIn.allow), block: hostList(hostsIn.block) };
           const run = await architect.start(goal, {
             autonomy,
             inputs: stringMap(b.inputs),
             startUrl: b.startUrl ? String(b.startUrl) : undefined,
             permissions: permissions(b.permissions),
             budgetUsd: budget(b.budgetUsd),
+            review,
+            hosts: hosts.allow || hosts.block ? hosts : undefined,
+            knowledge: b.knowledge !== false,
           });
-          if (!b.composeOnly) background(architect.perform(run));
+          if (!b.composeOnly && !architect.awaitingPlanReview(run)) background(architect.perform(run));
           return json(res, 202, run);
         }
       }
 
       if (resource === "runs" && id) {
         if (req.method === "GET" && !action) return json(res, 200, await architect.store.load(id));
+        if (req.method === "GET" && action === "walkthrough") {
+          const md = walkthrough(await architect.store.load(id));
+          res.writeHead(200, { "content-type": "text/markdown; charset=utf-8" });
+          res.end(md);
+          return;
+        }
         if (req.method === "GET" && action === "events") return streamEvents(req, res, architect, id);
         if (req.method === "GET" && action === "evidence" && file) {
           if (!/^[\w.-]+\.png$/.test(file)) throw new HttpError(400, "bad evidence name");
@@ -163,8 +178,9 @@ export function createArchitectServer(opts: ServerOptions): Server {
         if (req.method === "POST") {
           const b = await body(req);
           if (action === "perform") {
-            const run = await architect.store.load(id);
+            let run = await architect.store.load(id);
             if (run.status !== "composed") throw new HttpError(409, `run is ${run.status}`);
+            if (architect.awaitingPlanReview(run)) run = await architect.approvePlan(id, b.by ? String(b.by) : undefined);
             background(architect.perform(run));
             return json(res, 202, { ok: true });
           }
@@ -177,6 +193,16 @@ export function createArchitectServer(opts: ServerOptions): Server {
             const autonomy = AUTONOMY.includes(b.autonomy as Autonomy) ? (b.autonomy as Autonomy) : undefined;
             background(architect.encore(id, stringMap(b.inputs), autonomy, budget(b.budgetUsd)));
             return json(res, 202, { ok: true });
+          }
+          if (action === "comments") {
+            const text = String(b.text ?? "");
+            const target = String(b.target ?? "score");
+            try {
+              return json(res, 201, await architect.comment(id, target, text, b.by ? String(b.by).slice(0, 80) : undefined));
+            } catch (err) {
+              if (err instanceof Error && /required|unknown comment target/.test(err.message)) throw new HttpError(400, err.message);
+              throw err;
+            }
           }
           if (action === "cancel") {
             architect.cancel(id);
@@ -238,6 +264,11 @@ export function createArchitectServer(opts: ServerOptions): Server {
           await schedules.remove(id);
           return json(res, 200, { ok: true });
         }
+      }
+
+      if (resource === "knowledge" && req.method === "GET") {
+        const q = String(url.searchParams.get("q") ?? "").slice(0, 500);
+        return json(res, 200, q ? await architect.knowledge(q) : []);
       }
 
       if (resource === "approvals") {
