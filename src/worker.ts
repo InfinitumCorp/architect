@@ -21,7 +21,8 @@ import { DurableRunStore } from "./stores/durable.js";
 import { BrowserInstrument } from "./instruments/browser.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { HttpInstrument } from "./instruments/http.js";
-import { SupabaseRunStore } from "./stores/supabase.js";
+import postgres from "postgres";
+import { postgresCaller, SupabaseRunStore, type UnsafeSql } from "./stores/supabase.js";
 import { PERMISSIONS, type Autonomy, type Permission, type RunEvent } from "./types.js";
 
 const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
@@ -36,6 +37,8 @@ export interface Env {
   ARCHITECT_WORKERS_AI_MODEL?: string;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  /** Hyperdrive to the Supabase pooler as the architect_worker login (see supabase/migrations). */
+  HYPERDRIVE?: Hyperdrive;
   ARCHITECT_API_TOKEN?: string;
   [key: string]: unknown;
 }
@@ -97,10 +100,17 @@ export class Conductor extends DurableObject<Env> {
             fetch: workersAiFetch(this.env.AI),
             maxTokens: 8_000,
           });
-    // Storage: Supabase once its key is set; until then the Durable Object's own storage.
-    const store = this.env.SUPABASE_SERVICE_ROLE_KEY
-      ? new SupabaseRunStore({ url: this.env.SUPABASE_URL, serviceKey: this.env.SUPABASE_SERVICE_ROLE_KEY })
-      : new DurableRunStore(this.ctx.storage);
+    // Storage: Supabase over Hyperdrive as the limited architect_worker login; else with the
+    // service-role key if one is set; else the Durable Object's own storage.
+    const store = this.env.HYPERDRIVE
+      ? new SupabaseRunStore({
+          call: postgresCaller(
+            postgres(this.env.HYPERDRIVE.connectionString, { max: 5, fetch_types: false, prepare: false }) as unknown as UnsafeSql,
+          ),
+        })
+      : this.env.SUPABASE_SERVICE_ROLE_KEY
+        ? new SupabaseRunStore({ url: this.env.SUPABASE_URL, serviceKey: this.env.SUPABASE_SERVICE_ROLE_KEY })
+        : new DurableRunStore(this.ctx.storage);
     this.architect = new Architect({
       brain,
       store,

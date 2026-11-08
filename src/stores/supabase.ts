@@ -1,12 +1,55 @@
 import { safeRel, type RunStoreLike } from "../store.js";
 import type { Run, RunEvent } from "../types.js";
 
-export interface SupabaseStoreOptions {
-  /** Project URL, e.g. https://<ref>.supabase.co */
-  url: string;
-  /** Service-role key. Server-side only (a Worker secret); never sent to a browser. */
-  serviceKey: string;
-  fetch?: typeof fetch;
+/** Calls one of the architect_* functions with named arguments and returns its result. */
+export type RpcCaller = (fn: string, args: Record<string, unknown>) => Promise<unknown>;
+
+export type SupabaseStoreOptions =
+  | {
+      /** Project URL, e.g. https://<ref>.supabase.co */
+      url: string;
+      /** Service-role key. Server-side only (a Worker secret); never sent to a browser. */
+      serviceKey: string;
+      fetch?: typeof fetch;
+      call?: undefined;
+    }
+  | {
+      /** Direct database path, e.g. postgresCaller() over Hyperdrive as the architect_worker login. */
+      call: RpcCaller;
+    };
+
+const ARCHITECT_FNS = new Set([
+  "architect_save_run", "architect_get_run", "architect_list_runs", "architect_append_event",
+  "architect_events", "architect_put_file", "architect_get_file",
+]);
+
+/** The subset of a postgres.js client this store needs. */
+export interface UnsafeSql {
+  unsafe(query: string, params?: unknown[]): Promise<Array<Record<string, unknown>>>;
+}
+
+/**
+ * An RpcCaller over a Postgres connection. Only the architect_* functions can be called, arguments
+ * always travel as bound parameters, and objects are sent as jsonb.
+ */
+export function postgresCaller(sql: UnsafeSql): RpcCaller {
+  return async (fn, args) => {
+    if (!ARCHITECT_FNS.has(fn)) throw new Error(`not an Architect function: ${fn}`);
+    const names = Object.keys(args);
+    for (const n of names) if (!/^p_[a-z_]+$/.test(n)) throw new Error(`bad argument name ${n}`);
+    const params = names.map((n) => {
+      const v = args[n];
+      return v !== null && typeof v === "object" ? JSON.stringify(v) : v;
+    });
+    const list = names.map((n, i) => {
+      const v = args[n];
+      const cast = v !== null && typeof v === "object" ? "::jsonb" : typeof v === "number" ? "::int" : "::text";
+      return `${n} => $${i + 1}${cast}`;
+    });
+    const rows = await sql.unsafe(`select public.${fn}(${list.join(", ")}) as r`, params);
+    const r = rows[0]?.r;
+    return typeof r === "string" && (fn === "architect_get_run" || fn === "architect_list_runs" || fn === "architect_events") ? JSON.parse(r) : (r ?? null);
+  };
 }
 
 /**
@@ -19,7 +62,7 @@ export class SupabaseRunStore implements RunStoreLike {
   private writes = new Map<string, Promise<void>>();
 
   constructor(private opts: SupabaseStoreOptions) {
-    this.f = opts.fetch ?? ((...a) => fetch(...a));
+    this.f = (opts.call === undefined && opts.fetch) || ((...a) => fetch(...a));
   }
 
   runDir(runId: string) {
@@ -28,6 +71,7 @@ export class SupabaseRunStore implements RunStoreLike {
   }
 
   private async rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
+    if (this.opts.call) return (await this.opts.call(fn, args)) as T;
     const res = await this.f(`${this.opts.url.replace(/\/$/, "")}/rest/v1/rpc/${fn}`, {
       method: "POST",
       headers: {
