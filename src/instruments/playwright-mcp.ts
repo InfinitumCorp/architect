@@ -27,7 +27,18 @@ export interface PlaywrightMcpOptions {
 }
 
 /** Tools never offered to the model: arbitrary page scripts, host file access, browser installs. */
-export const EXCLUDED_TOOLS = new Set(["browser_evaluate", "browser_run_code", "browser_file_upload", "browser_install", "browser_pdf_save"]);
+export const EXCLUDED_TOOLS = new Set([
+  "browser_evaluate",
+  "browser_run_code",
+  "browser_run_code_unsafe",
+  "browser_file_upload",
+  "browser_drop", // takes host file paths
+  "browser_install",
+  "browser_pdf_save",
+]);
+
+/** Parameters removed from every tool: they make the server write files to host paths. */
+const DROPPED_PARAMS = new Set(["filename"]);
 
 /** Fields whose label means a person should type the value, not the model. */
 const SENSITIVE_FIELD = /\b(password|passcode|pin|card number|credit card|cvv|cvc|security code|ssn|social security|iban|routing)\b/i;
@@ -39,13 +50,17 @@ interface McpTool {
   annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean };
 }
 
-/** Risk of one Playwright MCP tool call, from the server's hints and the element being acted on. */
+/**
+ * Risk of one Playwright MCP tool call. The server marks nearly every tool `destructiveHint`
+ * (0.0.84), so that hint is not used; like BrowserInstrument, risk comes from what is acted on.
+ */
 export function riskFor(tool: McpTool, input: Record<string, unknown>): Risk {
   if (tool.annotations?.readOnlyHint) return "read";
   if (tool.name === "browser_navigate" || tool.name === "browser_navigate_back" || tool.name === "browser_tabs") return "read";
-  const label = [input.element, input.text, input.key, input.values, input.fields].map((v) => (typeof v === "string" ? v : JSON.stringify(v ?? ""))).join(" ");
+  const label = [input.element, input.text, input.key, input.values, input.fields, input.promptText]
+    .map((v) => (typeof v === "string" ? v : JSON.stringify(v ?? "")))
+    .join(" ");
   if (SENSITIVE_FIELD.test(label)) return "irreversible";
-  if (tool.annotations?.destructiveHint && !/click|type|select|press|hover|fill|drag|wait|resize|dialog/.test(tool.name)) return "irreversible";
   return classifyByLabel(label);
 }
 
@@ -87,8 +102,9 @@ export class PlaywrightMcpInstrument implements Instrument {
       description: t.description ?? t.name,
       input_schema: {
         type: "object",
-        properties: (t.inputSchema?.properties ?? {}) as Record<string, unknown>,
-        required: t.inputSchema?.required,
+        properties: Object.fromEntries(Object.entries(t.inputSchema?.properties ?? {}).filter(([k]) => !DROPPED_PARAMS.has(k))),
+        required: t.inputSchema?.required?.filter((k) => !DROPPED_PARAMS.has(k)),
+        additionalProperties: false,
       } satisfies JsonSchemaObject,
       permission: "browser",
       risk: (input: Record<string, unknown>) => riskFor(t, input),
@@ -115,7 +131,8 @@ export class PlaywrightMcpInstrument implements Instrument {
 
   async execute(tool: string, input: Record<string, unknown>, _ctx: ToolContext): Promise<ToolOutput> {
     if (!this.mcpTools.has(tool)) throw new Error(`unknown browser tool ${tool}`);
-    if (tool === "browser_navigate" && !hostAllowed(String(input.url), this.opts.allowedHosts ?? [])) {
+    // The server's --allowed-origins also blocks requests; this refuses the navigation up front.
+    if (typeof input.url === "string" && !hostAllowed(input.url, this.opts.allowedHosts ?? [])) {
       return { text: `Navigation to ${String(input.url)} is outside the allowed hosts.`, isError: true };
     }
     const result = (await this.client.callTool({ name: tool, arguments: input })) as {
