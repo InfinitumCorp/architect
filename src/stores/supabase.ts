@@ -36,7 +36,7 @@ export function postgresCaller(sql: UnsafeSql): RpcCaller {
   return async (fn, args) => {
     if (!ARCHITECT_FNS.has(fn)) throw new Error(`not an Architect function: ${fn}`);
     const names = Object.keys(args);
-    for (const n of names) if (!/^p_[a-z_]+$/.test(n)) throw new Error(`bad argument name ${n}`);
+    for (const n of names) if (!/^p_[a-z0-9_]+$/.test(n)) throw new Error(`bad argument name ${n}`);
     const params = names.map((n) => {
       const v = args[n];
       return v !== null && typeof v === "object" ? JSON.stringify(v) : v;
