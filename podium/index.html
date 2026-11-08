@@ -7,6 +7,8 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/firm-suite.css" />
+<script type="module" src="/firm-suite.js"></script>
 <link rel="apple-touch-icon" href="/icon-192.png" />
 <title>:\ARCHITECT\™ Podium</title>
 <style>
@@ -86,6 +88,7 @@
   </aside>
   <section id="detail"><p class="empty">Choose a run, or describe an outcome to start one.</p></section>
 </main>
+<footer class="firm"><firm-suite product="architect" compact></firm-suite></footer>
 <script>
   let token = "";
   try { token = new URLSearchParams(location.search).get("token") || localStorage.getItem("architect.token") || ""; } catch {}
