@@ -166,7 +166,7 @@ public class MainActivity extends Activity {
         box.addView(connect);
 
         TextView help = label(
-            "Start the server on your computer with  architect serve\n\n"
+            "Use https://rchtch.app, or your own server started with  architect serve\n\n"
                 + "Over USB: run  adb reverse tcp:7337 tcp:7337  and use http://localhost:7337\n"
                 + "Over Wi-Fi: use http://<your computer's IP>:7337",
             DIM, 13, false);

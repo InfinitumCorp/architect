@@ -217,6 +217,7 @@
     const types = ["run.composed","run.status","step.started","step.completed","step.failed","action","evidence","architect.note","approval.requested","approval.decided","run.verified","run.handed_off","run.attested","run.encore","run.recovering","plan.review_requested","plan.approved","comment","comment.delivered"];
     types.forEach((t) => source.addEventListener(t, (e) => { events.push(JSON.parse(e.data)); render(); }));
     await render(); loadRuns();
+    if (matchMedia("(max-width: 860px)").matches) setTimeout(() => document.getElementById("detail").scrollIntoView({ behavior: "smooth", block: "start" }), 250);
   }
 
   let renderTimer = null;
@@ -225,7 +226,8 @@
   async function draw() {
     if (!current) return;
     // Do not redraw under someone typing a comment; the next refresh catches up.
-    if (document.activeElement && document.activeElement.closest && document.activeElement.closest(".comment-form")) return;
+    const typingIn = document.activeElement;
+    if (typingIn && /^(TEXTAREA|SELECT)$/.test(typingIn.tagName) && typingIn.closest(".comment-form")) return;
     const [run, approvals] = await Promise.all([api(`/v1/runs/${current}`), api("/v1/approvals")]);
     const mine = approvals.filter((a) => a.runId === current);
     const shots = run.evidence.filter((e) => e.kind === "screenshot" && e.path);
@@ -276,6 +278,7 @@
       if (!text) return;
       await api(`/v1/runs/${current}/comments`, { method: "POST", body: JSON.stringify({ target: cf.querySelector("select").value, text, by: "podium" }) });
       cf.querySelector("textarea").value = "";
+      document.activeElement && document.activeElement.blur();
       render();
     };
     const walk = document.getElementById("walk");
