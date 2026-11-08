@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#ffffff" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<title>:\ARCHITECT\™ Privacy</title>
+<style>
+  body { margin:0; background:#fff; color:#000; font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:48px 16px 80px; }
+  .wordmark { font:600 18px ui-monospace,monospace; letter-spacing:.04em; margin:0 0 40px; }
+  .wordmark sup { font-size:.55em; }
+  h1 { font-size:28px; font-weight:600; margin:0 0 4px; }
+  h2 { font-size:18px; font-weight:600; margin:36px 0 8px; padding-top:24px; border-top:1px solid #e4e4e4; }
+  .dim { color:#6e6e6e; margin:0; }
+  code { font:14px ui-monospace,monospace; background:#f5f5f5; padding:1px 4px; border-radius:4px; }
+  a { color:#000; }
+</style>
+</head>
+<body>
+<main>
+  <p class="wordmark">:\ARCHITECT\<sup class="tm">™</sup></p>
+  <h1>Chrome extension privacy policy</h1>
+  <p class="dim">The Infinitum Corporation. Last updated 8 November 2026.</p>
+
+  <h2>What the extension sends</h2>
+  <p>The extension talks only to the :\ARCHITECT\ server at <code>rchtch.app</code>, and only when you act in its side panel:</p>
+  <ul>
+    <li>the goal you type, the autonomy level you choose and the optional start URL, when you press <strong>Start run</strong>;</li>
+    <li>a request to list your recent runs, read one, or cancel one;</li>
+    <li>your approve or decline decision on a waiting step, with any note you type.</li>
+  </ul>
+  <p>Requests carry your :\ARCHITECT\ API token and your Cloudflare Access sign-in cookie for <code>rchtch.app</code>, so the server knows they come from you.</p>
+  <p>The right-click menu <strong>Send selection</strong> / <strong>Send this page</strong> copies the selected text, or the page's address and title, into the side panel as a draft goal. Nothing is sent until you press Start run. The extension does not read the text of the pages you visit.</p>
+
+  <h2>What it stores on your device</h2>
+  <ul>
+    <li>Your API token, in Chrome's local extension storage, until you clear it in Options or remove the extension.</li>
+    <li>The unsent draft goal, in session storage, which Chrome clears when the browser closes.</li>
+  </ul>
+  <p><strong>Copy from open Podium tab</strong> in Options reads the token that the :\ARCHITECT\ Podium saved in an open <code>rchtch.app</code> tab, only when you press that button.</p>
+
+  <h2>What it does not do</h2>
+  <p>No analytics, no advertising, no tracking, no browsing history, no remote code. We do not sell your data or share it with anyone other than the :\ARCHITECT\ server you send it to. Data handling follows the Chrome Web Store User Data Policy, including its Limited Use requirements.</p>
+
+  <h2>Contact</h2>
+  <p><a href="mailto:info@theinfinitumcorporation.com">info@theinfinitumcorporation.com</a></p>
+</main>
+</body>
+</html>
