@@ -18,6 +18,8 @@ const PODIUM_ASSETS: Record<string, { file: string; type: string }> = {
   "/icon.svg": { file: "icon.svg", type: "image/svg+xml" },
   "/icon-192.png": { file: "icon-192.png", type: "image/png" },
   "/icon-512.png": { file: "icon-512.png", type: "image/png" },
+  "/firm-suite.js": { file: "firm-suite.js", type: "text/javascript; charset=utf-8" },
+  "/firm-suite.css": { file: "firm-suite.css", type: "text/css; charset=utf-8" },
 };
 const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
 

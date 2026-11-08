@@ -7,8 +7,10 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="/firm-suite.css" />
+<script type="module" src="/firm-suite.js"></script>
 <link rel="apple-touch-icon" href="/icon-192.png" />
-<title>:\ARCHITECT\™ Podium</title>
+<title>:\ARCHITECT\ Podium</title>
 <style>
   /* Infinitum house style (InfinitumCorp/RULES BUILD_RULES.md + brand/infinitum.css): system Helvetica,
      five colour tokens, weight-400 type with tight tracking, hairline rules, no shadows or rounded cards. */
@@ -74,13 +76,15 @@
   .log .t { color:var(--muted); margin-right:10px; }
   .shots { display:flex; gap:12px; flex-wrap:wrap; } .shots img { width:220px; border:1px solid var(--line); display:block; }
   .shots a:hover img { border-color:var(--accent); }
-  .crit { margin:6px 0; list-style:none; } ul:has(> .crit) { padding-left:0; } .crit.met::before { content:"\2713  "; } .crit.unmet::before { content:"\2717  "; }
+  .crit { margin:6px 0; } .crit.met::before { content:"\2713  "; } .crit.unmet::before { content:"\2717  "; }
   .row { display:flex; gap:10px; flex-wrap:wrap; }
   .empty { color:var(--muted); }
   #detail > .empty { font-size:clamp(22px, 2.4vw, 32px); letter-spacing:-.04em; line-height:1.2; max-width:18em; margin:0; }
   .error { margin:0; padding:10px 0 0; border-top:2px solid var(--ink); color:var(--ink); }
   #token-form { border-top:1px solid var(--ink); padding-top:18px; }
   #token-form label { color:var(--muted); font-size:14px; }
+  aside .firm { margin-top:28px; }
+  .crit { list-style:none; } ul:has(> .crit) { padding-left:0; }
 
   @media (prefers-reduced-motion: reduce) { *, *::after { transition:none !important; animation:none !important; } }
   @media (max-width: 860px) { main { grid-template-columns:1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
@@ -122,6 +126,7 @@
       <button class="primary">Save token</button>
     </form>
     <div id="runs"></div>
+    <firm-suite class="firm" product="architect" compact></firm-suite>
   </aside>
   <section id="detail" tabindex="-1" aria-live="polite"><p class="empty">Choose a run, or describe an outcome to start one.</p></section>
 </main>
