@@ -1,11 +1,16 @@
 /**
  * Choose the brain from configuration.
  *
+ * Architect runs on open-weight models by default, through OmniRoute, with open-model
+ * backups when they are configured. Nothing proprietary is used unless the models file
+ * names it explicitly.
+ *
  *   architect.models.json  – explicit model list and routing policy (see architect.models.example.json)
- *   OMNIROUTE_URL       – shortcut: route through a local OmniRoute gateway (e.g. http://localhost:20128/v1)
- *   ARCHITECT_OPENAI_BASE_URL + ARCHITECT_OPENAI_MODEL – shortcut: any other OpenAI-compatible endpoint
- *   ANTHROPIC_API_KEY   – Claude joins as the "strong" model
- *   ARCHITECT_BRAIN        – force "anthropic" (single model) or "auto" (router)
+ *   OMNIROUTE_URL       – OmniRoute gateway; default http://localhost:20128/v1, model "auto"
+ *   CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN – backup: Cloudflare Workers AI open models
+ *   GROQ_API_KEY        – backup: Groq open models (gpt-oss, Qwen3)
+ *   ARCHITECT_OPENAI_BASE_URL + ARCHITECT_OPENAI_MODEL – any other OpenAI-compatible endpoint (self-hosted vLLM, Ollama)
+ *   ARCHITECT_BRAIN        – "anthropic" forces the single Claude brain (opt-in only); "auto" is the default router
  *
  * Secrets never live in the models file: entries name the env var that holds the key (apiKeyEnv).
  */
@@ -79,11 +84,11 @@ export function candidatesFrom(file: ModelsFile, env: Env = process.env): Candid
   });
 }
 
-/** The model list implied by environment shortcuts, or null when none are set. */
-export function modelsFromEnv(env: Env = process.env): ModelsFile | null {
+/** The model list implied by the environment: OmniRoute first, then any configured open-model backups. */
+export function modelsFromEnv(env: Env = process.env): ModelsFile {
   const models: ModelsFile["models"] = [];
-  if (env.OMNIROUTE_URL) {
-    const baseUrl = env.OMNIROUTE_URL;
+  {
+    const baseUrl = env.OMNIROUTE_URL ?? "http://localhost:20128/v1";
     const key = env.OMNIROUTE_API_KEY ? "OMNIROUTE_API_KEY" : undefined;
     const add = (tier: "fast" | "balanced" | "strong", model: string) =>
       models.push({ provider: "openai", id: `omniroute/${model}#${tier}`, baseUrl, model, tier, apiKeyEnv: key, vision: env.OMNIROUTE_VISION === "on" });
@@ -101,9 +106,39 @@ export function modelsFromEnv(env: Env = process.env): ModelsFile | null {
       vision: env.ARCHITECT_OPENAI_VISION === "on",
     });
   }
-  if (!models.length) return null;
-  if (env.ANTHROPIC_API_KEY) models.push({ provider: "anthropic", model: env.ARCHITECT_MODEL ?? "claude-opus-5-5", tier: "strong" });
+  if (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_TOKEN) {
+    const baseUrl = `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/v1`;
+    models.push(
+      { provider: "openai", id: "workers-ai/gpt-oss-120b", baseUrl, model: "@cf/openai/gpt-oss-120b", tier: "strong", apiKeyEnv: "CLOUDFLARE_AI_TOKEN" },
+      { provider: "openai", id: "workers-ai/gpt-oss-20b", baseUrl, model: "@cf/openai/gpt-oss-20b", tier: "fast", apiKeyEnv: "CLOUDFLARE_AI_TOKEN" },
+    );
+  }
+  if (env.GROQ_API_KEY) {
+    const baseUrl = "https://api.groq.com/openai/v1";
+    models.push(
+      { provider: "openai", id: "groq/gpt-oss-120b", baseUrl, model: "openai/gpt-oss-120b", tier: "strong", apiKeyEnv: "GROQ_API_KEY" },
+      { provider: "openai", id: "groq/qwen3-32b", baseUrl, model: "qwen/qwen3-32b", tier: "balanced", apiKeyEnv: "GROQ_API_KEY" },
+      { provider: "openai", id: "groq/gpt-oss-20b", baseUrl, model: "openai/gpt-oss-20b", tier: "fast", apiKeyEnv: "GROQ_API_KEY" },
+    );
+  }
   return { models };
+}
+
+/**
+ * True when the operator named a model source.
+ * The OmniRoute default that `modelsFromEnv` always includes does not count, so the
+ * hosted Worker can still use its Workers AI binding when nothing is set.
+ */
+export function hasExplicitModelConfig(env: Env = process.env): boolean {
+  return Boolean(
+    env.ANTHROPIC_API_KEY ||
+      env.ARCHITECT_BRAIN === "anthropic" ||
+      env.OMNIROUTE_URL ||
+      (env.ARCHITECT_OPENAI_BASE_URL && env.ARCHITECT_OPENAI_MODEL) ||
+      (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_TOKEN) ||
+      env.GROQ_API_KEY ||
+      env.ARCHITECT_MODELS_FILE,
+  );
 }
 
 export function loadModelsFile(file: string): ModelsFile {
@@ -125,9 +160,5 @@ export function brainFromEnv(env: Env = process.env, cwd = process.cwd()): Brain
   if (env.ARCHITECT_BRAIN === "anthropic") return new AnthropicBrain();
   const file = env.ARCHITECT_MODELS_FILE ?? path.join(cwd, "architect.models.json");
   const config = existsSync(file) ? loadModelsFile(file) : modelsFromEnv(env);
-  if (!config) {
-    if (env.ARCHITECT_BRAIN === "auto") throw new Error("ARCHITECT_BRAIN=auto needs architect.models.json, OMNIROUTE_URL or ARCHITECT_OPENAI_BASE_URL");
-    return new AnthropicBrain();
-  }
   return new RouterBrain(candidatesFrom(config, env), { ...DEFAULT_POLICY, ...config.policy });
 }

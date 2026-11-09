@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Brain, TurnRequest } from "../src/brain.js";
-import { brainFromEnv, loadModelsFile, modelsFromEnv } from "../src/brains/config.js";
+import { brainFromEnv, hasExplicitModelConfig, loadModelsFile, modelsFromEnv } from "../src/brains/config.js";
 import { OpenAICompatBrain, toOpenAIMessages } from "../src/brains/openai.js";
 import { RouterBrain, trailingErrors } from "../src/brains/router.js";
 import { Architect } from "../src/architect.js";
@@ -212,10 +212,11 @@ describe("Architect on open models", () => {
 });
 
 describe("model configuration", () => {
-  it("builds a route from OMNIROUTE_URL and adds Claude as the strong model when a key exists", () => {
-    const cfg = modelsFromEnv({ OMNIROUTE_URL: "http://localhost:20128/v1", OMNIROUTE_FAST_MODEL: "qwen3:8b", ANTHROPIC_API_KEY: "x" });
-    expect(cfg!.models.map((m) => `${m.tier}:${m.model}`)).toEqual(["balanced:auto", "fast:qwen3:8b", "strong:claude-opus-5-5"]);
-    expect(modelsFromEnv({})).toBeNull();
+  it("routes through OmniRoute with open-model backups and never adds Claude on its own", () => {
+    const cfg = modelsFromEnv({ OMNIROUTE_URL: "http://localhost:20128/v1", OMNIROUTE_FAST_MODEL: "qwen3:8b", ANTHROPIC_API_KEY: "x", CLOUDFLARE_ACCOUNT_ID: "acct", CLOUDFLARE_AI_TOKEN: "t" });
+    expect(cfg.models.map((m) => `${m.tier}:${m.model}`)).toEqual(["balanced:auto", "fast:qwen3:8b", "strong:@cf/openai/gpt-oss-120b", "fast:@cf/openai/gpt-oss-20b"]);
+    expect(cfg.models.every((m) => m.provider === "openai")).toBe(true);
+    expect(modelsFromEnv({}).models.map((m) => [m.provider === "openai" && m.baseUrl, m.model])).toEqual([["http://localhost:20128/v1", "auto"]]);
     const b = brainFromEnv({ OMNIROUTE_URL: "http://localhost:20128/v1" }, dir);
     expect(b).toBeInstanceOf(RouterBrain);
     expect((b as RouterBrain).candidates).toHaveLength(1);
@@ -233,8 +234,20 @@ describe("model configuration", () => {
     expect(cfg.policy?.act).toBe("fast");
   });
 
-  it("uses a single Claude brain when nothing is configured", () => {
+  it("defaults to OmniRoute's open models when nothing is configured; Claude is opt-in only", () => {
     const b: Brain = brainFromEnv({}, dir);
-    expect(b).not.toBeInstanceOf(RouterBrain);
+    expect(b).toBeInstanceOf(RouterBrain);
+    expect(brainFromEnv({ ARCHITECT_BRAIN: "anthropic" }, dir)).not.toBeInstanceOf(RouterBrain);
+  });
+
+  it("treats the OmniRoute default as implicit so the hosted Worker can keep Workers AI", () => {
+    expect(hasExplicitModelConfig({})).toBe(false);
+    expect(modelsFromEnv({}).models.length).toBeGreaterThan(0);
+    expect(hasExplicitModelConfig({ OMNIROUTE_URL: "http://localhost:20128/v1" })).toBe(true);
+    expect(hasExplicitModelConfig({ ANTHROPIC_API_KEY: "x" })).toBe(true);
+    expect(hasExplicitModelConfig({ ARCHITECT_BRAIN: "anthropic" })).toBe(true);
+    expect(hasExplicitModelConfig({ GROQ_API_KEY: "g" })).toBe(true);
+    expect(hasExplicitModelConfig({ CLOUDFLARE_ACCOUNT_ID: "acct" })).toBe(false);
+    expect(hasExplicitModelConfig({ CLOUDFLARE_ACCOUNT_ID: "acct", CLOUDFLARE_AI_TOKEN: "t" })).toBe(true);
   });
 });

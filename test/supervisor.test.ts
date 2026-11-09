@@ -30,7 +30,7 @@ describe("run supervisor", () => {
     expect(listing.text).toBe("b.txt");
     await expect(ws.execute("workspace_read", { path: "../run_a/a.txt" }, ctxFor("run_b"))).rejects.toThrow(/outside the workspace/);
 
-    const out = await ws.execute("workspace_run", { command: "node -p process.cwd()" }, ctxFor("run_a"));
+    const out = await ws.execute("workspace_run", { command: "node -p 'process.cwd()'" }, ctxFor("run_a"));
     expect(path.resolve(out.text.split("\n")[2]!.trim())).toBe(path.join(dir, "runs", "run_a"));
     expect(sup.active().map((l) => l.runId).sort()).toEqual(["run_a", "run_b"]);
   });

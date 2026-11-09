@@ -14,7 +14,7 @@ import { DurableObject } from "cloudflare:workers";
 import { launch, type BrowserWorker } from "@cloudflare/playwright";
 import type { Browser } from "playwright";
 import { Architect } from "./architect.js";
-import { brainFromEnv, modelsFromEnv } from "./brains/config.js";
+import { brainFromEnv, hasExplicitModelConfig } from "./brains/config.js";
 import { OpenAICompatBrain } from "./brains/openai.js";
 import { DEFAULT_WORKERS_AI_MODEL, WORKERS_AI_BASE_URL, workersAiFetch, type AiBinding } from "./brains/workersai.js";
 import { DurableRunStore } from "./stores/durable.js";
@@ -94,8 +94,9 @@ export class Conductor extends DurableObject<Env> {
   private get arch(): Architect {
     if (this.architect) return this.architect;
     const env = this.env as unknown as Record<string, string | undefined>;
-    // Model: explicit settings win; otherwise Workers AI through the binding (no key needed).
-    const configured = !!env.ANTHROPIC_API_KEY || !!modelsFromEnv(env);
+    // Model: an explicit source wins. An empty env is not explicit — modelsFromEnv still
+    // names the local OmniRoute default — so the hosted edition keeps the Workers AI binding.
+    const configured = hasExplicitModelConfig(env);
     const brain =
       configured || !this.env.AI
         ? brainFromEnv(env, "/")
