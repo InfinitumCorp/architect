@@ -16,6 +16,8 @@ How each item reaches a user:
 - **External tool**: not installed or shipped by Architect. A person installs it; Architect runs
   it only if it is found.
 - **Design reference**: the idea was studied and reimplemented. No code was copied.
+- **Fetched data set**: not installed with Architect and not stored in this repository. A person runs
+  the fetch script; Architect reads the files only when `INFINITUM_GEO_ENABLED` is turned on.
 
 ---
 
@@ -169,6 +171,35 @@ How each item reaches a user:
 - NOTICE file: none.
 
 Not used: openai/evals datasets (CC-BY-SA and GFDL). None are included.
+Not used: Loyalsoldier and sing-box geo data sets (GPL-3.0). None are fetched or loaded.
+
+## v2fly/geoip (`geoip.dat`)
+
+- Use: fetched data set, release `202611080027`, asset `geoip.dat`. `npm run geo:fetch` downloads it
+  into gitignored `data/geo/geoip.dat` after the official `.sha256sum` matches
+  `data/geo/geo.lock.json`. Loaded only when `INFINITUM_GEO_ENABLED` is on, to annotate an IP
+  address with a country code (`src/geo/`). The bytes are not in this repository and are not modified.
+- Source: https://github.com/v2fly/geoip
+- Checksum asset: https://github.com/v2fly/geoip/releases/download/202611080027/geoip.dat.sha256sum
+- SHA-256: `eedb24b3b9fcba27e06b92c0428dab90d9496083091ae4cf39e11387fd99d0e2`
+- License: Creative Commons Attribution-ShareAlike 4.0 International (CC-BY-SA-4.0).
+  Text: https://creativecommons.org/licenses/by-sa/4.0/legalcode
+  (the v2fly repository LICENSE is that text). ShareAlike applies to the data set when it is shared.
+- The v2fly build reads DB-IP Country Lite (https://db-ip.com/db/download/ip-to-country-lite).
+  When sharing the data set, also attribute DB-IP: “IP Geolocation by DB-IP” (https://db-ip.com).
+- NOTICE file: none in the repository.
+
+## v2fly/domain-list-community (`dlc.dat`, saved as `geosite.dat`)
+
+- Use: fetched data set, release `20261108011013`, asset `dlc.dat`, stored as `geosite.dat`.
+  Same fetch script and flag as geoip. Loaded only when `INFINITUM_GEO_ENABLED` is on, to annotate a
+  domain with category codes. The bytes are not in this repository and are not modified.
+- Source: https://github.com/v2fly/domain-list-community
+- Checksum asset: https://github.com/v2fly/domain-list-community/releases/download/20261108011013/dlc.dat.sha256sum
+- SHA-256: `dc4192dd1b644a38276ed06136d26e729fa674d25785adb38c87e040e92376b2`
+- License: MIT (text: [MIT: domain-list-community](#mit-license-v2flydomain-list-community))
+- Copyright (c) 2018-2019 V2Ray
+- NOTICE file: none.
 
 ---
 
@@ -442,6 +473,32 @@ THE SOFTWARE.
 MIT License
 
 Copyright (c) 2024 OpenAI
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## MIT License (v2fly/domain-list-community)
+
+```text
+MIT License
+
+Copyright (c) 2018-2019 V2Ray
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

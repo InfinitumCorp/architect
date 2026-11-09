@@ -209,6 +209,7 @@ Bring your own `Instrument` (any object with `tools` and `execute`) or your own 
 | `ARCHITECT_WORKSPACE` | `.architect/workspace` | the folder Architect may build in |
 | `ARCHITECT_API_TOKEN` | — | bearer token for `serve` |
 | `ARCHITECT_BRAIN` | automatic | `anthropic` forces one Claude model; `auto` requires routed models |
+| `INFINITUM_GEO_ENABLED` | off | Annotate a destination with a country and site category. Fetch the data sets with `npm run geo:fetch`. |
 | `OMNIROUTE_URL` | — | route through OmniRoute, e.g. `http://localhost:20128/v1` (see below) |
 
 ## Automatic model selection (OmniRoute, Ollama and other open models)
@@ -273,6 +274,7 @@ src/
   architect.ts        Compose → Perform → Verify, Encore / Recover / Handoff, approvals
   prompts.ts          system prompts and safety rules
   instruments/        browser (Playwright), workspace, http, ecosystem
+  geo/                optional v2fly geoip and geosite loader (`INFINITUM_GEO_ENABLED`, default off)
   triggers.ts         ecosystem signal → Score rules
   server.ts           HTTP API + SSE + Podium
   sdk.ts              client for other products

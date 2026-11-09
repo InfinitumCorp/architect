@@ -5,6 +5,7 @@ import type { Brain, ContentBlockParam, MessageParam, ToolDef, ToolResultBlockPa
 import { commentsMessage, hostRefusal, knowledgePrompt, planReview, relatedKnowledge, validTarget } from "./agentic.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { ToolInputError, validateInput, type Instrument, type ToolContext, type ToolSpec } from "./instruments/types.js";
+import { annotateDestination, annotationFor, type GeoData } from "./geo/hook.js";
 import { gate, newId, now, truncate } from "./policy.js";
 import { composePrompt, composeSystem, interpolate, performSystem, verifySystem } from "./prompts.js";
 import { RunStore, type RunStoreLike } from "./store.js";
@@ -20,6 +21,7 @@ import {
   type Permission,
   type ReviewPolicy,
   type Risk,
+  type GeoAnnotation,
   type Run,
   type RunComment,
   type RunEvent,
@@ -42,6 +44,11 @@ export interface ArchitectOptions {
   approvalHandler?: ApprovalHandler;
   approvalTimeoutMs?: number;
   maxTurnsPerStep?: number;
+  /**
+   * Destination annotation data. Omit to follow INFINITUM_GEO_ENABLED, which defaults off.
+   * Null keeps annotation off even if the flag is set.
+   */
+  geo?: GeoData | null;
 }
 
 export interface ComposeOptions {
@@ -533,6 +540,7 @@ ${knowledgePrompt(known)}`;
     allowed: Set<string>,
   ): Promise<ToolResultBlockParam> {
     const entry = this.toolIndex.get(name);
+    let geo: GeoAnnotation | undefined;
     const record = (risk: Risk, outcome: ActionRecord["outcome"], output: string, approval?: ActionRecord["approval"]) => {
       const action: ActionRecord = {
         id: newId("act"),
@@ -546,6 +554,7 @@ ${knowledgePrompt(known)}`;
         approval,
         at: now(),
       };
+      if (geo) action.geo = geo;
       run.actions.push(action);
       void this.emitEvent(run.id, "action", { ...action });
     };
@@ -570,6 +579,7 @@ ${knowledgePrompt(known)}`;
       }
       throw err;
     }
+    geo = this.destinationNote(input);
     const refused = hostRefusal(input, run.score.hosts);
     if (refused) {
       record("read", "blocked", refused);
@@ -615,6 +625,17 @@ ${knowledgePrompt(known)}`;
       const message = err instanceof Error ? err.message : String(err);
       record(risk, "error", message, approval);
       return errorResult(`Error: ${truncate(message, 2_000)}`);
+    }
+  }
+
+  /** Country / category note for a tool input. Undefined when geo annotation is off or nothing matched. */
+  private destinationNote(input: Record<string, unknown>): GeoAnnotation | undefined {
+    try {
+      if (this.opts.geo === null) return undefined;
+      if (this.opts.geo) return annotationFor(this.opts.geo, input);
+      return annotateDestination(input);
+    } catch {
+      return undefined;
     }
   }
 

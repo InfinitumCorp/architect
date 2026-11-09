@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx src/cli.ts",
     "serve": "tsx src/cli.ts serve",
+    "geo:fetch": "node scripts/fetch-geo.mjs",
     "extension:icons": "node scripts/extension.mjs icons",
     "extension:zip": "node scripts/extension.mjs zip"
   },

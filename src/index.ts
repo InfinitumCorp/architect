@@ -53,6 +53,9 @@ export { ScoreLibrary, type SavedScore, digestOf } from "./library.js";
 export { Scheduler, ScheduleStore, validateSchedule, isDue, type Schedule } from "./schedules.js";
 export { estimateCost, costOf, type RunUsage, type TurnUsage } from "./usage.js";
 export { createArchitectServer } from "./server.js";
+export { geoFromBytes, GeoDataError } from "./geo/dat.js";
+export type { GeoData } from "./geo/dat.js";
+export { annotateDestination, annotationFor, geoEnabled, loadGeoDir } from "./geo/hook.js";
 
 export interface CreateArchitectOptions extends Partial<Omit<ArchitectOptions, "brain" | "instruments">> {
   brain?: Brain;

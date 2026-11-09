@@ -77,7 +77,8 @@ Environment
   ARCHITECT_EFFORT        default high
   ARCHITECT_API_TOKEN     bearer token for \`serve\`    ARCHITECT_PRODUCT_<KEY>_URL / _TOKEN  ecosystem products
   ARCHITECT_SANDBOX       auto | required | off       ARCHITECT_EXECPOLICY  command policy file (JSON)
-  ARCHITECT_ISOLATION     per-run: one folder per run  ARCHITECT_BROWSER_BACKEND  builtin | playwright-mcp`;
+  ARCHITECT_ISOLATION     per-run: one folder per run  ARCHITECT_BROWSER_BACKEND  builtin | playwright-mcp
+  INFINITUM_GEO_ENABLED   off unless 1 | true | yes | on   INFINITUM_GEO_DIR  geo data sets (default data/geo)`;
 
 const C = { dim: "\x1b[2m", bold: "\x1b[1m", green: "\x1b[32m", red: "\x1b[31m", yellow: "\x1b[33m", cyan: "\x1b[36m", off: "\x1b[0m" };
 

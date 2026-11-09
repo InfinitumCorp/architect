@@ -87,6 +87,14 @@ export interface Evidence {
 
 export type ActionOutcome = "executed" | "simulated" | "denied" | "error" | "blocked";
 
+/** Destination annotation. Present only when geo data is enabled and a lookup matched. */
+export interface GeoAnnotation {
+  /** Two-letter country code when the destination is an IP address. */
+  country?: string;
+  /** Geosite category codes when the destination is a domain. */
+  categories?: string[];
+}
+
 export interface ActionRecord {
   id: string;
   stepId: string;
@@ -97,6 +105,8 @@ export interface ActionRecord {
   outcome: ActionOutcome;
   output: string;
   approval?: { approved: boolean; by?: string; note?: string };
+  /** Logged beside the action. Omitted when geo annotation is off, so existing records stay the same. */
+  geo?: GeoAnnotation;
   at: string;
 }
 

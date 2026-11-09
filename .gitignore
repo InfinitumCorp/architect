@@ -9,3 +9,6 @@ architect.triggers.json
 android/build/
 .wrangler/
 .dev.vars
+# Fetched v2fly geo data sets. data/geo/geo.lock.json is tracked; the binaries are not.
+data/geo/*.dat
+data/geo/*.partial
