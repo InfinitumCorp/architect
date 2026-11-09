@@ -74,3 +74,26 @@ describe("HTTP API + SDK", () => {
     expect(res).toMatchObject({ accepted: true, started: false });
   });
 });
+
+it("adds Labyrinth transport with CID bearer independently of the existing Architect API token", async () => {
+  const { createServer } = await import("node:http");
+  const central = createServer(async (req, res) => {
+    if (req.headers.authorization !== "Bearer cid-session") { res.writeHead(401); res.end("{}"); return; }
+    const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    expect(JSON.parse(Buffer.concat(chunks).toString()).product).toBe("architect");
+    res.writeHead(200, { "content-type": "application/json" }); res.end("[]");
+  });
+  await new Promise<void>(resolve => central.listen(0, "127.0.0.1", resolve));
+  const previous = process.env.LBRNTH_ENDPOINT;
+  process.env.LBRNTH_ENDPOINT = `http://127.0.0.1:${(central.address() as { port: number }).port}/api/labyrinth`;
+  try {
+    const url = (client as unknown as { baseUrl: string }).baseUrl + "/api/labyrinth";
+    const send = (token?: string) => fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-labyrinth": "1", ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ action: "list", product: "spoof" }) });
+    expect((await send()).status).toBe(401);
+    expect((await send("secret")).status).toBe(401); // legacy product token is not a CID identity
+    expect((await send("cid-session")).status).toBe(200);
+  } finally {
+    if (previous === undefined) delete process.env.LBRNTH_ENDPOINT; else process.env.LBRNTH_ENDPOINT = previous;
+    await new Promise<void>(resolve => central.close(() => resolve()));
+  }
+});

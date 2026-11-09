@@ -245,6 +245,20 @@ During a run the CLI shows each routing decision, such as `⇢ act → ollama/qw
 
 Open models drive the browser well enough for routine steps. Keep a strong model for planning and verification, because that is where weak models make the most expensive mistakes. Text-only models get a note in place of screenshots, so set `vision: true` only for models that can actually read images.
 
+## Safety and optional tools
+
+| Topic | Doc |
+|---|---|
+| OS sandbox and command policy for workspace commands | [docs/sandbox.md](docs/sandbox.md) |
+| One folder per run, concurrency limits, recovery | [docs/isolation.md](docs/isolation.md) |
+| Playwright MCP as an alternative browser backend | [docs/playwright-mcp.md](docs/playwright-mcp.md) |
+| `architect scan`: osv-scanner, git-secrets, SkillSpector, garak | [docs/safety-scanning.md](docs/safety-scanning.md) |
+| `architect eval`: code-writing evals run in the sandbox | [docs/evals.md](docs/evals.md) |
+
+Reading PDFs, Office files and other documents uses markitdown when it is installed
+(`pipx install 'markitdown[all]'`). Open-source components and their licenses are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 ## Layout
 
 ```
@@ -283,3 +297,8 @@ npm run dev -- run "…" -a rehearsal
 ---
 
 © Infinitum Corporation. Proprietary. AI-powered · Blockchain-governed™.
+
+## Labyrinth client repositories
+
+Explicit Cumulus ID-authenticated artifact save/load SDK and `/api/labyrinth` relay.
+Existing product auth remains unchanged. [Integration and rollout contract](LABYRINTH.md).

@@ -1,6 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import path from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { classifyByLabel, truncate } from "../policy.js";
 import type { Instrument, ToolContext, ToolOutput, ToolSpec } from "./types.js";
@@ -12,6 +10,8 @@ export interface BrowserInstrumentOptions {
   viewport?: { width: number; height: number };
   /** Hosts the browser may visit. Empty means any host. */
   allowedHosts?: string[];
+  /** Start the browser some other way, e.g. Cloudflare Browser Rendering in the Worker. */
+  launch?: () => Promise<Browser>;
 }
 
 const SNAPSHOT_SCRIPT = () => {
@@ -46,7 +46,7 @@ const SNAPSHOT_SCRIPT = () => {
       bits.push(`value=${JSON.stringify(input.value.slice(0, 60))}`);
     }
     if (tag === "select") {
-      const sel = el as HTMLSelectElement;
+      const sel = el as unknown as HTMLSelectElement;
       bits.push(`options=${JSON.stringify(Array.from(sel.options).map((o) => o.text).slice(0, 15))}`);
     }
     if (tag === "a") bits.push(`href=${(el as HTMLAnchorElement).getAttribute("href")?.slice(0, 80)}`);
@@ -169,7 +169,7 @@ export class BrowserInstrument implements Instrument {
 
   private async ensurePage(): Promise<Page> {
     if (this.page && !this.page.isClosed()) return this.page;
-    this.browser ??= await chromium.launch({ headless: this.opts.headless ?? true });
+    this.browser ??= this.opts.launch ? await this.opts.launch() : await chromium.launch({ headless: this.opts.headless ?? true });
     const storageState =
       this.opts.storageStatePath && existsSync(this.opts.storageStatePath) ? this.opts.storageStatePath : undefined;
     this.context ??= await this.browser.newContext({
@@ -289,9 +289,8 @@ export class BrowserInstrument implements Instrument {
       }
       case "browser_screenshot": {
         const buf = await page.screenshot({ type: "png" });
-        const rel = path.join("evidence", `${ctx.stepId}-${Date.now()}.png`);
-        await mkdir(path.join(ctx.runDir, "evidence"), { recursive: true });
-        await writeFile(path.join(ctx.runDir, rel), buf);
+        const rel = `evidence/${ctx.stepId}-${Date.now()}.png`;
+        await ctx.putFile(rel, buf);
         ctx.addEvidence({ kind: "screenshot", label: String(input.label), path: rel, content: page.url() });
         return { text: `Screenshot saved (${rel}).`, image: { base64: buf.toString("base64"), mediaType: "image/png" } };
       }
@@ -302,10 +301,8 @@ export class BrowserInstrument implements Instrument {
 
   async handoff(ctx: ToolContext): Promise<Record<string, string>> {
     if (!this.context || !this.page) return {};
-    const dir = path.join(ctx.runDir, "handoff");
-    await mkdir(dir, { recursive: true });
-    await this.context.storageState({ path: path.join(dir, "browser-state.json") });
-    await this.page.screenshot({ path: path.join(dir, "last-screen.png") });
+    await ctx.putFile("handoff/browser-state.json", JSON.stringify(await this.context.storageState(), null, 2));
+    await ctx.putFile("handoff/last-screen.png", await this.page.screenshot());
     return { url: this.page.url(), storageState: "handoff/browser-state.json", screenshot: "handoff/last-screen.png" };
   }
 

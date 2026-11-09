@@ -3,6 +3,20 @@ import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import path from "node:path";
 import { createArchitect } from "./index.js";
+import { WorkspaceInstrument } from "./instruments/workspace.js";
+import { PlaywrightMcpInstrument } from "./instruments/playwright-mcp.js";
+import { formatResults, installGitSecretsHooks, runSafetyChecks } from "./safety/scanners.js";
+import { sandboxFor } from "./sandbox/runtime.js";
+import { brainFromEnv } from "./brains/config.js";
+import {
+  brainSampler,
+  CompletionSchema,
+  fileSampler,
+  formatReport,
+  loadTasks,
+  readJsonl,
+  runEval,
+} from "./evals/humaneval.js";
 import { createArchitectServer } from "./server.js";
 import { readFile } from "node:fs/promises";
 import { TriggerRouter } from "./triggers.js";
@@ -25,6 +39,12 @@ Usage
   architect models                    Show the automatic model routing table and check each model
   architect mcp                       MCP server (stdio) for Claude Code, Cursor and other agents;
                                       talks to \`serve\` at ARCHITECT_URL. Approvals stay with people.
+  architect scan [dir] [--only ids] [--install-hooks]
+                                      Safety checks with the scanners installed here (osv-scanner,
+                                      git-secrets, SkillSpector, garak). See docs/safety-scanning.md.
+  architect eval <tasks.jsonl> [--samples n] [--completions file.jsonl]
+                                      Score code-writing ability on HumanEval-format tasks, running
+                                      the model's code only inside the sandbox. See docs/evals.md.
 
 Saved Scores (reusable workflows)
   architect save <runId> <name>       Save a run's Score to the library
@@ -55,7 +75,9 @@ Environment
   OMNIROUTE_URL        default http://localhost:20128/v1 (open-weight models, model "auto")
   OMNIROUTE_API_KEY    OmniRoute key           CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_AI_TOKEN, GROQ_API_KEY  backups
   ARCHITECT_EFFORT        default high
-  ARCHITECT_API_TOKEN     bearer token for \`serve\`    ARCHITECT_PRODUCT_<KEY>_URL / _TOKEN  ecosystem products`;
+  ARCHITECT_API_TOKEN     bearer token for \`serve\`    ARCHITECT_PRODUCT_<KEY>_URL / _TOKEN  ecosystem products
+  ARCHITECT_SANDBOX       auto | required | off       ARCHITECT_EXECPOLICY  command policy file (JSON)
+  ARCHITECT_ISOLATION     per-run: one folder per run  ARCHITECT_BROWSER_BACKEND  builtin | playwright-mcp`;
 
 const C = { dim: "\x1b[2m", bold: "\x1b[1m", green: "\x1b[32m", red: "\x1b[31m", yellow: "\x1b[33m", cyan: "\x1b[36m", off: "\x1b[0m" };
 
@@ -143,6 +165,10 @@ async function main() {
       score: { type: "string" },
       every: { type: "string" },
       daily: { type: "string" },
+      only: { type: "string" },
+      "install-hooks": { type: "boolean" },
+      samples: { type: "string" },
+      completions: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -173,10 +199,57 @@ async function main() {
   const budgetUsd = values.budget !== undefined ? Number(values.budget) : undefined;
   if (budgetUsd !== undefined && !(budgetUsd > 0)) throw new Error("--budget must be a positive number of USD");
 
+  if (command === "scan") {
+    const dir = path.resolve(rest[0] ?? ".");
+    if (values["install-hooks"]) {
+      console.log(await installGitSecretsHooks(dir));
+      console.log(`${C.green}git-secrets hooks installed in ${dir}${C.off}`);
+    }
+    const workspace = new WorkspaceInstrument(dir);
+    const results = await runSafetyChecks(workspace, dir, { only: values.only?.split(",").map((s) => s.trim()) });
+    console.log(formatResults(results));
+    for (const r of results.filter((r) => r.status === "findings" || r.status === "error")) {
+      console.log(`\n${C.bold}${r.id}${C.off}\n${r.output ?? ""}`);
+    }
+    process.exitCode = results.some((r) => r.status === "findings" || r.status === "error") ? 1 : 0;
+    return;
+  }
+
+  if (command === "eval") {
+    const tasks = await loadTasks(required(rest[0], "tasks.jsonl"));
+    const samplesPerTask = values.samples ? Number(values.samples) : 1;
+    if (!Number.isInteger(samplesPerTask) || samplesPerTask < 1) throw new Error("--samples must be a positive whole number");
+    const brain = values.completions ? undefined : brainFromEnv();
+    const sampler = values.completions
+      ? fileSampler(await readJsonl(values.completions, CompletionSchema))
+      : brainSampler(brain!);
+    // Model-written code runs only inside the OS sandbox, whatever ARCHITECT_SANDBOX says.
+    const sandbox = await sandboxFor("required");
+    const report = await runEval({
+      tasks,
+      sampler,
+      sandbox,
+      samplesPerTask,
+      model: brain?.model ?? path.basename(values.completions!),
+      onTask: values.json ? undefined : (t) => console.log(`${t.correct ? C.green : C.red}${t.task_id} ${t.correct}/${t.samples.length}${C.off}`),
+    });
+    console.log(values.json ? JSON.stringify(report, null, 2) : `\n${formatReport(report)}`);
+    return;
+  }
+
+  const browserBackend = process.env.ARCHITECT_BROWSER_BACKEND ?? "builtin";
+  if (!["builtin", "playwright-mcp"].includes(browserBackend)) {
+    throw new Error(`ARCHITECT_BROWSER_BACKEND must be builtin or playwright-mcp, got "${browserBackend}"`);
+  }
+  const browserOpts = { headless: !values.headed, storageStatePath: values.state, allowedHosts: values["allow-host"] };
+  const browserInstrument =
+    browserBackend === "playwright-mcp" ? await PlaywrightMcpInstrument.start(browserOpts) : undefined;
+
   const architect = createArchitect({
     dataDir: values.data,
     workspace: values.workspace,
-    browser: { headless: !values.headed, storageStatePath: values.state, allowedHosts: values["allow-host"] },
+    browser: browserOpts,
+    browserInstrument,
     approvalHandler: command === "serve" ? undefined : cliApprovals(),
   });
   if (command !== "serve" && !values.json) architect.on("event", printEvent);

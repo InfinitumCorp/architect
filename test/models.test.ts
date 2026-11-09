@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Brain, TurnRequest } from "../src/brain.js";
-import { brainFromEnv, loadModelsFile, modelsFromEnv } from "../src/brains/config.js";
+import { brainFromEnv, hasExplicitModelConfig, loadModelsFile, modelsFromEnv } from "../src/brains/config.js";
 import { OpenAICompatBrain, toOpenAIMessages } from "../src/brains/openai.js";
 import { RouterBrain, trailingErrors } from "../src/brains/router.js";
 import { Architect } from "../src/architect.js";
@@ -238,5 +238,16 @@ describe("model configuration", () => {
     const b: Brain = brainFromEnv({}, dir);
     expect(b).toBeInstanceOf(RouterBrain);
     expect(brainFromEnv({ ARCHITECT_BRAIN: "anthropic" }, dir)).not.toBeInstanceOf(RouterBrain);
+  });
+
+  it("treats the OmniRoute default as implicit so the hosted Worker can keep Workers AI", () => {
+    expect(hasExplicitModelConfig({})).toBe(false);
+    expect(modelsFromEnv({}).models.length).toBeGreaterThan(0);
+    expect(hasExplicitModelConfig({ OMNIROUTE_URL: "http://localhost:20128/v1" })).toBe(true);
+    expect(hasExplicitModelConfig({ ANTHROPIC_API_KEY: "x" })).toBe(true);
+    expect(hasExplicitModelConfig({ ARCHITECT_BRAIN: "anthropic" })).toBe(true);
+    expect(hasExplicitModelConfig({ GROQ_API_KEY: "g" })).toBe(true);
+    expect(hasExplicitModelConfig({ CLOUDFLARE_ACCOUNT_ID: "acct" })).toBe(false);
+    expect(hasExplicitModelConfig({ CLOUDFLARE_ACCOUNT_ID: "acct", CLOUDFLARE_AI_TOKEN: "t" })).toBe(true);
   });
 });

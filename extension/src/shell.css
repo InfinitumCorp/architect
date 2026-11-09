@@ -1,0 +1,60 @@
+/* Infinitum app shell, the parts a 360px side panel needs.
+   Tokens and rules from infinitum-nexus/packages/ui/app-shell.css: white paper, ink
+   text, Helvetica, weight-400 headings, hairlines, no shadows or decorative color. */
+:root {
+  --paper: #ffffff;
+  --ink: #111820;
+  --muted: #52606b;
+  --line: #d6dce1;
+  --accent: #2454dd;
+  --bad: #b3261e;
+  --font: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --gutter: 16px;
+  color-scheme: light;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; color: var(--ink); background: var(--paper); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+button, input, select, textarea { font: inherit; color: inherit; }
+:where(h1, h2, h3) { font-weight: 400; margin: 0 0 .5em; }
+a { color: inherit; }
+a:hover { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+sup.tm { font-size: .5em; vertical-align: super; line-height: 0; margin-left: .08em; font-weight: 400; }
+
+.app-bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 var(--gutter); background: var(--paper); border-bottom: 1px solid var(--line); }
+.app-wordmark { font-size: 18px; letter-spacing: -.04em; white-space: nowrap; text-decoration: none; color: var(--ink); }
+.app-actions { margin-left: auto; display: flex; gap: 12px; align-items: center; }
+.app-actions a, .app-actions button.link { color: var(--muted); font-size: 13px; text-decoration: none; background: none; border: 0; padding: 0; cursor: pointer; }
+.app-actions a:hover, .app-actions button.link:hover { color: var(--accent); }
+.app-main { padding: 16px var(--gutter) 48px; }
+.section { padding: 16px 0; border-top: 1px solid var(--line); }
+.section:first-child { border-top: 0; padding-top: 0; }
+.label { display: block; margin: 0 0 6px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+
+.input { width: 100%; min-height: 36px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 0; background: var(--paper); }
+textarea.input { min-height: 96px; resize: vertical; }
+.input:focus { border-color: var(--ink); outline: none; }
+.field { margin-bottom: 12px; }
+.row { display: flex; gap: 8px; align-items: center; }
+.row > .input { flex: 1; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 14px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); cursor: pointer; text-decoration: none; }
+.btn:hover { color: var(--accent); border-color: var(--accent); }
+.btn.primary { background: var(--ink); color: var(--paper); }
+.btn.primary:hover { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+.btn[disabled] { opacity: .45; cursor: default; }
+
+.notice { padding: 10px 12px; border: 1px solid var(--line); margin-bottom: 12px; }
+.notice.bad { border-color: var(--bad); color: var(--bad); }
+.notice p { margin: 0 0 8px; }
+.notice p:last-child { margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.empty { color: var(--muted); padding: 8px 0; }
+.rows { list-style: none; margin: 0; padding: 0; }
+.rows li { padding: 10px 0; border-top: 1px solid var(--line); }
+.rows li:first-child { border-top: 0; }
+.status { font: 11px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.status.failed { color: var(--bad); }
+pre { white-space: pre-wrap; word-break: break-word; margin: 6px 0; padding: 8px; border: 1px solid var(--line); font: 12px/1.5 ui-monospace, monospace; max-height: 180px; overflow: auto; }
+[hidden] { display: none !important; }

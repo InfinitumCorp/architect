@@ -124,6 +124,23 @@ export function modelsFromEnv(env: Env = process.env): ModelsFile {
   return { models };
 }
 
+/**
+ * True when the operator named a model source.
+ * The OmniRoute default that `modelsFromEnv` always includes does not count, so the
+ * hosted Worker can still use its Workers AI binding when nothing is set.
+ */
+export function hasExplicitModelConfig(env: Env = process.env): boolean {
+  return Boolean(
+    env.ANTHROPIC_API_KEY ||
+      env.ARCHITECT_BRAIN === "anthropic" ||
+      env.OMNIROUTE_URL ||
+      (env.ARCHITECT_OPENAI_BASE_URL && env.ARCHITECT_OPENAI_MODEL) ||
+      (env.CLOUDFLARE_ACCOUNT_ID && env.CLOUDFLARE_AI_TOKEN) ||
+      env.GROQ_API_KEY ||
+      env.ARCHITECT_MODELS_FILE,
+  );
+}
+
 export function loadModelsFile(file: string): ModelsFile {
   let raw: unknown;
   try {

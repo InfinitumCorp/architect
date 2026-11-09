@@ -52,7 +52,24 @@ export interface Score {
   /** The definition of done. Verification checks every criterion. */
   successCriteria: string[];
   startUrl?: string;
+  /** Hosts this run may (allow) or may never (block) reach. Set by the person, never by the model. */
+  hosts?: { allow?: string[]; block?: string[] };
   createdAt: string;
+}
+
+/** When a composed plan waits for a person before it is performed. */
+export type ReviewPolicy = "always_proceed" | "agent_decides" | "request_review";
+
+/** A person's comment on an artifact of the run: the plan, a step, a piece of evidence, the walkthrough. */
+export interface RunComment {
+  id: string;
+  /** "score", "step:<id>", "evidence:<id>" or "walkthrough". */
+  target: string;
+  text: string;
+  by?: string;
+  at: string;
+  /** Set once the performer has been shown the comment. */
+  deliveredAt?: string;
 }
 
 export type EvidenceKind = "screenshot" | "text" | "url" | "file" | "command";
@@ -142,6 +159,10 @@ export interface Run {
   budgetUsd?: number;
   /** Name of the saved Score or schedule that started this run, if any. */
   source?: string;
+  /** Review policy the run was started with, and whether the plan is waiting for that review. */
+  review?: ReviewPolicy;
+  planReview?: { required: boolean; reason: string; approvedAt?: string; by?: string };
+  comments?: RunComment[];
   createdAt: string;
   updatedAt: string;
 }

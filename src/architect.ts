@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { Brain, ContentBlockParam, MessageParam, ToolDef, ToolResultBlockParam } from "./brain.js";
+import { commentsMessage, hostRefusal, knowledgePrompt, planReview, relatedKnowledge, validTarget } from "./agentic.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { ToolInputError, validateInput, type Instrument, type ToolContext, type ToolSpec } from "./instruments/types.js";
 import { gate, newId, now, truncate } from "./policy.js";
 import { composePrompt, composeSystem, interpolate, performSystem, verifySystem } from "./prompts.js";
-import { RunStore } from "./store.js";
+import { RunStore, type RunStoreLike } from "./store.js";
 import { addUsage, emptyUsage, estimateCost, type TurnUsage } from "./usage.js";
 import {
   PERMISSIONS,
@@ -18,8 +18,10 @@ import {
   type Autonomy,
   type Evidence,
   type Permission,
+  type ReviewPolicy,
   type Risk,
   type Run,
+  type RunComment,
   type RunEvent,
   type Score,
   type ScoreStep,
@@ -32,6 +34,8 @@ export interface ArchitectOptions {
   instruments: Instrument[];
   /** Where runs, events and evidence are stored. */
   dataDir?: string;
+  /** Storage to use instead of files under dataDir (the Worker passes a Supabase store). */
+  store?: RunStoreLike;
   /** Upper bound on what any Score may be granted. Defaults to everything except standing.irreversible. */
   permissionCeiling?: Permission[];
   /** Decides approvals interactively (CLI). Without one, approvals wait for `decide()` (server / Podium). */
@@ -46,6 +50,10 @@ export interface ComposeOptions {
   /** Narrow the permissions for this Score further than the account ceiling. */
   permissions?: Permission[];
   trigger?: Signal;
+  /** Hosts the run may or may never reach (set by the person). */
+  hosts?: Score["hosts"];
+  /** Use verified earlier runs of similar goals when composing. Default true. */
+  knowledge?: boolean;
 }
 
 export interface PerformOptions extends ComposeOptions {
@@ -54,6 +62,8 @@ export interface PerformOptions extends ComposeOptions {
   budgetUsd?: number;
   /** Saved Score or schedule name that started the run. */
   source?: string;
+  /** Whether the composed plan waits for a person's review. Default: always_proceed (callers opt in). */
+  review?: ReviewPolicy;
 }
 
 interface ControlTool {
@@ -136,7 +146,7 @@ class BudgetExceeded extends Error {}
  * Emits "event" with every RunEvent; the same events are persisted for the Podium.
  */
 export class Architect extends EventEmitter {
-  readonly store: RunStore;
+  readonly store: RunStoreLike;
   readonly brain: Brain;
   private instruments: Instrument[];
   private toolIndex = new Map<string, { instrument: Instrument; spec: ToolSpec }>();
@@ -144,12 +154,14 @@ export class Architect extends EventEmitter {
   private pending = new Map<string, { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void }>();
   private cancelled = new Set<string>();
   private active = new Set<string>();
+  /** The in-memory run of each performing run, so comments reach the performer straight away. */
+  private live = new Map<string, Run>();
 
   constructor(private opts: ArchitectOptions) {
     super();
     this.brain = opts.brain;
     this.instruments = opts.instruments;
-    this.store = new RunStore(path.resolve(opts.dataDir ?? ".architect"));
+    this.store = opts.store ?? new RunStore(path.resolve(opts.dataDir ?? ".architect"));
     this.ceiling = opts.permissionCeiling ?? PERMISSIONS.filter((p) => p !== "standing.irreversible");
     for (const instrument of opts.instruments) {
       for (const spec of instrument.tools) this.toolIndex.set(spec.name, { instrument, spec });
@@ -177,10 +189,14 @@ export class Architect extends EventEmitter {
 
   private async composeWithUsage(goal: string, opts: ComposeOptions): Promise<{ score: Score; usage?: TurnUsage; model?: string }> {
     const ceiling = opts.permissions ? this.ceiling.filter((p) => opts.permissions!.includes(p)) : this.ceiling;
-    const { draft, usage, model } = await this.brain.compose(
-      composeSystem(this.instruments, ceiling),
-      composePrompt(goal, opts.inputs ?? {}, opts.startUrl),
-    );
+    let prompt = composePrompt(goal, opts.inputs ?? {}, opts.startUrl);
+    if (opts.knowledge !== false) {
+      const known = await this.knowledge(goal).catch(() => []);
+      if (known.length) prompt += `
+
+${knowledgePrompt(known)}`;
+    }
+    const { draft, usage, model } = await this.brain.compose(composeSystem(this.instruments, ceiling), prompt);
     const known = new Set(this.instruments.map((i) => i.name));
     const score: Score = {
       id: newId("score"),
@@ -198,6 +214,7 @@ export class Architect extends EventEmitter {
         checkpoint: s.checkpoint,
       })),
       successCriteria: draft.successCriteria,
+      hosts: opts.hosts,
       createdAt: now(),
     };
     return { score, usage, model };
@@ -206,7 +223,7 @@ export class Architect extends EventEmitter {
   createRun(
     score: Score,
     autonomy: Autonomy,
-    extra: Partial<Pick<Run, "trigger" | "parentRunId" | "budgetUsd" | "source">> = {},
+    extra: Partial<Pick<Run, "trigger" | "parentRunId" | "budgetUsd" | "source" | "review">> = {},
   ): Run {
     const t = now();
     return {
@@ -237,11 +254,52 @@ export class Architect extends EventEmitter {
       trigger: opts.trigger,
       budgetUsd: opts.budgetUsd,
       source: opts.source,
+      review: opts.review ?? "always_proceed",
     });
+    run.planReview = planReview(score, run.review!, run.autonomy);
     if (usage) addUsage(run.usage, usage, model ?? this.brain.model);
     await this.store.save(run);
     await this.emitEvent(run.id, "run.composed", { score, estimate: this.estimate(score), budgetUsd: run.budgetUsd });
+    if (run.planReview.required) await this.emitEvent(run.id, "plan.review_requested", { reason: run.planReview.reason });
     return run;
+  }
+
+  /** True when the plan is waiting for a person's review (perform it with approvePlan). */
+  awaitingPlanReview(run: Run): boolean {
+    return Boolean(run.planReview?.required && !run.planReview.approvedAt);
+  }
+
+  /** A person approved the plan: record it and perform the run. */
+  async approvePlan(runId: string, by?: string): Promise<Run> {
+    const run = await this.store.load(runId);
+    if (run.status !== "composed") throw new Error(`run is ${run.status}`);
+    run.planReview = { ...(run.planReview ?? { required: true, reason: "reviewed" }), approvedAt: now(), by };
+    await this.persist(run);
+    await this.emitEvent(run.id, "plan.approved", { by });
+    return run;
+  }
+
+  // ───────────────────────────── Comments & knowledge ─────────────────────────────
+
+  /**
+   * A person comments on an artifact (the plan, a step, evidence, the walkthrough). While the run
+   * performs, the comment reaches the performer on its next turn without stopping the run.
+   */
+  async comment(runId: string, target: string, text: string, by?: string): Promise<RunComment> {
+    const run = this.live.get(runId) ?? (await this.store.load(runId));
+    const clean = text.trim().slice(0, 4_000);
+    if (!clean) throw new Error("comment text is required");
+    if (!validTarget(run, target)) throw new Error(`unknown comment target ${target}`);
+    const c: RunComment = { id: newId("cmt"), target, text: clean, by, at: now() };
+    (run.comments ??= []).push(c);
+    await this.persist(run);
+    await this.emitEvent(run.id, "comment", { ...c });
+    return c;
+  }
+
+  /** Verified earlier runs that resemble a goal. */
+  async knowledge(goal: string) {
+    return relatedKnowledge(goal, await this.store.list(100));
   }
 
   // ───────────────────────────── Perform ─────────────────────────────
@@ -249,6 +307,7 @@ export class Architect extends EventEmitter {
   async perform(run: Run): Promise<Run> {
     if (this.active.has(run.id)) throw new Error(`run ${run.id} is already performing`);
     this.active.add(run.id);
+    this.live.set(run.id, run);
     this.cancelled.delete(run.id);
     try {
       await this.setStatus(run, "performing");
@@ -316,6 +375,8 @@ export class Architect extends EventEmitter {
       return run;
     } finally {
       this.active.delete(run.id);
+      this.live.delete(run.id);
+      await Promise.all(this.instruments.map((i) => i.endRun?.(run.id, run.status).catch(() => {})));
     }
   }
 
@@ -388,6 +449,16 @@ export class Architect extends EventEmitter {
         throw new BudgetExceeded(
           `Spending limit reached: $${run.usage.costUsd.toFixed(2)} spent of a $${run.budgetUsd.toFixed(2)} limit`,
         );
+      }
+      const fresh = (run.comments ?? []).filter((c) => !c.deliveredAt);
+      if (fresh.length) {
+        const last = messages[messages.length - 1]!;
+        const blocks: ContentBlockParam[] = typeof last.content === "string" ? [{ type: "text", text: last.content }] : [...(last.content as ContentBlockParam[])];
+        blocks.push({ type: "text", text: commentsMessage(fresh, run) });
+        last.content = blocks;
+        const at = now();
+        for (const c of fresh) c.deliveredAt = at;
+        void this.emitEvent(run.id, "comment.delivered", { ids: fresh.map((c) => c.id), stepId });
       }
       const res = await this.brain.turn({ system, messages, tools });
       if (res.usage) {
@@ -499,6 +570,11 @@ export class Architect extends EventEmitter {
       }
       throw err;
     }
+    const refused = hostRefusal(input, run.score.hosts);
+    if (refused) {
+      record("read", "blocked", refused);
+      return errorResult(`Blocked: ${refused}. Do not try to reach it another way.`);
+    }
     const risk = typeof entry.spec.risk === "function" ? await entry.spec.risk(input) : entry.spec.risk;
     const decision = gate({ autonomy: run.autonomy, risk, required: entry.spec.permission, granted: run.score.permissions });
 
@@ -547,6 +623,7 @@ export class Architect extends EventEmitter {
       runId: run.id,
       stepId,
       runDir: this.store.runDir(run.id),
+      putFile: (rel, data) => this.store.putFile(run.id, rel, data),
       addEvidence: (e) => this.addEvidence(run, stepId, e),
     };
   }
@@ -584,7 +661,7 @@ export class Architect extends EventEmitter {
     const lastShot = [...run.evidence].reverse().find((e) => e.kind === "screenshot" && e.path);
     if (lastShot?.path) {
       try {
-        const data = (await readFile(path.join(this.store.runDir(run.id), lastShot.path))).toString("base64");
+        const data = toBase64(await this.store.getFile(run.id, lastShot.path));
         content.push({ type: "text", text: `Last screenshot (${lastShot.label}, ${lastShot.content ?? ""}):` });
         content.push({ type: "image", source: { type: "base64", media_type: "image/png", data } });
       } catch {
@@ -681,8 +758,6 @@ export class Architect extends EventEmitter {
 
   /** Package the run's state so a person can take over. */
   async handoff(run: Run, reason: string, instructions?: string): Promise<string> {
-    const dir = path.join(this.store.runDir(run.id), "handoff");
-    await mkdir(dir, { recursive: true });
     const ctx = this.toolContext(run, "handoff");
     const artifacts: Record<string, string> = {};
     for (const i of this.instruments) Object.assign(artifacts, await i.handoff?.(ctx).catch(() => ({})));
@@ -708,10 +783,10 @@ export class Architect extends EventEmitter {
       "",
       `When you are done, resume with: \`architect recover ${run.id}\``,
     ].join("\n");
-    await writeFile(path.join(dir, "HANDOFF.md"), md);
+    await this.store.putFile(run.id, "handoff/HANDOFF.md", md);
     await this.emitEvent(run.id, "run.handed_off", { reason, instructions, artifacts });
     await this.setStatus(run, "handed_off");
-    return path.join(dir, "HANDOFF.md");
+    return path.join(this.store.runDir(run.id), "handoff", "HANDOFF.md");
   }
 
   cancel(runId: string) {
@@ -795,4 +870,10 @@ export class Architect extends EventEmitter {
   async dispose() {
     await Promise.all(this.instruments.map((i) => i.dispose?.()));
   }
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }

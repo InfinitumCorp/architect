@@ -1,3 +1,4 @@
+import { serveNodeLabyrinthProxy } from "./labyrinth/node.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { timingSafeEqual } from "node:crypto";
@@ -7,8 +8,10 @@ import type { Architect } from "./architect.js";
 import { TriggerRouter } from "./triggers.js";
 import { ScoreLibrary } from "./library.js";
 import { ScheduleStore, validateSchedule } from "./schedules.js";
-import { PERMISSIONS, type Autonomy, type Permission, type RunEvent, type Signal } from "./types.js";
+import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
+import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type RunEvent, type Signal } from "./types.js";
 import { InputError, NotFoundError, now } from "./policy.js";
+import { conjureRoutesFromEnv, toWebRequest, sendWebResponse, type ConjureRouteHandler } from "./conjure/conjure.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -18,14 +21,20 @@ const PODIUM_ASSETS: Record<string, { file: string; type: string }> = {
   "/icon.svg": { file: "icon.svg", type: "image/svg+xml" },
   "/icon-192.png": { file: "icon-192.png", type: "image/png" },
   "/icon-512.png": { file: "icon-512.png", type: "image/png" },
+  "/firm-suite.js": { file: "firm-suite.js", type: "text/javascript; charset=utf-8" },
+  "/firm-suite.css": { file: "firm-suite.css", type: "text/css; charset=utf-8" },
 };
 const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
 
 export interface ServerOptions {
   architect: Architect;
+  /** CID repository service; independent of the legacy product API bearer. */
+  lbrnthEndpoint?: string;
   triggers?: TriggerRouter;
   /** Bearer token required on /v1/*. Strongly recommended whenever the server is reachable by others. */
   token?: string;
+  /** @conjure routes; defaults to CONJURE_URL + CONJURE_PRODUCT_KEY from the environment. */
+  conjure?: ConjureRouteHandler;
   library?: ScoreLibrary;
   schedules?: ScheduleStore;
 }
@@ -100,6 +109,9 @@ export function createArchitectServer(opts: ServerOptions): Server {
   const schedules = opts.schedules ?? new ScheduleStore(architect.store.root);
   const background = (p: Promise<unknown>) => p.catch((err) => console.error("[architect]", err));
 
+  // @conjure: POST /v1/conjure { text } starts a live Conjure forecast; GET /v1/conjure/<ticket> follows it.
+  const conjure: ConjureRouteHandler = opts.conjure ?? conjureRoutesFromEnv(process.env, { prefix: "/v1/conjure", source: "architect" });
+
   const authorized = (req: IncomingMessage, url: URL) => {
     if (!opts.token) return true;
     const header = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? url.searchParams.get("token") ?? "";
@@ -112,6 +124,7 @@ export function createArchitectServer(opts: ServerOptions): Server {
     const url = new URL(req.url ?? "/", "http://localhost");
     const parts = url.pathname.split("/").filter(Boolean);
     try {
+      if (url.pathname === "/api/labyrinth") return await serveNodeLabyrinthProxy(req, res, opts.lbrnthEndpoint ?? process.env.LBRNTH_ENDPOINT, "architect");
       if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/podium")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(await readFile(path.join(here, "..", "podium", "index.html"), "utf8"));
@@ -130,27 +143,46 @@ export function createArchitectServer(opts: ServerOptions): Server {
 
       const [, resource, id, action, file] = parts;
 
+      if (resource === "conjure") {
+        const handled = await conjure(await toWebRequest(req), { user: "operator" });
+        if (handled) return void (await sendWebResponse(res, handled));
+      }
+
       if (resource === "runs" && !id) {
         if (req.method === "GET") return json(res, 200, await architect.store.list(Number(url.searchParams.get("limit") ?? 50)));
         if (req.method === "POST") {
           const b = await body(req);
-          const goal = String(b.goal ?? "").trim();
+          // Slash commands at the start of the goal (/plan, /fast, /rehearse, /autopilot) set options.
+          const parsed = parseGoal(String(b.goal ?? ""));
+          const goal = parsed.goal;
           if (!goal) throw new HttpError(400, "goal is required");
-          const autonomy = (AUTONOMY.includes(b.autonomy as Autonomy) ? b.autonomy : "accompaniment") as Autonomy;
+          const autonomy = (AUTONOMY.includes(b.autonomy as Autonomy) ? b.autonomy : parsed.autonomy ?? "accompaniment") as Autonomy;
+          const review = (REVIEW_POLICIES.includes(b.review as ReviewPolicy) ? b.review : parsed.review) as ReviewPolicy | undefined;
+          const hostsIn = (b.hosts ?? {}) as Record<string, unknown>;
+          const hosts = { allow: hostList(hostsIn.allow), block: hostList(hostsIn.block) };
           const run = await architect.start(goal, {
             autonomy,
             inputs: stringMap(b.inputs),
             startUrl: b.startUrl ? String(b.startUrl) : undefined,
             permissions: permissions(b.permissions),
             budgetUsd: budget(b.budgetUsd),
+            review,
+            hosts: hosts.allow || hosts.block ? hosts : undefined,
+            knowledge: b.knowledge !== false,
           });
-          if (!b.composeOnly) background(architect.perform(run));
+          if (!b.composeOnly && !architect.awaitingPlanReview(run)) background(architect.perform(run));
           return json(res, 202, run);
         }
       }
 
       if (resource === "runs" && id) {
         if (req.method === "GET" && !action) return json(res, 200, await architect.store.load(id));
+        if (req.method === "GET" && action === "walkthrough") {
+          const md = walkthrough(await architect.store.load(id));
+          res.writeHead(200, { "content-type": "text/markdown; charset=utf-8" });
+          res.end(md);
+          return;
+        }
         if (req.method === "GET" && action === "events") return streamEvents(req, res, architect, id);
         if (req.method === "GET" && action === "evidence" && file) {
           if (!/^[\w.-]+\.png$/.test(file)) throw new HttpError(400, "bad evidence name");
@@ -161,8 +193,9 @@ export function createArchitectServer(opts: ServerOptions): Server {
         if (req.method === "POST") {
           const b = await body(req);
           if (action === "perform") {
-            const run = await architect.store.load(id);
+            let run = await architect.store.load(id);
             if (run.status !== "composed") throw new HttpError(409, `run is ${run.status}`);
+            if (architect.awaitingPlanReview(run)) run = await architect.approvePlan(id, b.by ? String(b.by) : undefined);
             background(architect.perform(run));
             return json(res, 202, { ok: true });
           }
@@ -175,6 +208,16 @@ export function createArchitectServer(opts: ServerOptions): Server {
             const autonomy = AUTONOMY.includes(b.autonomy as Autonomy) ? (b.autonomy as Autonomy) : undefined;
             background(architect.encore(id, stringMap(b.inputs), autonomy, budget(b.budgetUsd)));
             return json(res, 202, { ok: true });
+          }
+          if (action === "comments") {
+            const text = String(b.text ?? "");
+            const target = String(b.target ?? "score");
+            try {
+              return json(res, 201, await architect.comment(id, target, text, b.by ? String(b.by).slice(0, 80) : undefined));
+            } catch (err) {
+              if (err instanceof Error && /required|unknown comment target/.test(err.message)) throw new HttpError(400, err.message);
+              throw err;
+            }
           }
           if (action === "cancel") {
             architect.cancel(id);
@@ -236,6 +279,11 @@ export function createArchitectServer(opts: ServerOptions): Server {
           await schedules.remove(id);
           return json(res, 200, { ok: true });
         }
+      }
+
+      if (resource === "knowledge" && req.method === "GET") {
+        const q = String(url.searchParams.get("q") ?? "").slice(0, 500);
+        return json(res, 200, q ? await architect.knowledge(q) : []);
       }
 
       if (resource === "approvals") {
