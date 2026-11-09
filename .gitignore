@@ -9,3 +9,5 @@ architect.triggers.json
 android/build/
 .wrangler/
 .dev.vars
+# v2fly geo datasets from scripts/fetch-geo.mjs (lockfile is data/geo.lock.json)
+data/geo/

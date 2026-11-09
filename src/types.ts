@@ -97,6 +97,8 @@ export interface ActionRecord {
   outcome: ActionOutcome;
   output: string;
   approval?: { approved: boolean; by?: string; note?: string };
+  /** Set only when geo routing is on and this action names a host. */
+  geo?: string;
   at: string;
 }
 
