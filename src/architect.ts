@@ -190,6 +190,8 @@ export class Architect extends EventEmitter {
   private async composeWithUsage(goal: string, opts: ComposeOptions): Promise<{ score: Score; usage?: TurnUsage; model?: string }> {
     const ceiling = opts.permissions ? this.ceiling.filter((p) => opts.permissions!.includes(p)) : this.ceiling;
     let prompt = composePrompt(goal, opts.inputs ?? {}, opts.startUrl);
+    const rules = await this.projectContext();
+    if (rules) prompt += `\n\nProject rules (standing instructions from the project's rule files):\n${rules}`;
     if (opts.knowledge !== false) {
       const known = await this.knowledge(goal).catch(() => []);
       if (known.length) prompt += `
@@ -297,6 +299,12 @@ ${knowledgePrompt(known)}`;
     return c;
   }
 
+  /** Rule files (AGENTS.md, CLAUDE.md, .cursorrules…) from the instruments that have them. */
+  private async projectContext(instruments: Instrument[] = this.instruments, runId?: string): Promise<string> {
+    const parts = await Promise.all(instruments.map((i) => i.rules?.(runId ? { runId } : undefined).catch(() => "") ?? ""));
+    return parts.filter(Boolean).join("\n\n").slice(0, 16_000);
+  }
+
   /** Verified earlier runs that resemble a goal. */
   async knowledge(goal: string) {
     return relatedKnowledge(goal, await this.store.list(100));
@@ -391,6 +399,22 @@ ${knowledgePrompt(known)}`;
       interpolate(step.instruction, run.score.inputs),
     ];
     if (run.score.startUrl && step.id === run.score.steps[0]?.id) intro.push(`Start URL: ${run.score.startUrl}`);
+    const rules = await this.projectContext(instruments, run.id);
+    if (rules) intro.push(`Project rules (standing instructions from the project's rule files; follow them):\n${rules}`);
+    if (instruments.some((i) => i.tools.some((t) => t.name === "workspace_edit"))) {
+      intro.push(
+        "Working on code: find things with workspace_glob and workspace_search, read a file before changing it, " +
+          "change existing files with workspace_edit (small exact replacements) rather than rewriting them, " +
+          "run the project's build and tests with workspace_run after changes, and review your changes with workspace_diff before step_complete.",
+      );
+    }
+    if (instruments.some((i) => i.tools.some((t) => t.name === "repo_edit"))) {
+      intro.push(
+        "Working on a GitHub repository in the cloud: explore with repo_list, repo_search and repo_read, change files with repo_edit " +
+          "(exact replacements) or repo_write, review everything with repo_diff, and finish with repo_open_pr when the goal asks for a pull request. " +
+          "Your commits go to your own branch; the default branch is never changed directly.",
+      );
+    }
     if (priorAttempt.length) {
       intro.push(
         `This step was attempted before (Recover). Do not repeat work that already succeeded. Earlier actions:\n${priorAttempt

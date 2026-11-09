@@ -123,6 +123,13 @@
   .comment-form textarea { min-height:64px; }
   .walk { max-height:520px; overflow:auto; }
   .hint { color:var(--muted); font-size:13px; margin:-4px 0 0; }
+  /* Code changes: one block per file, added and removed lines marked */
+  .diff { font:12px/1.55 ui-monospace, Menlo, Consolas, monospace; border:1px solid var(--line); margin:0 0 14px; overflow:auto; }
+  .diff .file { padding:8px 12px; border-bottom:1px solid var(--line); font-family:'Helvetica Neue', Helvetica, Arial, sans-serif; font-size:13px; }
+  .diff .l { white-space:pre; padding:0 12px; }
+  .diff .add { background:#eef2fd; color:var(--accent); }
+  .diff .del { color:var(--muted); text-decoration:line-through; text-decoration-color:var(--line); }
+  .diff .hunk { color:var(--muted); }
 </style>
 </head>
 <body>
@@ -135,7 +142,7 @@
     <form id="new" aria-label="New run">
       <label class="label" for="goal">Outcome</label>
       <textarea id="goal" name="goal" placeholder="Describe the outcome you want…" required></textarea>
-      <p class="hint">Start with /plan to review the plan first, /fast to skip review, /rehearse or /autopilot to set autonomy.</p>
+      <p class="hint">Start with /plan to review the plan first, /fast to skip review, /rehearse or /autopilot to set autonomy. For code, name the repository (owner/name) and what to change; Architect works on its own branch and opens a pull request for your approval.</p>
       <label class="label" for="start-url">Start URL</label>
       <input id="start-url" name="startUrl" placeholder="Optional" />
       <label class="label" for="autonomy">Autonomy</label>
@@ -233,6 +240,11 @@
     const shots = run.evidence.filter((e) => e.kind === "screenshot" && e.path);
     const stateOf = (id) => run.steps.find((s) => s.id === id) || {};
     const comments = run.comments || [];
+    // Latest diff per file, newest last.
+    const byFile = new Map();
+    for (const e of run.evidence) if (e.kind === "file" && e.content && /^(edited|created|rewrote) /.test(e.label)) byFile.set(e.label.replace(/^\w+ /, ""), e);
+    const changes = [...byFile.values()].slice(-20);
+    const prs = run.evidence.filter((e) => e.kind === "url" && e.label === "pull request" && /^https:\/\/github\.com\//.test(e.content || ""));
     const targetName = (t) => t === "score" ? "the plan" : t.startsWith("step:") ? "step " + t.slice(6) : t;
     const draftComment = document.querySelector(".comment-form textarea")?.value || "";
     const draftTarget = document.querySelector(".comment-form select")?.value || "score";
@@ -266,6 +278,8 @@
       ${run.verdict ? `<div class="card"><h2>Verification — ${run.verdict.passed ? "passed" : "not passed"}</h2><div>${esc(run.verdict.summary)}</div>
         <ul>${run.verdict.criteria.map((c) => `<li class="crit ${c.met ? "met" : "unmet"}">${esc(c.criterion)} <span style="color:var(--dim)">— ${esc(c.evidence)}</span></li>`).join("")}</ul></div>` : ""}
       ${shots.length ? `<div class="card"><h2>Evidence</h2><div class="shots">${shots.slice(-8).map((e) => `<a href="/v1/runs/${run.id}/evidence/${e.path.split(/[\\/]/).pop()}${token ? "?token=" + encodeURIComponent(token) : ""}" target="_blank"><img src="/v1/runs/${run.id}/evidence/${e.path.split(/[\\/]/).pop()}${token ? "?token=" + encodeURIComponent(token) : ""}" alt="${esc(e.label)}" title="${esc(e.label)}"></a>`).join("")}</div></div>` : ""}
+      ${changes.length ? `<div class="card"><h2>Changes</h2>${changes.map((c) => `<div class="diff"><div class="file">${esc(c.label)}</div>${diffLines(c.content)}</div>`).join("")}</div>` : ""}
+      ${prs.length ? `<div class="card"><h2>Pull request</h2>${prs.map((e) => `<p><a href="${esc(e.content)}" target="_blank" rel="noopener">${esc(e.content)}</a></p>`).join("")}</div>` : ""}
       ${["succeeded","failed","rehearsed","handed_off"].includes(run.status) ? `<div class="card"><h2>Walkthrough</h2><pre class="walk" id="walk">Loading…</pre></div>` : ""}
       <div class="card"><h2>Performance</h2><div class="log">${events.slice(-300).map(line).join("")}</div></div>`;
     document.querySelectorAll("[data-approve]").forEach((b) => b.onclick = () => decide(b.dataset.approve, true));
@@ -285,6 +299,13 @@
     if (walk) fetch(`/v1/runs/${current}/walkthrough`, { headers: token ? { authorization: "Bearer " + token } : {} })
       .then((r) => r.ok ? r.text() : Promise.reject()).then((t) => { walk.textContent = t; }).catch(() => { walk.textContent = "Walkthrough not available."; });
     const log = document.querySelector(".log"); if (log) log.scrollTop = log.scrollHeight;
+  }
+
+  function diffLines(text) {
+    return String(text || "").split("\n").filter((l) => !/^(---|\+\+\+) /.test(l)).map((l) => {
+      const cls = l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : l.startsWith("@@") ? "hunk" : "";
+      return `<div class="l ${cls}">${esc(l) || " "}</div>`;
+    }).join("");
   }
 
   function line(ev) {

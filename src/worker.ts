@@ -22,6 +22,7 @@ import { conjureRoutesFromEnv } from "./conjure/conjure.mjs";
 import { BrowserInstrument } from "./instruments/browser.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { HttpInstrument } from "./instruments/http.js";
+import { GitHubInstrument } from "./instruments/github.js";
 import postgres from "postgres";
 import { postgresCaller, SupabaseRunStore, type UnsafeSql } from "./stores/supabase.js";
 import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
@@ -42,6 +43,9 @@ export interface Env {
   /** Hyperdrive to the Supabase pooler as the architect_worker login (see supabase/migrations). */
   HYPERDRIVE?: Hyperdrive;
   ARCHITECT_API_TOKEN?: string;
+  /** Cloud coding: a fine-grained GitHub token (contents + pull requests) and the owner/name repos it may change. */
+  GITHUB_TOKEN?: string;
+  ARCHITECT_GITHUB_REPOS?: string;
   [key: string]: unknown;
 }
 
@@ -123,6 +127,9 @@ export class Conductor extends DurableObject<Env> {
         new BrowserInstrument({ launch: async () => (await launch(this.env.BROWSER)) as unknown as Browser }),
         new HttpInstrument(),
         new EcosystemInstrument(),
+        ...(this.env.GITHUB_TOKEN
+          ? [new GitHubInstrument({ token: this.env.GITHUB_TOKEN, repos: (this.env.ARCHITECT_GITHUB_REPOS ?? "").split(",").map((r) => r.trim()).filter(Boolean) })]
+          : []),
       ],
     });
     return this.architect;

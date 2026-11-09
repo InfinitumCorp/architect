@@ -1,0 +1,10 @@
+{
+  "name": "architect-desktop",
+  "productName": "ARCHITECT",
+  "version": "0.3.0",
+  "description": ":\\ARCHITECT\\ Desktop: the coding agent on your own machine.",
+  "main": "main.cjs",
+  "author": "Infinitum Corporation",
+  "license": "UNLICENSED",
+  "private": true
+}
