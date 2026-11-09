@@ -8,8 +8,8 @@ const MENU_PAGE = "architect-page";
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
   chrome.contextMenus.removeAll(() => {
-    chrome.contextMenus.create({ id: MENU_SELECTION, title: "Send selection to :\\ARCHITECT\\", contexts: ["selection"] });
-    chrome.contextMenus.create({ id: MENU_PAGE, title: "Send this page to :\\ARCHITECT\\", contexts: ["page"] });
+    chrome.contextMenus.create({ id: MENU_SELECTION, title: chrome.i18n.getMessage("menu_selection"), contexts: ["selection"] });
+    chrome.contextMenus.create({ id: MENU_PAGE, title: chrome.i18n.getMessage("menu_page"), contexts: ["page"] });
   });
 });
 
