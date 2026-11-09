@@ -25,6 +25,7 @@ import { HttpInstrument } from "./instruments/http.js";
 import { GitHubInstrument } from "./instruments/github.js";
 import postgres from "postgres";
 import { postgresCaller, SupabaseRunStore, type UnsafeSql } from "./stores/supabase.js";
+import { publicDownload, uploadDownload, type DownloadBucket } from "./downloads.js";
 import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
 import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type RunEvent } from "./types.js";
 
@@ -46,6 +47,8 @@ export interface Env {
   /** Cloud coding: a fine-grained GitHub token (contents + pull requests) and the owner/name repos it may change. */
   GITHUB_TOKEN?: string;
   ARCHITECT_GITHUB_REPOS?: string;
+  /** R2 bucket architect-downloads: Architect Desktop builds served at /download. */
+  DOWNLOADS?: DownloadBucket;
   [key: string]: unknown;
 }
 
@@ -77,10 +80,14 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === "/healthz") return json(200, { ok: true, at: new Date().toISOString() });
+    const download = await publicDownload(req, env.DOWNLOADS);
+    if (download) return download;
     if (url.pathname === "/v1" || url.pathname.startsWith("/v1/")) {
       // The hosted edition never runs open: no token configured means no API.
       if (!env.ARCHITECT_API_TOKEN) return json(503, { error: "The server has no ARCHITECT_API_TOKEN secret yet." });
       if (!(await authorized(req, env.ARCHITECT_API_TOKEN))) return json(401, { error: "missing or invalid bearer token" });
+      const upload = await uploadDownload(req, env.DOWNLOADS);
+      if (upload) return upload;
       // @conjure: POST /v1/conjure { text } starts a live Conjure forecast; GET /v1/conjure/<ticket> follows it.
       const forecast = await conjureRoutesFromEnv(env as unknown as Record<string, string | undefined>, { prefix: "/v1/conjure", source: "architect" })(req, { user: "operator" });
       if (forecast) return forecast;

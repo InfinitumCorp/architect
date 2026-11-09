@@ -13,12 +13,14 @@
   "assets": {
     "directory": "podium",
     "binding": "ASSETS",
-    "run_worker_first": ["/v1/*", "/v1", "/healthz"],
+    "run_worker_first": ["/v1/*", "/v1", "/healthz", "/download", "/download/*"],
     "html_handling": "drop-trailing-slash"
   },
   "browser": { "binding": "BROWSER", "remote": true },
   // Workers AI: the model when no other model is configured (no API key needed).
   "ai": { "binding": "AI", "remote": true },
+  // Architect Desktop builds, served publicly at /download (src/downloads.ts).
+  "r2_buckets": [{ "binding": "DOWNLOADS", "bucket_name": "architect-downloads" }],
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "537874bc5c0a494b870ddc39bd008cb4" }],
   "durable_objects": { "bindings": [{ "name": "CONDUCTOR", "class_name": "Conductor" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Conductor"] }],

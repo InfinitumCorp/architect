@@ -34,6 +34,8 @@
   header { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px 28px; padding:28px 32px 22px; border-bottom:1px solid var(--ink); }
   header h1 { font-weight:400; font-size:clamp(34px, 4.4vw, 56px); line-height:1; letter-spacing:-.065em; margin:0; }
   header .tag { color:var(--muted); font-size:16px; letter-spacing:-.01em; }
+  header .get { margin-left:auto; font-size:14px; color:var(--accent); text-decoration:none; border-bottom:1px solid currentColor; }
+  header .get[hidden] { display:none; }
 
   main { display:grid; grid-template-columns:minmax(0,360px) minmax(0,1fr); min-height:calc(100vh - 110px); }
   aside { border-right:1px solid var(--line); padding:28px 32px; overflow:auto; min-width:0; }
@@ -136,6 +138,7 @@
 <a class="skip-link" href="#detail">Skip to run</a>
 <header>
   <h1>:\ARCHITECT\<sup class="tm">™</sup></h1><span class="tag">Podium. You set the direction; Architect carries it through.</span>
+  <a class="get" id="get-desktop" href="/download" hidden>Download Architect Desktop</a>
 </header>
 <main>
   <aside>
@@ -178,6 +181,18 @@
   <section id="detail" tabindex="-1" aria-live="polite"><p class="empty">Choose a run, or describe an outcome to start one.</p></section>
 </main>
 <script>
+  // The newest Windows desktop build, when the hosted downloads have one (not shown inside the desktop app).
+  if (!/^(127\.0\.0\.1|localhost)$/.test(location.hostname)) {
+    fetch("/download").then((r) => (r.ok ? r.json() : { files: [] })).then(({ files }) => {
+      const win = (files || []).find((f) => /-win32-x64\.zip$/.test(f.name));
+      const a = document.getElementById("get-desktop");
+      if (!win || !a) return;
+      a.href = win.url;
+      a.title = `${win.name} (${(win.size / 1e6).toFixed(0)} MB)`;
+      a.hidden = false;
+    }).catch(() => {});
+  }
+
   let token = "";
   try { token = new URLSearchParams(location.search).get("token") || localStorage.getItem("architect.token") || ""; } catch {}
   if (token) try { localStorage.setItem("architect.token", token); } catch {}
