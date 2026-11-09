@@ -1,3 +1,4 @@
+import { serveNodeLabyrinthProxy } from "./labyrinth/node.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { timingSafeEqual } from "node:crypto";
@@ -10,6 +11,7 @@ import { ScheduleStore, validateSchedule } from "./schedules.js";
 import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
 import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type RunEvent, type Signal } from "./types.js";
 import { InputError, NotFoundError, now } from "./policy.js";
+import { conjureRoutesFromEnv, toWebRequest, sendWebResponse, type ConjureRouteHandler } from "./conjure/conjure.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,9 +28,13 @@ const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
 
 export interface ServerOptions {
   architect: Architect;
+  /** CID repository service; independent of the legacy product API bearer. */
+  lbrnthEndpoint?: string;
   triggers?: TriggerRouter;
   /** Bearer token required on /v1/*. Strongly recommended whenever the server is reachable by others. */
   token?: string;
+  /** @conjure routes; defaults to CONJURE_URL + CONJURE_PRODUCT_KEY from the environment. */
+  conjure?: ConjureRouteHandler;
   library?: ScoreLibrary;
   schedules?: ScheduleStore;
 }
@@ -103,6 +109,9 @@ export function createArchitectServer(opts: ServerOptions): Server {
   const schedules = opts.schedules ?? new ScheduleStore(architect.store.root);
   const background = (p: Promise<unknown>) => p.catch((err) => console.error("[architect]", err));
 
+  // @conjure: POST /v1/conjure { text } starts a live Conjure forecast; GET /v1/conjure/<ticket> follows it.
+  const conjure: ConjureRouteHandler = opts.conjure ?? conjureRoutesFromEnv(process.env, { prefix: "/v1/conjure", source: "architect" });
+
   const authorized = (req: IncomingMessage, url: URL) => {
     if (!opts.token) return true;
     const header = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? url.searchParams.get("token") ?? "";
@@ -115,6 +124,7 @@ export function createArchitectServer(opts: ServerOptions): Server {
     const url = new URL(req.url ?? "/", "http://localhost");
     const parts = url.pathname.split("/").filter(Boolean);
     try {
+      if (url.pathname === "/api/labyrinth") return await serveNodeLabyrinthProxy(req, res, opts.lbrnthEndpoint ?? process.env.LBRNTH_ENDPOINT, "architect");
       if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/podium")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(await readFile(path.join(here, "..", "podium", "index.html"), "utf8"));
@@ -132,6 +142,11 @@ export function createArchitectServer(opts: ServerOptions): Server {
       if (!authorized(req, url)) throw new HttpError(401, "missing or invalid bearer token");
 
       const [, resource, id, action, file] = parts;
+
+      if (resource === "conjure") {
+        const handled = await conjure(await toWebRequest(req), { user: "operator" });
+        if (handled) return void (await sendWebResponse(res, handled));
+      }
 
       if (resource === "runs" && !id) {
         if (req.method === "GET") return json(res, 200, await architect.store.list(Number(url.searchParams.get("limit") ?? 50)));

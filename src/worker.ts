@@ -18,6 +18,7 @@ import { brainFromEnv, modelsFromEnv } from "./brains/config.js";
 import { OpenAICompatBrain } from "./brains/openai.js";
 import { DEFAULT_WORKERS_AI_MODEL, WORKERS_AI_BASE_URL, workersAiFetch, type AiBinding } from "./brains/workersai.js";
 import { DurableRunStore } from "./stores/durable.js";
+import { conjureRoutesFromEnv } from "./conjure/conjure.mjs";
 import { BrowserInstrument } from "./instruments/browser.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { HttpInstrument } from "./instruments/http.js";
@@ -76,6 +77,9 @@ export default {
       // The hosted edition never runs open: no token configured means no API.
       if (!env.ARCHITECT_API_TOKEN) return json(503, { error: "The server has no ARCHITECT_API_TOKEN secret yet." });
       if (!(await authorized(req, env.ARCHITECT_API_TOKEN))) return json(401, { error: "missing or invalid bearer token" });
+      // @conjure: POST /v1/conjure { text } starts a live Conjure forecast; GET /v1/conjure/<ticket> follows it.
+      const forecast = await conjureRoutesFromEnv(env as unknown as Record<string, string | undefined>, { prefix: "/v1/conjure", source: "architect" })(req, { user: "operator" });
+      if (forecast) return forecast;
       return env.CONDUCTOR.get(env.CONDUCTOR.idFromName("main")).fetch(req);
     }
     return env.ASSETS.fetch(req);

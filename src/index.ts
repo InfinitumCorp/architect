@@ -96,3 +96,5 @@ export function createArchitect(opts: CreateArchitectOptions = {}): Architect {
     instruments,
   });
 }
+
+export { createArchitectLabyrinth } from "./labyrinth/index.js";
