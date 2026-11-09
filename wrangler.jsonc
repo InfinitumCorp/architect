@@ -31,4 +31,5 @@
   "observability": { "enabled": true }
   // Secrets (wrangler secret put): ARCHITECT_API_TOKEN, SUPABASE_SERVICE_ROLE_KEY,
   // and a model: ANTHROPIC_API_KEY or OMNIROUTE_URL / ARCHITECT_OPENAI_* settings.
+  // Optional: GEMINI_API_KEY (Google AI Studio free tier, not Vertex). Off when unset.
 }

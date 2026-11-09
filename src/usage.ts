@@ -24,6 +24,8 @@ const PRICES: Record<string, [number, number, number, number]> = {
 };
 
 export function priceFor(model: string): [number, number, number, number] {
+  // AI Studio free tier. Architect does not price Gemini as a billed model.
+  if (model.toLowerCase().startsWith("gemini-")) return [0, 0, 0, 0];
   return PRICES[model] ?? PRICES["claude-opus-5-5"]!;
 }
 

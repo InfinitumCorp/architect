@@ -74,6 +74,8 @@ Options
 Environment
   ANTHROPIC_API_KEY    (or an \`ant auth login\` profile)
   ARCHITECT_MODEL         default claude-opus-5-5     ARCHITECT_EFFORT  default high
+  GEMINI_API_KEY          optional Google AI Studio free tier (plain key, not Vertex). Off when unset.
+  ARCHITECT_GEMINI_MODEL  default gemini-3.5-flash-lite    ARCHITECT_GEMINI_TIER  default fast
   ARCHITECT_API_TOKEN     bearer token for \`serve\`    ARCHITECT_PRODUCT_<KEY>_URL / _TOKEN  ecosystem products
   ARCHITECT_SANDBOX       auto | required | off       ARCHITECT_EXECPOLICY  command policy file (JSON)
   ARCHITECT_ISOLATION     per-run: one folder per run  ARCHITECT_BROWSER_BACKEND  builtin | playwright-mcp`;
@@ -348,7 +350,7 @@ async function main() {
     }
     case "models": {
       if (!router) {
-        console.log(`single model: ${architect.brain.model} (set OMNIROUTE_URL or add architect.models.json to route automatically)`);
+        console.log(`single model: ${architect.brain.model} (set OMNIROUTE_URL, GEMINI_API_KEY, or add architect.models.json to route automatically)`);
         return;
       }
       const p = router.policy;

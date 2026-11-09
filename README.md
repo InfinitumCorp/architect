@@ -209,6 +209,10 @@ Bring your own `Instrument` (any object with `tools` and `execute`) or your own 
 | `ARCHITECT_API_TOKEN` | — | bearer token for `serve` |
 | `ARCHITECT_BRAIN` | automatic | `anthropic` forces one Claude model; `auto` requires routed models |
 | `OMNIROUTE_URL` | — | route through OmniRoute, e.g. `http://localhost:20128/v1` (see below) |
+| `GEMINI_API_KEY` | — | optional Google AI Studio free-tier key (plain API key, not Vertex AI). Off when unset |
+| `ARCHITECT_GEMINI_MODEL` | `gemini-3.5-flash-lite` | free-tier Flash or Flash-Lite chat model |
+| `ARCHITECT_GEMINI_TIER` | `fast` | routing tier. Plan and verify stay on the strong model |
+| `ARCHITECT_GEMINI_VISION` | off | set `on` to send screenshots |
 
 ## Automatic model selection (OmniRoute, Ollama and other open models)
 
@@ -233,6 +237,8 @@ OMNIROUTE_STRONG_MODEL=...                   # optional: a strong model for plan
 ```
 
 With `ANTHROPIC_API_KEY` also set, Claude becomes the `strong` model and OmniRoute handles the rest. `ARCHITECT_OPENAI_BASE_URL` plus `ARCHITECT_OPENAI_MODEL` does the same for any other OpenAI-compatible endpoint, such as Ollama, LM Studio, vLLM, OpenRouter or LiteLLM.
+
+**Google AI Studio (Gemini free tier).** Set `GEMINI_API_KEY` to a plain key from Google AI Studio. This uses the Gemini Developer API (`generativelanguage.googleapis.com`) and does not use Vertex AI or a billing account. The provider stays off when the variable is unset, and `ARCHITECT_BRAIN=anthropic` keeps a single Claude model. When the key is set, Gemini is added as an optional `fast` model (default `gemini-3.5-flash-lite`). Fast-tier calls try it first. Plan, verify, and the default balanced act tier stay on Claude when `ANTHROPIC_API_KEY` is set, and on Cloudflare Workers the Workers AI binding stays primary when no Claude key, models file, or other gateway is configured. A free-tier HTTP 429 is retryable: the call falls back to the next healthy model (Workers AI, Claude, or another configured model) and Gemini sits out for the router cooldown. Vertex resource names, Pro, and other paid model ids are rejected. The key is read from the environment only.
 
 **Full control** comes from a `architect.models.json` file (copy `architect.models.example.json`). It lists models with a `tier`, an optional `price` in USD per million tokens, a `vision` flag for models that can read screenshots, and `apiKeyEnv`, the *name* of the env var that holds the key. Keys themselves are rejected in this file. You can also override the routing `policy`.
 
@@ -267,7 +273,8 @@ src/
   brain.ts            Claude (compose with structured output; perform with tool use)
   brains/openai.ts    any OpenAI-compatible model (OmniRoute, Ollama, vLLM, OpenRouter …)
   brains/router.ts    automatic model selection: tiers, escalation, failover, cooldowns
-  brains/config.ts    architect.models.json and OMNIROUTE_URL / ARCHITECT_OPENAI_* shortcuts
+  brains/config.ts    architect.models.json and OMNIROUTE_URL / ARCHITECT_OPENAI_* / GEMINI_API_KEY shortcuts
+  brains/gemini.ts    optional Google AI Studio free tier (not Vertex); HTTP 429 falls back
   mcp.ts              MCP server for Claude Code, Cursor and other agents
   architect.ts        Compose → Perform → Verify, Encore / Recover / Handoff, approvals
   prompts.ts          system prompts and safety rules

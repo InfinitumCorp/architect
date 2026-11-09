@@ -69,7 +69,7 @@ describe("command policy", () => {
 
 describe("sandbox helpers", () => {
   it("keeps secret-looking variables away from commands", () => {
-    const env = scrubEnv({ PATH: "/bin", ANTHROPIC_API_KEY: "x", GITHUB_TOKEN: "y", NPM_TOKEN: "z", HOME: "/h" }, ["NPM_TOKEN"]);
+    const env = scrubEnv({ PATH: "/bin", ANTHROPIC_API_KEY: "x", GEMINI_API_KEY: "g", GITHUB_TOKEN: "y", NPM_TOKEN: "z", HOME: "/h" }, ["NPM_TOKEN"]);
     expect(env).toEqual({ PATH: "/bin", NPM_TOKEN: "z", HOME: "/h" });
   });
 

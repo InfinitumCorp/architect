@@ -5,7 +5,9 @@
  *   OMNIROUTE_URL       – shortcut: route through a local OmniRoute gateway (e.g. http://localhost:20128/v1)
  *   ARCHITECT_OPENAI_BASE_URL + ARCHITECT_OPENAI_MODEL – shortcut: any other OpenAI-compatible endpoint
  *   ANTHROPIC_API_KEY   – Claude joins as the "strong" model
- *   ARCHITECT_BRAIN        – force "anthropic" (single model) or "auto" (router)
+ *   GEMINI_API_KEY      – optional Google AI Studio free tier (not Vertex). Off when unset.
+ *                         Added as a fast model; Claude / Workers AI stay primary. HTTP 429 falls back.
+ *   ARCHITECT_BRAIN        – force "anthropic" (single model, Gemini not added) or "auto" (router)
  *
  * Secrets never live in the models file: entries name the env var that holds the key (apiKeyEnv).
  */
@@ -13,8 +15,9 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { AnthropicBrain, type Brain } from "../brain.js";
+import { DEFAULT_GEMINI_MODEL, GEMINI_API_KEY_ENV, GeminiBrain, assertFreeTierChatModel } from "./gemini.js";
 import { OpenAICompatBrain } from "./openai.js";
-import { DEFAULT_POLICY, RouterBrain, type Candidate } from "./router.js";
+import { DEFAULT_POLICY, RouterBrain, type Candidate, type Tier as ModelTier } from "./router.js";
 
 const Tier = z.enum(["fast", "balanced", "strong"]);
 
@@ -42,6 +45,19 @@ const ModelEntry = z.discriminatedUnion("provider", [
       headers: z.record(z.string(), z.string()).optional(),
     })
     .strict(),
+  z
+    .object({
+      provider: z.literal("gemini"),
+      id: z.string().optional(),
+      /** Free-tier Flash or Flash-Lite id. Default gemini-3.5-flash-lite. No Vertex resource names. */
+      model: z.string().min(1).optional(),
+      tier: Tier.optional(),
+      /** Name of the env var that holds the AI Studio key. Default GEMINI_API_KEY. The key itself is rejected. */
+      apiKeyEnv: z.string().regex(/^[A-Z_][A-Z0-9_]*$/).optional(),
+      vision: z.boolean().optional(),
+      cost: z.number().nonnegative().optional(),
+    })
+    .strict(),
 ]);
 
 export const ModelsFileSchema = z
@@ -64,19 +80,62 @@ export type ModelsFile = z.infer<typeof ModelsFileSchema>;
 
 type Env = Record<string, string | undefined>;
 
-export function candidatesFrom(file: ModelsFile, env: Env = process.env): Candidate[] {
-  return file.models.map((m) => {
+export function candidatesFrom(file: ModelsFile, env: Env = process.env, fetchImpl?: typeof fetch): Candidate[] {
+  const out: Candidate[] = [];
+  for (const m of file.models) {
     if (m.provider === "anthropic") {
-      return { id: m.id ?? `anthropic/${m.model}`, tier: m.tier, cost: m.cost ?? 1, brain: new AnthropicBrain({ model: m.model }) };
+      out.push({ id: m.id ?? `anthropic/${m.model}`, tier: m.tier, cost: m.cost ?? 1, brain: new AnthropicBrain({ model: m.model }) });
+      continue;
+    }
+    if (m.provider === "gemini") {
+      // Validated even when the key is absent, so a Vertex or paid id fails before it can be called.
+      const model = assertFreeTierChatModel(m.model ?? DEFAULT_GEMINI_MODEL);
+      const keyEnv = m.apiKeyEnv ?? GEMINI_API_KEY_ENV;
+      const apiKey = env[keyEnv]?.trim();
+      if (!apiKey) continue;
+      out.push({
+        id: m.id ?? `gemini/${model}`,
+        tier: m.tier ?? "fast",
+        // Cost 1 (not 0) so an explicit free model already in this tier stays ahead of Gemini.
+        cost: m.cost ?? 1,
+        brain: new GeminiBrain({ apiKey, model, vision: m.vision, fetch: fetchImpl }),
+      });
+      continue;
     }
     const apiKey = m.apiKeyEnv ? env[m.apiKeyEnv] : undefined;
-    return {
+    out.push({
       id: m.id ?? `${new URL(m.baseUrl).host}/${m.model}`,
       tier: m.tier,
       cost: m.cost ?? (m.price ? m.price[0] + m.price[1] : 0),
       brain: new OpenAICompatBrain({ baseUrl: m.baseUrl, model: m.model, apiKey, vision: m.vision, price: m.price, headers: m.headers }),
-    };
-  });
+    });
+  }
+  if (!out.length) {
+    throw new Error("no usable models. A Gemini entry stays off unless GEMINI_API_KEY (or its apiKeyEnv) is set.");
+  }
+  return out;
+}
+
+/**
+ * The optional Gemini candidate, or null when GEMINI_API_KEY is unset.
+ * Tier defaults to fast so plan, verify, and the default act tier stay on Claude or Workers AI.
+ */
+export function geminiCandidate(env: Env, fetchImpl?: typeof fetch): Candidate | null {
+  const apiKey = env.GEMINI_API_KEY?.trim();
+  if (!apiKey) return null;
+  const model = assertFreeTierChatModel(env.ARCHITECT_GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL);
+  return {
+    id: `gemini/${model}`,
+    tier: geminiTier(env.ARCHITECT_GEMINI_TIER),
+    cost: 1,
+    brain: new GeminiBrain({ apiKey, model, vision: env.ARCHITECT_GEMINI_VISION === "on", fetch: fetchImpl }),
+  };
+}
+
+function geminiTier(value: string | undefined): ModelTier {
+  if (!value) return "fast";
+  if (value === "fast" || value === "balanced" || value === "strong") return value;
+  throw new Error(`ARCHITECT_GEMINI_TIER must be fast, balanced, or strong (got ${value})`);
 }
 
 /** The model list implied by environment shortcuts, or null when none are set. */
@@ -120,14 +179,54 @@ export function loadModelsFile(file: string): ModelsFile {
   return parsed.data;
 }
 
+export interface BrainEnvOptions {
+  /**
+   * Workers AI brain. Used only when Claude is not configured and there is no models file,
+   * OmniRoute URL, or other OpenAI shortcut. Gemini, when enabled, is added beside it.
+   */
+  workersAi?: Brain;
+  /** Test hook. Production uses global fetch. */
+  fetch?: typeof fetch;
+}
+
 /** The brain Architect uses by default. */
-export function brainFromEnv(env: Env = process.env, cwd = process.cwd()): Brain {
+export function brainFromEnv(env: Env = process.env, cwd = process.cwd(), opts: BrainEnvOptions = {}): Brain {
+  // A forced Claude brain stays a single model. Gemini is not added.
   if (env.ARCHITECT_BRAIN === "anthropic") return new AnthropicBrain();
   const file = env.ARCHITECT_MODELS_FILE ?? path.join(cwd, "architect.models.json");
-  const config = existsSync(file) ? loadModelsFile(file) : modelsFromEnv(env);
+  const fromFile = existsSync(file);
+  const config = fromFile ? loadModelsFile(file) : modelsFromEnv(env);
   if (!config) {
-    if (env.ARCHITECT_BRAIN === "auto") throw new Error("ARCHITECT_BRAIN=auto needs architect.models.json, OMNIROUTE_URL or ARCHITECT_OPENAI_BASE_URL");
-    return new AnthropicBrain();
+    if (env.ARCHITECT_BRAIN === "auto" && !env.GEMINI_API_KEY?.trim()) {
+      throw new Error("ARCHITECT_BRAIN=auto needs architect.models.json, OMNIROUTE_URL, ARCHITECT_OPENAI_BASE_URL or GEMINI_API_KEY");
+    }
+    return withOptionalGemini(primaryBrain(env, opts), env, opts);
   }
-  return new RouterBrain(candidatesFrom(config, env), { ...DEFAULT_POLICY, ...config.policy });
+  const fileListsGemini = fromFile && config.models.some((m) => m.provider === "gemini");
+  let candidates = candidatesFrom(config, env, opts.fetch);
+  if (!fileListsGemini) {
+    const extra = geminiCandidate(env, opts.fetch);
+    if (extra) candidates = [...candidates, extra];
+  }
+  return new RouterBrain(candidates, { ...DEFAULT_POLICY, ...config.policy });
+}
+
+/** Claude when it is configured or this is not a Worker; otherwise the Workers AI binding. */
+function primaryBrain(env: Env, opts: BrainEnvOptions): Brain {
+  if (!env.ANTHROPIC_API_KEY && opts.workersAi) return opts.workersAi;
+  return new AnthropicBrain({ model: env.ARCHITECT_MODEL });
+}
+
+/**
+ * Keep the primary brain as-is when Gemini is off. When the key is set, route with the primary
+ * first in its tier and Gemini as the optional fast model, so a free-tier 429 can fall back.
+ */
+function withOptionalGemini(primary: Brain, env: Env, opts: BrainEnvOptions): Brain {
+  const gemini = geminiCandidate(env, opts.fetch);
+  if (!gemini) return primary;
+  const useWorkers = !env.ANTHROPIC_API_KEY && opts.workersAi !== undefined && primary === opts.workersAi;
+  const candidate: Candidate = useWorkers
+    ? { id: `workers-ai/${primary.model}`, tier: "balanced", cost: 0, brain: primary }
+    : { id: `anthropic/${primary.model}`, tier: "strong", cost: 1, brain: primary };
+  return new RouterBrain([candidate, gemini]);
 }

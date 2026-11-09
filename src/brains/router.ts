@@ -122,7 +122,7 @@ function up(t: Tier): Tier {
   return TIERS[Math.min(TIERS.length - 1, TIERS.indexOf(t) + 1)]!;
 }
 
-/** Errors no other model would fix (the user cancelled). */
+/** Errors no other model would fix (the user cancelled). Rate limits (HTTP 429) are not fatal: the next model is used. */
 function isFatal(err: unknown) {
   return err instanceof Error && (err.name === "AbortError" || /cancelled/i.test(err.message));
 }

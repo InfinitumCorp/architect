@@ -229,7 +229,7 @@ describe("model configuration", () => {
 
   it("loads the example file", () => {
     const cfg = loadModelsFile(path.resolve("architect.models.example.json"));
-    expect(cfg.models).toHaveLength(3);
+    expect(cfg.models).toHaveLength(4);
     expect(cfg.policy?.act).toBe("fast");
   });
 

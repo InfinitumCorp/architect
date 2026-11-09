@@ -38,6 +38,7 @@ export { Architect } from "./architect.js";
 export type { ArchitectOptions, ComposeOptions, PerformOptions } from "./architect.js";
 export { AnthropicBrain, ScoreDraftSchema } from "./brain.js";
 export { OpenAICompatBrain, ModelCallError, type OpenAICompatOptions } from "./brains/openai.js";
+export { GeminiBrain, DEFAULT_GEMINI_MODEL, GEMINI_OPENAI_BASE, GEMINI_API_KEY_ENV } from "./brains/gemini.js";
 export { RouterBrain, DEFAULT_POLICY, type Candidate, type RouterPolicy, type Tier, type Task } from "./brains/router.js";
 export { brainFromEnv, loadModelsFile, modelsFromEnv, ModelsFileSchema } from "./brains/config.js";
 export type { Brain, ScoreDraft, TurnRequest, TurnResult } from "./brain.js";

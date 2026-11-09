@@ -9,12 +9,15 @@
  * Browser: Cloudflare Browser Rendering (BROWSER binding). Storage: the shared Supabase
  * project, schema `architect` (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY secret).
  * Model: the same env settings as the CLI (ANTHROPIC_API_KEY, OMNIROUTE_URL, ARCHITECT_OPENAI_*).
+ * GEMINI_API_KEY is optional (Google AI Studio free tier, not Vertex). When it is unset, nothing
+ * changes. When it is set, Workers AI stays primary unless Claude or another model is configured,
+ * and a Gemini HTTP 429 falls back to that primary.
  */
 import { DurableObject } from "cloudflare:workers";
 import { launch, type BrowserWorker } from "@cloudflare/playwright";
 import type { Browser } from "playwright";
 import { Architect } from "./architect.js";
-import { brainFromEnv, modelsFromEnv } from "./brains/config.js";
+import { brainFromEnv } from "./brains/config.js";
 import { OpenAICompatBrain } from "./brains/openai.js";
 import { DEFAULT_WORKERS_AI_MODEL, WORKERS_AI_BASE_URL, workersAiFetch, type AiBinding } from "./brains/workersai.js";
 import { DurableRunStore } from "./stores/durable.js";
@@ -32,7 +35,7 @@ export interface Env {
   ASSETS: Fetcher;
   CONDUCTOR: DurableObjectNamespace<Conductor>;
   BROWSER: BrowserWorker;
-  /** Workers AI: the model when no ANTHROPIC_API_KEY / OMNIROUTE_URL / ARCHITECT_OPENAI_* is set. */
+  /** Workers AI: the model when no ANTHROPIC_API_KEY / OMNIROUTE_URL / ARCHITECT_OPENAI_* is set. GEMINI_API_KEY does not replace it. */
   AI?: AiBinding;
   /** Workers AI model id (default DEFAULT_WORKERS_AI_MODEL). */
   ARCHITECT_WORKERS_AI_MODEL?: string;
@@ -90,17 +93,18 @@ export class Conductor extends DurableObject<Env> {
   private get arch(): Architect {
     if (this.architect) return this.architect;
     const env = this.env as unknown as Record<string, string | undefined>;
-    // Model: explicit settings win; otherwise Workers AI through the binding (no key needed).
-    const configured = !!env.ANTHROPIC_API_KEY || !!modelsFromEnv(env);
-    const brain =
-      configured || !this.env.AI
-        ? brainFromEnv(env, "/")
-        : new OpenAICompatBrain({
-            baseUrl: WORKERS_AI_BASE_URL,
-            model: this.env.ARCHITECT_WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL,
-            fetch: workersAiFetch(this.env.AI),
-            maxTokens: 8_000,
-          });
+    // Workers AI stays the primary brain when no Claude key, models file, or OpenAI shortcut is set.
+    // A GEMINI_API_KEY adds Gemini beside it; it does not take this slot. brainFromEnv drops the
+    // binding when Claude or an explicit shortcut is configured.
+    const workersAi = this.env.AI
+      ? new OpenAICompatBrain({
+          baseUrl: WORKERS_AI_BASE_URL,
+          model: this.env.ARCHITECT_WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL,
+          fetch: workersAiFetch(this.env.AI),
+          maxTokens: 8_000,
+        })
+      : undefined;
+    const brain = brainFromEnv(env, "/", { workersAi });
     // Storage: Supabase over Hyperdrive as the limited architect_worker login; else with the
     // service-role key if one is set; else the Durable Object's own storage.
     const store = this.env.HYPERDRIVE
