@@ -1,3 +1,4 @@
+import { serveNodeLabyrinthProxy } from "./labyrinth/node.js";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { timingSafeEqual } from "node:crypto";
@@ -26,6 +27,8 @@ const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
 
 export interface ServerOptions {
   architect: Architect;
+  /** CID repository service; independent of the legacy product API bearer. */
+  lbrnthEndpoint?: string;
   triggers?: TriggerRouter;
   /** Bearer token required on /v1/*. Strongly recommended whenever the server is reachable by others. */
   token?: string;
@@ -115,6 +118,7 @@ export function createArchitectServer(opts: ServerOptions): Server {
     const url = new URL(req.url ?? "/", "http://localhost");
     const parts = url.pathname.split("/").filter(Boolean);
     try {
+      if (url.pathname === "/api/labyrinth") return await serveNodeLabyrinthProxy(req, res, opts.lbrnthEndpoint ?? process.env.LBRNTH_ENDPOINT, "architect");
       if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/podium")) {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(await readFile(path.join(here, "..", "podium", "index.html"), "utf8"));
