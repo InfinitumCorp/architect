@@ -41,6 +41,9 @@ rmSync(path.join(desktop, "podium"), { recursive: true, force: true });
 cpSync(path.join(root, "podium"), path.join(desktop, "podium"), { recursive: true });
 
 console.log("2/4 find Electron");
+// The server uses Node 22 APIs (fs.glob); Electron 35 is the first release on Node 22.
+const MIN_ELECTRON = 35;
+const electronVersion = (file) => path.basename(file).match(/^electron-v([\d.]+)-/)?.[1] ?? "0";
 let zip = values["electron-zip"];
 if (!zip) {
   const cache = process.env.ELECTRON_CACHE ?? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), ".cache"), "electron", "Cache");
@@ -49,12 +52,16 @@ if (!zip) {
         .map(String)
         .filter((f) => f.endsWith(`-${platform}-${arch}.zip`) && path.basename(f).startsWith("electron-v"))
         .map((f) => path.join(cache, f))
-        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
+        // Highest Electron version first (not newest file: other tools cache older Electrons too).
+        .sort((a, b) => electronVersion(b).localeCompare(electronVersion(a), undefined, { numeric: true }))
     : [];
-  zip = found[0];
+  zip = found.find((f) => Number(electronVersion(f).split(".")[0]) >= MIN_ELECTRON);
 }
 if (!zip || !existsSync(zip)) {
-  throw new Error(`No Electron zip for ${platform}-${arch}. Download electron-v<version>-${platform}-${arch}.zip from github.com/electron/electron/releases and pass --electron-zip.`);
+  throw new Error(`No Electron ${MIN_ELECTRON}+ zip for ${platform}-${arch}. Download electron-v<version>-${platform}-${arch}.zip from github.com/electron/electron/releases and pass --electron-zip.`);
+}
+if (Number(electronVersion(zip).split(".")[0]) < MIN_ELECTRON) {
+  throw new Error(`${path.basename(zip)} is too old: the server needs Node 22 (Electron ${MIN_ELECTRON} or later).`);
 }
 console.log(`   using ${path.basename(zip)}`);
 
