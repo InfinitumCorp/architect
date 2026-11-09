@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import type { Brain, ContentBlockParam, MessageParam, ToolDef, ToolResultBlockParam } from "./brain.js";
-import { commentsMessage, hostRefusal, knowledgePrompt, planReview, relatedKnowledge, validTarget } from "./agentic.js";
+import { commentsMessage, followUpGoal, hostRefusal, knowledgePrompt, planReview, relatedKnowledge, validTarget } from "./agentic.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { ToolInputError, validateInput, type Instrument, type ToolContext, type ToolSpec } from "./instruments/types.js";
 import { gate, newId, now, truncate } from "./policy.js";
@@ -64,6 +64,8 @@ export interface PerformOptions extends ComposeOptions {
   source?: string;
   /** Whether the composed plan waits for a person's review. Default: always_proceed (callers opt in). */
   review?: ReviewPolicy;
+  /** The earlier run this one continues (a follow-up in the same session). */
+  parentRunId?: string;
 }
 
 interface ControlTool {
@@ -257,6 +259,7 @@ ${knowledgePrompt(known)}`;
       budgetUsd: opts.budgetUsd,
       source: opts.source,
       review: opts.review ?? "always_proceed",
+      parentRunId: opts.parentRunId,
     });
     run.planReview = planReview(score, run.review!, run.autonomy);
     if (usage) addUsage(run.usage, usage, model ?? this.brain.model);
@@ -264,6 +267,12 @@ ${knowledgePrompt(known)}`;
     await this.emitEvent(run.id, "run.composed", { score, estimate: this.estimate(score), budgetUsd: run.budgetUsd });
     if (run.planReview.required) await this.emitEvent(run.id, "plan.review_requested", { reason: run.planReview.reason });
     return run;
+  }
+
+  /** A follow-up in the same session: a new run that carries the earlier run's outcome as context. */
+  async followUp(parentRunId: string, text: string, opts: PerformOptions = {}): Promise<Run> {
+    const parent = await this.store.load(parentRunId);
+    return this.start(followUpGoal(text, parent), { ...opts, parentRunId: parent.id });
   }
 
   /** True when the plan is waiting for a person's review (perform it with approvePlan). */

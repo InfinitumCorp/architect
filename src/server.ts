@@ -23,6 +23,9 @@ const PODIUM_ASSETS: Record<string, { file: string; type: string }> = {
   "/icon-512.png": { file: "icon-512.png", type: "image/png" },
   "/firm-suite.js": { file: "firm-suite.js", type: "text/javascript; charset=utf-8" },
   "/firm-suite.css": { file: "firm-suite.css", type: "text/css; charset=utf-8" },
+  "/billing.js": { file: "billing.js", type: "text/javascript; charset=utf-8" },
+  "/cumulus-id.js": { file: "cumulus-id.js", type: "text/javascript; charset=utf-8" },
+  "/privacy.html": { file: "privacy.html", type: "text/html; charset=utf-8" },
 };
 const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
 
@@ -160,7 +163,7 @@ export function createArchitectServer(opts: ServerOptions): Server {
           const review = (REVIEW_POLICIES.includes(b.review as ReviewPolicy) ? b.review : parsed.review) as ReviewPolicy | undefined;
           const hostsIn = (b.hosts ?? {}) as Record<string, unknown>;
           const hosts = { allow: hostList(hostsIn.allow), block: hostList(hostsIn.block) };
-          const run = await architect.start(goal, {
+          const startOpts = {
             autonomy,
             inputs: stringMap(b.inputs),
             startUrl: b.startUrl ? String(b.startUrl) : undefined,
@@ -169,7 +172,11 @@ export function createArchitectServer(opts: ServerOptions): Server {
             review,
             hosts: hosts.allow || hosts.block ? hosts : undefined,
             knowledge: b.knowledge !== false,
-          });
+          };
+          // A follow-up continues an earlier run in the same session, carrying its outcome as context.
+          const run = await (typeof b.followUp === "string" && b.followUp
+            ? architect.followUp(b.followUp, goal, startOpts)
+            : architect.start(goal, startOpts));
           if (!b.composeOnly && !architect.awaitingPlanReview(run)) background(architect.perform(run));
           return json(res, 202, run);
         }

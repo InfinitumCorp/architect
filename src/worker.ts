@@ -179,7 +179,7 @@ export class Conductor extends DurableObject<Env> {
           const review = (REVIEW_POLICIES.includes(b.review as ReviewPolicy) ? b.review : parsed.review) as ReviewPolicy | undefined;
           const hostsIn = (b.hosts ?? {}) as Record<string, unknown>;
           const hosts = { allow: hostList(hostsIn.allow), block: hostList(hostsIn.block) };
-          const run = await a.start(goal, {
+          const startOpts = {
             autonomy,
             inputs: stringMap(b.inputs),
             startUrl: b.startUrl ? String(b.startUrl) : undefined,
@@ -188,7 +188,11 @@ export class Conductor extends DurableObject<Env> {
             review,
             hosts: hosts.allow || hosts.block ? hosts : undefined,
             knowledge: b.knowledge !== false,
-          });
+          };
+          // A follow-up continues an earlier run in the same session, carrying its outcome as context.
+          const run = await (typeof b.followUp === "string" && b.followUp
+            ? a.followUp(b.followUp, goal, startOpts)
+            : a.start(goal, startOpts));
           if (!b.composeOnly && !a.awaitingPlanReview(run)) this.background(a.perform(run));
           return json(202, run);
         }

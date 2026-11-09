@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Publish a build to the hosted downloads (rchtch.app/download/<file>) in 8 MB parts,
-// retrying each part, so a slow connection does not time out the whole upload.
+// retrying each part, so a slow connection does not time out the whole upload. Progress is kept
+// in <file>.upload.json: run the same command again to resume after a failure.
 //   node scripts/publish-download.mjs dist/Architect-Desktop-0.3.0-win32-x64.zip [--server https://rchtch.app]
 // The API token comes from ARCHITECT_API_TOKEN (environment or .env); it is never printed.
-import { openSync, readSync, closeSync, readFileSync, statSync, existsSync } from "node:fs";
+import { openSync, readSync, closeSync, readFileSync, statSync, existsSync, writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "node:util";
 
@@ -20,7 +21,7 @@ const size = statSync(file).size;
 const base = `${values.server.replace(/\/$/, "")}/v1/downloads/${encodeURIComponent(name)}/uploads`;
 const headers = { authorization: `Bearer ${token}` };
 
-async function call(url, init, tries = 6) {
+async function call(url, init, tries = 12) {
   for (let i = 1; ; i++) {
     try {
       const r = await fetch(url, { ...init, headers: { ...headers, ...init.headers }, signal: AbortSignal.timeout(300_000) });
@@ -33,17 +34,27 @@ async function call(url, init, tries = 6) {
   }
 }
 
-const { uploadId } = await call(base, { method: "POST" });
+const stateFile = `${file}.upload.json`;
+let state = existsSync(stateFile) ? JSON.parse(readFileSync(stateFile, "utf8")) : undefined;
+if (!state || state.size !== size || state.server !== values.server) {
+  state = { server: values.server, size, uploadId: (await call(base, { method: "POST" })).uploadId, parts: [] };
+}
+const { uploadId } = state;
+const save = () => writeFileSync(stateFile, JSON.stringify(state));
+save();
 const fd = openSync(file, "r");
-const parts = [];
+const parts = state.parts;
 const count = Math.ceil(size / PART);
 for (let n = 1; n <= count; n++) {
+  if (parts.some((p) => p.partNumber === n)) continue;
   const buf = Buffer.alloc(Math.min(PART, size - (n - 1) * PART));
   readSync(fd, buf, 0, buf.length, (n - 1) * PART);
   const t = Date.now();
   parts.push(await call(`${base}/${encodeURIComponent(uploadId)}/${n}`, { method: "PUT", body: buf }));
+  save();
   console.log(`part ${n}/${count} (${(buf.length / 1e6).toFixed(1)} MB, ${((Date.now() - t) / 1000).toFixed(0)}s)`);
 }
 closeSync(fd);
 const done = await call(`${base}/${encodeURIComponent(uploadId)}/complete`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parts }) });
+rmSync(stateFile, { force: true });
 console.log(`published ${values.server.replace(/\/$/, "")}${done.url} (${(size / 1e6).toFixed(1)} MB)`);

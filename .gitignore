@@ -13,3 +13,4 @@ android/build/
 # Desktop build output
 desktop/app/
 desktop/podium/
+*.upload.json
