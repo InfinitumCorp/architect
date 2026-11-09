@@ -124,12 +124,12 @@
   .walk { max-height:520px; overflow:auto; }
   .hint { color:var(--muted); font-size:13px; margin:-4px 0 0; }
 </style>
-</head>
+<style id="cid-style">.cid-slot{display:inline-flex;align-items:center;margin-left:auto}.cid-fixed{position:fixed;top:12px;right:12px;z-index:1000;background:#fff;color:#111820;padding:4px}@media (max-width:720px){.cid-slot .cid-who{display:none}}</style></head>
 <body>
 <a class="skip-link" href="#detail">Skip to run</a>
 <header>
   <h1>:\ARCHITECT\<sup class="tm">™</sup></h1><span class="tag">Podium. You set the direction; Architect carries it through.</span>
-</header>
+<span class="cid-slot" data-cumulus-id data-label="Sign in"></span></header>
 <main>
   <aside>
     <form id="new" aria-label="New run">
@@ -339,5 +339,6 @@
   setInterval(() => { loadRuns().catch(() => {}); if (current) render(); }, 5000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 </script>
+<script src="/cumulus-id.js" data-client="architect" defer></script>
 </body>
 </html>
