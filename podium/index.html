@@ -339,6 +339,6 @@
   setInterval(() => { loadRuns().catch(() => {}); if (current) render(); }, 5000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 </script>
-<script src="/cumulus-id.js" data-client="architect" defer></script>
+<script src="https://id.cumuluscloud.app/id/button.js" data-client="architect" defer></script>
 </body>
 </html>
