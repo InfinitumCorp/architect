@@ -13,7 +13,8 @@
 
 /** The part of the R2 bucket API this module uses. */
 export interface DownloadBucket {
-  get(key: string): Promise<{ body: ReadableStream; size: number; httpEtag: string; uploaded: Date } | null>;
+  get(key: string, opts?: { range?: { offset: number; length: number } }): Promise<{ body: ReadableStream; size: number; httpEtag: string; uploaded: Date } | null>;
+  head(key: string): Promise<{ size: number; httpEtag: string } | null>;
   list(opts?: { limit?: number }): Promise<{ objects: Array<{ key: string; size: number; uploaded: Date }> }>;
   createMultipartUpload(key: string, opts?: { httpMetadata?: { contentType?: string } }): Promise<{ uploadId: string }>;
   resumeMultipartUpload(
@@ -48,17 +49,40 @@ export async function publicDownload(req: Request, bucket: DownloadBucket | unde
     return json(200, { files });
   }
   if (!FILE.test(name)) return json(400, { error: "bad file name" });
-  const obj = await bucket.get(name);
-  if (!obj) return json(404, { error: "no such download" });
-  return new Response(req.method === "HEAD" ? null : obj.body, {
-    headers: {
-      "content-type": typeOf(name),
-      "content-length": String(obj.size),
-      "content-disposition": `attachment; filename="${name}"`,
-      etag: obj.httpEtag,
-      "cache-control": "public, max-age=300",
-    },
-  });
+  const meta = await bucket.head(name);
+  if (!meta) return json(404, { error: "no such download" });
+  const headers: Record<string, string> = {
+    "content-type": typeOf(name),
+    "content-disposition": `attachment; filename="${name}"`,
+    etag: meta.httpEtag,
+    "accept-ranges": "bytes",
+    "cache-control": "public, max-age=300",
+  };
+  // Byte ranges, so an interrupted download on a slow connection can resume.
+  const range = byteRange(req.headers.get("range"), meta.size);
+  if (range === "invalid") return new Response(null, { status: 416, headers: { ...headers, "content-range": `bytes */${meta.size}` } });
+  if (range) {
+    const { offset, length } = range;
+    const part = req.method === "HEAD" ? null : await bucket.get(name, { range: { offset, length } });
+    return new Response(part?.body ?? null, {
+      status: 206,
+      headers: { ...headers, "content-length": String(length), "content-range": `bytes ${offset}-${offset + length - 1}/${meta.size}` },
+    });
+  }
+  const obj = req.method === "HEAD" ? null : await bucket.get(name);
+  if (req.method !== "HEAD" && !obj) return json(404, { error: "no such download" });
+  return new Response(obj?.body ?? null, { headers: { ...headers, "content-length": String(meta.size) } });
+}
+
+/** A single `bytes=` range against a file of `size` bytes: undefined for none, "invalid" when unsatisfiable. */
+export function byteRange(header: string | null, size: number): { offset: number; length: number } | "invalid" | undefined {
+  const m = header?.match(/^bytes=(\d*)-(\d*)$/);
+  if (!m || (!m[1] && !m[2])) return undefined; // absent, multi-range or malformed: send the whole file
+  let start: number, end: number;
+  if (!m[1]) { start = Math.max(0, size - Number(m[2])); end = size - 1; } // suffix: the last n bytes
+  else { start = Number(m[1]); end = m[2] ? Math.min(Number(m[2]), size - 1) : size - 1; }
+  if (start >= size || end < start) return "invalid";
+  return { offset: start, length: end - start + 1 };
 }
 
 /** The token-protected multipart upload routes under /v1/downloads; undefined for other paths. */
