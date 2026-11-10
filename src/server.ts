@@ -4,11 +4,12 @@ import { readFile } from "node:fs/promises";
 import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Architect } from "./architect.js";
+import type { Architect, PerformOptions } from "./architect.js";
 import { TriggerRouter } from "./triggers.js";
 import { ScoreLibrary } from "./library.js";
 import { ScheduleStore, validateSchedule } from "./schedules.js";
 import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
+import { expandMentions, findFiles, runShell } from "./mentions.js";
 import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type RunEvent, type Signal } from "./types.js";
 import { InputError, NotFoundError, now } from "./policy.js";
 import { conjureRoutesFromEnv, toWebRequest, sendWebResponse, type ConjureRouteHandler } from "./conjure/conjure.mjs";
@@ -31,6 +32,8 @@ const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
 
 export interface ServerOptions {
   architect: Architect;
+  /** The project folder for @-mentions and ! commands. Defaults to the workspace instrument's folder. */
+  workspace?: string;
   /** CID repository service; independent of the legacy product API bearer. */
   lbrnthEndpoint?: string;
   triggers?: TriggerRouter;
@@ -55,12 +58,12 @@ class HttpError extends Error {
   }
 }
 
-async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
+async function body(req: IncomingMessage, limit = 1_000_000): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > 1_000_000) throw new HttpError(413, "body too large");
+    if (size > limit) throw new HttpError(413, "body too large");
     chunks.push(chunk as Buffer);
   }
   if (!chunks.length) return {};
@@ -94,6 +97,9 @@ function permissions(v: unknown): Permission[] | undefined {
  *
  *   POST /v1/runs                       start a run            { goal, autonomy?, inputs?, startUrl?, permissions?, composeOnly? }
  *   GET  /v1/runs                       list runs
+ *   GET  /v1/models                     models a person can pick  { default, options }
+ *   GET  /v1/files?q=                   project files for @-mentions (local only)
+ *   POST /v1/shell                      run one command in the project, loopback only  { command }
  *   GET  /v1/runs/:id                   one run
  *   GET  /v1/runs/:id/events            server-sent events (replay + live)
  *   GET  /v1/runs/:id/evidence/:file    evidence file (screenshots)
@@ -145,6 +151,21 @@ export function createArchitectServer(opts: ServerOptions): Server {
       if (!authorized(req, url)) throw new HttpError(401, "missing or invalid bearer token");
 
       const [, resource, id, action, file] = parts;
+      const project = opts.workspace ?? architect.workspaceRoot;
+
+      if (resource === "models" && req.method === "GET") return json(res, 200, { ...architect.models(), files: Boolean(project), shell: Boolean(project) && loopback(req) });
+      if (resource === "files" && req.method === "GET") {
+        if (!project) return json(res, 200, { files: [] });
+        return json(res, 200, { files: await findFiles(project, String(url.searchParams.get("q") ?? "").slice(0, 200)) });
+      }
+      if (resource === "shell" && req.method === "POST") {
+        // A person's own terminal command. Only from this machine: the API may be reachable by others.
+        if (!project) throw new HttpError(404, "no project folder");
+        if (!loopback(req)) throw new HttpError(403, "commands run only from this computer");
+        const command = String((await body(req)).command ?? "").trim();
+        if (!command || command.length > 4000) throw new HttpError(400, "command is required (at most 4000 characters)");
+        return json(res, 200, await runShell(command, project));
+      }
 
       if (resource === "conjure") {
         const handled = await conjure(await toWebRequest(req), { user: "operator" });
@@ -154,11 +175,12 @@ export function createArchitectServer(opts: ServerOptions): Server {
       if (resource === "runs" && !id) {
         if (req.method === "GET") return json(res, 200, await architect.store.list(Number(url.searchParams.get("limit") ?? 50)));
         if (req.method === "POST") {
-          const b = await body(req);
+          const b = await body(req, 25_000_000);
           // Slash commands at the start of the goal (/plan, /fast, /rehearse, /autopilot) set options.
           const parsed = parseGoal(String(b.goal ?? ""));
-          const goal = parsed.goal;
-          if (!goal) throw new HttpError(400, "goal is required");
+          if (!parsed.goal) throw new HttpError(400, "goal is required");
+          // @path mentions bring those files' contents along, like Claude Code and Cursor.
+          const goal = project ? await expandMentions(parsed.goal, project) : parsed.goal;
           const autonomy = (AUTONOMY.includes(b.autonomy as Autonomy) ? b.autonomy : parsed.autonomy ?? "accompaniment") as Autonomy;
           const review = (REVIEW_POLICIES.includes(b.review as ReviewPolicy) ? b.review : parsed.review) as ReviewPolicy | undefined;
           const hostsIn = (b.hosts ?? {}) as Record<string, unknown>;
@@ -172,11 +194,17 @@ export function createArchitectServer(opts: ServerOptions): Server {
             review,
             hosts: hosts.allow || hosts.block ? hosts : undefined,
             knowledge: b.knowledge !== false,
+            model: typeof b.model === "string" && b.model ? b.model.slice(0, 200) : undefined,
+            images: b.images as PerformOptions["images"],
           };
           // A follow-up continues an earlier run in the same session, carrying its outcome as context.
           const run = await (typeof b.followUp === "string" && b.followUp
             ? architect.followUp(b.followUp, goal, startOpts)
-            : architect.start(goal, startOpts));
+            : architect.start(goal, startOpts)
+          ).catch((err: unknown) => {
+            if (err instanceof Error && /unknown model|image|images must/.test(err.message)) throw new HttpError(400, err.message);
+            throw err;
+          });
           if (!b.composeOnly && !architect.awaitingPlanReview(run)) background(architect.perform(run));
           return json(res, 202, run);
         }
@@ -358,4 +386,10 @@ async function streamEvents(req: IncomingMessage, res: ServerResponse, architect
     clearInterval(ping);
     architect.off("event", listener);
   });
+}
+
+/** True for requests from this computer. */
+function loopback(req: IncomingMessage): boolean {
+  const a = req.socket.remoteAddress ?? "";
+  return a === "127.0.0.1" || a === "::1" || a === "::ffff:127.0.0.1";
 }

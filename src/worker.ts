@@ -13,7 +13,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { launch, type BrowserWorker } from "@cloudflare/playwright";
 import type { Browser } from "playwright";
-import { Architect } from "./architect.js";
+import { Architect, type PerformOptions } from "./architect.js";
 import { brainFromEnv, hasExplicitModelConfig } from "./brains/config.js";
 import { OpenAICompatBrain } from "./brains/openai.js";
 import { DEFAULT_WORKERS_AI_MODEL, WORKERS_AI_BASE_URL, workersAiFetch, type AiBinding } from "./brains/workersai.js";
@@ -167,6 +167,8 @@ export class Conductor extends DurableObject<Env> {
         return parsed as Record<string, unknown>;
       };
 
+      if (resource === "models" && req.method === "GET") return json(200, { ...a.models(), files: false, shell: false });
+
       if (resource === "runs" && !id) {
         if (req.method === "GET") return json(200, await a.store.list(Number(url.searchParams.get("limit") ?? 50)));
         if (req.method === "POST") {
@@ -188,11 +190,17 @@ export class Conductor extends DurableObject<Env> {
             review,
             hosts: hosts.allow || hosts.block ? hosts : undefined,
             knowledge: b.knowledge !== false,
+            model: typeof b.model === "string" && b.model ? b.model.slice(0, 200) : undefined,
+            images: b.images as PerformOptions["images"],
           };
           // A follow-up continues an earlier run in the same session, carrying its outcome as context.
           const run = await (typeof b.followUp === "string" && b.followUp
             ? a.followUp(b.followUp, goal, startOpts)
-            : a.start(goal, startOpts));
+            : a.start(goal, startOpts)
+          ).catch((err: unknown) => {
+            if (err instanceof Error && /unknown model|image|images must/.test(err.message)) throw new HttpError(400, err.message);
+            throw err;
+          });
           if (!b.composeOnly && !a.awaitingPlanReview(run)) this.background(a.perform(run));
           return json(202, run);
         }

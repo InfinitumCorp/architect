@@ -155,6 +155,19 @@
   .box .row { display:flex; align-items:center; gap:6px; padding:4px 6px 6px; flex-wrap:wrap; }
   .box .row .grow { flex:1; }
   .mode { font-size:13px; }
+  .model { font-size:13px; border:1px solid transparent; background:none; padding:4px 6px; max-width:220px; color:var(--ink); }
+  .model:hover, .model:focus { border-color:var(--line); }
+  .box.drop { border-style:dashed; border-color:var(--accent); }
+  .attach { display:flex; flex-wrap:wrap; gap:10px; padding:12px 14px 0; }
+  .attach .thumb { position:relative; width:56px; height:56px; border:1px solid var(--line); }
+  .attach img { width:100%; height:100%; object-fit:cover; display:block; }
+  .attach button { position:absolute; top:-8px; right:-8px; width:20px; height:20px; padding:0; font-size:12px; line-height:1; background:var(--paper); border:1px solid var(--ink); }
+  .msg-shell { margin:18px 0 10px; font:13px/1.55 var(--mono); }
+  .msg-shell .cmd { padding:8px 12px; background:var(--wash); border-left:2px solid var(--ink); white-space:pre-wrap; word-break:break-word; }
+  .msg-shell .cmd::before { content:"! "; color:var(--accent); }
+  .msg-shell .out { white-space:pre-wrap; word-break:break-word; color:var(--muted); border-left:1px solid var(--line); margin:4px 0 0 6px; padding:2px 10px; max-height:360px; overflow:auto; }
+  .msg-shell .code { color:var(--muted); font-size:12px; margin:2px 0 0 16px; }
+  .popup button .c.file { min-width:0; }
   .mode b { font-weight:400; color:var(--accent); }
   .send { width:36px; height:36px; padding:0; display:grid; place-items:center; }
   .stop { font-size:13px; padding:6px 12px; }
@@ -277,10 +290,14 @@
           </div>
         </div>
         <form class="box" id="composer" aria-label="Message Architect">
+          <div class="attach" id="attach" hidden></div>
           <textarea id="prompt" rows="1" placeholder="Describe a task, or / for commands" aria-label="Message"></textarea>
           <div class="row">
             <button type="button" class="quiet mode" id="mode-btn" title="Switch mode (Shift+Tab)"></button>
             <button type="button" class="quiet" id="opts-btn" aria-expanded="false" title="Start URL, site limits and spending limit">Options</button>
+            <button type="button" class="quiet" id="img-btn" title="Attach screenshots or designs (you can also paste or drop them)">Image</button>
+            <input type="file" id="img-input" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+            <select class="model" id="model-sel" aria-label="Model" title="Model (Auto picks per step)" hidden></select>
             <span class="grow"></span>
             <button type="button" class="stop" id="stop-btn" hidden>Stop</button>
             <button class="primary send" id="send-btn" aria-label="Send" title="Send (Enter)">&#8593;</button>
@@ -334,7 +351,8 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
   const store = { get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
   const FOLLOW_UP_MARK = "\n\n--- Earlier in this session ---\n";
-  const ownText = (goal) => String(goal || "").split(FOLLOW_UP_MARK)[0].replace(/^(\/[a-z-]+\s+)+/i, "");
+  const MENTION_MARK = "\n\n--- Files mentioned ---\n";
+  const ownText = (goal) => String(goal || "").split(FOLLOW_UP_MARK)[0].split(MENTION_MARK)[0].replace(/^(\/[a-z-]+\s+)+/i, "");
   const isLocal = /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
 
   // ---- API ----
@@ -355,7 +373,7 @@
     token = $("token-input").value.trim();
     store.set("architect.token", token);
     $("token-sheet").hidden = true; e.target.reset();
-    refresh();
+    refresh(); loadCaps();
   };
 
   // ---- Modes (Shift+Tab cycles, like a coding agent's permission modes) ----
@@ -469,7 +487,7 @@
 
   function runBlock(r, isLast) {
     const parts = [];
-    parts.push(`<div class="msg-user">${esc(ownText(r.score.goal))}<span class="meta">${esc(r.autonomy)}${r.review ? " · " + esc(r.review.replace(/_/g, " ")) : ""}${r.parentRunId && !r.score.goal.includes(FOLLOW_UP_MARK) ? " · run again" : ""}</span></div>`);
+    parts.push(`<div class="msg-user">${esc(ownText(r.score.goal))}<span class="meta">${esc(r.autonomy)}${r.review ? " · " + esc(r.review.replace(/_/g, " ")) : ""}${r.model ? " · " + esc(r.model) : ""}${r.attachments && r.attachments.length ? ` · ${r.attachments.length} image${r.attachments.length > 1 ? "s" : ""}` : ""}${r.score.goal.includes(MENTION_MARK) ? " · files attached" : ""}${r.parentRunId && !r.score.goal.includes(FOLLOW_UP_MARK) ? " · run again" : ""}</span></div>`);
     if (r.status === "composing") { parts.push(`<div class="working">Composing a plan…</div>`); return parts.join(""); }
     if (r.score.summary) parts.push(`<div class="say">${esc(r.score.summary)}</div>`);
     const st = (id) => r.steps.find((s) => s.id === id) || { status: "pending" };
@@ -558,7 +576,8 @@
     const openWalks = new Set([...document.querySelectorAll(".walk:not([hidden])")].map((d) => d.id));
     const key = (d) => d.querySelector(".name").textContent + "|" + d.querySelector(".arg").textContent;
     const openTools = new Set([...document.querySelectorAll("details.tool[open]")].map(key));
-    $("transcript").innerHTML = thread.length ? thread.map((r, i) => runBlock(r, i === thread.length - 1)).join("") : welcome();
+    const shells = shellLog.filter((x) => x.session === (session || "")).map(shellBlock).join("");
+    $("transcript").innerHTML = (thread.length ? thread.map((r, i) => runBlock(r, i === thread.length - 1)).join("") : shells ? "" : welcome()) + shells;
     document.querySelectorAll("details.tool").forEach((d) => { if (openTools.has(key(d))) d.open = true; });
     openWalks.forEach((id) => { const d = $(id); if (d) { d.hidden = false; d.open = true; loadWalk(d); } });
     document.querySelectorAll("[data-starter]").forEach((b) => (b.onclick = () => { prompt.value = b.dataset.starter; grow(); prompt.focus(); }));
@@ -657,24 +676,49 @@
     { c: "/stop", d: "Stop the running task", run: () => stop() },
     { c: "/recover", d: "Recover the last failed task", run: () => latest() && act("recover", latest().id) },
     { c: "/options", d: "Start URL, site limits and spending limit", run: () => toggleOpts(true) },
+    { c: "/model", d: "Pick the model for the next task", run: () => { const m = $("model-sel"); if (m.hidden) { formError("Only one model is configured on this server."); return; } m.focus(); m.showPicker?.(); } },
+    { c: "/image", d: "Attach screenshots or designs", run: () => $("img-input").click() },
     { c: "/help", d: "Keyboard shortcuts", run: () => ($("help-sheet").hidden = false) },
   ];
   let slashIndex = 0, slashList = [];
   const prompt = $("prompt");
   function grow() { prompt.style.height = "auto"; prompt.style.height = Math.min(prompt.scrollHeight, innerHeight * 0.4) + "px"; }
+  let mentionSeq = 0;
+  const mentionAt = () => (caps.files ? prompt.value.slice(0, prompt.selectionStart).match(/(?:^|\s)@([\w./-]*)$/) : null);
+  async function drawMentions(q) {
+    const seq = ++mentionSeq;
+    const { files } = await api(`/v1/files?q=${encodeURIComponent(q)}`).catch(() => ({ files: [] }));
+    if (seq !== mentionSeq || !mentionAt()) return;
+    slashList = (files || []).map((f) => ({ c: "@" + f, d: "", file: f }));
+    slashIndex = 0;
+    paintPopup();
+  }
   function drawSlash() {
     const m = prompt.value.match(/^\/([\w-]*)$/);
     slashList = m ? COMMANDS.filter((x) => x.c.slice(1).startsWith(m[1].toLowerCase())) : [];
+    const at = !m && mentionAt();
+    if (at) { drawMentions(at[1]); return; }
+    paintPopup();
+  }
+  function paintPopup() {
     const pop = $("slash");
     pop.hidden = !slashList.length;
     if (!slashList.length) return;
     slashIndex = Math.min(slashIndex, slashList.length - 1);
-    pop.innerHTML = slashList.map((x, i) => `<button type="button" role="option" aria-selected="${i === slashIndex}" data-i="${i}"><span class="c">${x.c}</span><span class="d">${esc(x.d)}</span></button>`).join("");
+    pop.setAttribute("aria-label", slashList[0] && slashList[0].file ? "Files" : "Commands");
+    pop.innerHTML = slashList.map((x, i) => `<button type="button" role="option" aria-selected="${i === slashIndex}" data-i="${i}"><span class="c${x.file ? " file" : ""}">${esc(x.c)}</span><span class="d">${esc(x.d)}</span></button>`).join("");
     pop.querySelectorAll("[data-i]").forEach((b) => (b.onmousedown = (e) => { e.preventDefault(); pickSlash(Number(b.dataset.i)); }));
+    pop.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
   }
   function pickSlash(i) {
     const x = slashList[i];
     if (!x) return;
+    if (x.file) {
+      const pos = prompt.selectionStart, before = prompt.value.slice(0, pos).replace(/@[\w./-]*$/, "@" + x.file + " ");
+      prompt.value = before + prompt.value.slice(pos).replace(/^\S*\s?/, "");
+      prompt.setSelectionRange(before.length, before.length);
+      $("slash").hidden = true; grow(); prompt.focus(); return;
+    }
     if (x.insert) { prompt.value = x.c + " "; } else { prompt.value = ""; x.run(); }
     $("slash").hidden = true; grow(); if (x.insert) prompt.focus();
   }
@@ -688,8 +732,8 @@
   prompt.addEventListener("blur", () => setTimeout(() => ($("slash").hidden = true), 150));
   prompt.addEventListener("keydown", (e) => {
     if (!$("slash").hidden) {
-      if (e.key === "ArrowDown") { e.preventDefault(); slashIndex = (slashIndex + 1) % slashList.length; drawSlash(); return; }
-      if (e.key === "ArrowUp") { e.preventDefault(); slashIndex = (slashIndex - 1 + slashList.length) % slashList.length; drawSlash(); return; }
+      if (e.key === "ArrowDown") { e.preventDefault(); slashIndex = (slashIndex + 1) % slashList.length; paintPopup(); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); slashIndex = (slashIndex - 1 + slashList.length) % slashList.length; paintPopup(); return; }
       if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pickSlash(slashIndex); return; }
       if (e.key === "Escape") { $("slash").hidden = true; return; }
     }
@@ -704,9 +748,9 @@
     $("stop-btn").hidden = !live;
     prompt.placeholder = live || waitingPlan
       ? "Steer Architect while it works"
-      : thread.length ? "Follow up, or / for commands" : "Describe a task, or / for commands";
+      : thread.length ? `Follow up, / for commands${caps.files ? ", @ for files" : ""}` : `Describe a task, / for commands${caps.files ? ", @ for files" : ""}${caps.shell ? ", ! to run a command" : ""}`;
     const cost = thread.reduce((n, x) => n + (x.usage ? x.usage.costUsd : 0), 0), calls = thread.reduce((n, x) => n + (x.usage ? x.usage.calls : 0), 0);
-    $("status-line").innerHTML = `<span>${esc(mode.hint)}</span>${thread.length ? `<span>$${cost.toFixed(2)} · ${calls} model calls</span>` : ""}<span class="hint-keys"><kbd>Shift Tab</kbd> mode · <kbd>/</kbd> commands · <kbd>Shift Enter</kbd> new line</span>`;
+    $("status-line").innerHTML = `<span>${esc(mode.hint)}</span>${thread.length ? `<span>$${cost.toFixed(2)} · ${calls} model calls</span>` : ""}<span class="hint-keys"><kbd>Shift Tab</kbd> mode · <kbd>/</kbd> commands${caps.files ? " · <kbd>@</kbd> files" : ""}${caps.shell ? " · <kbd>!</kbd> run" : ""} · <kbd>Shift Enter</kbd> new line</span>`;
   }
 
   const hostsOf = (v) => String(v || "").split(/[\s,]+/).map((h) => h.trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "")).filter(Boolean);
@@ -717,6 +761,7 @@
     const cmd = COMMANDS.find((x) => !x.insert && x.c === text.toLowerCase());
     if (cmd) { prompt.value = ""; grow(); cmd.run(); return; }
     $("form-error").hidden = true;
+    if (text.startsWith("!")) { prompt.value = ""; grow(); runCommand(text.slice(1).trim()); return; }
     const btn = $("send-btn"); btn.disabled = true;
     const r = latest();
     try {
@@ -731,7 +776,10 @@
           startUrl: $("start-url").value.trim() || undefined,
           budgetUsd: budget > 0 ? budget : undefined,
           hosts: { allow, block },
+          ...(chosenModel() !== "auto" ? { model: chosenModel() } : {}),
+          ...(images.length ? { images: images.map(({ mediaType, base64 }) => ({ mediaType, base64 })) } : {}),
         }) });
+        images = []; drawAttach();
         runs.unshift(run); byId.set(run.id, run);
         if (!session) session = run.id;
         setHash(); drawSessions();
@@ -741,6 +789,71 @@
     } catch (err) { $("form-error").textContent = err.message; $("form-error").hidden = false; }
     finally { btn.disabled = false; }
   };
+
+  function formError(msg) { $("form-error").textContent = msg; $("form-error").hidden = false; }
+
+  // ---- What this server offers: models to pick, @ files, ! commands ----
+  let caps = { options: [], files: false, shell: false };
+  async function loadCaps() {
+    caps = await api("/v1/models").catch(() => caps);
+    const sel = $("model-sel"), opts = caps.options || [];
+    sel.hidden = opts.length < 2;
+    sel.innerHTML = opts.map((o) => `<option value="${esc(o.id)}">${esc(o.id === "auto" ? "Model: Auto" : o.tier && o.id !== o.tier ? `${o.label} · ${o.tier}` : o.label)}</option>`).join("");
+    const want = store.get("architect.model", "auto");
+    sel.value = opts.some((o) => o.id === want) ? want : "auto";
+    drawComposer();
+  }
+  const chosenModel = () => ($("model-sel").hidden ? "auto" : $("model-sel").value || "auto");
+  $("model-sel").onchange = () => store.set("architect.model", $("model-sel").value);
+
+  // ---- Images: attach, paste or drop screenshots and designs ----
+  const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+  let images = [];
+  function drawAttach() {
+    const box = $("attach");
+    box.hidden = !images.length;
+    box.innerHTML = images.map((im, i) => `<div class="thumb"><img src="${im.url}" alt="${esc(im.name)}" title="${esc(im.name)}"><button type="button" data-unattach="${i}" aria-label="Remove ${esc(im.name)}">&times;</button></div>`).join("");
+    box.querySelectorAll("[data-unattach]").forEach((b) => (b.onclick = () => { images.splice(Number(b.dataset.unattach), 1); drawAttach(); prompt.focus(); }));
+  }
+  function addImages(files) {
+    for (const f of [...files]) {
+      if (!IMAGE_TYPES.includes(f.type)) { formError(`${f.name || "That file"} is not a PNG, JPEG, WebP or GIF image.`); continue; }
+      if (images.length >= 4) { formError("Attach at most 4 images."); break; }
+      if (f.size > 3_700_000) { formError(`${f.name || "That image"} is larger than 3.7 MB.`); continue; }
+      const im = { name: f.name || "pasted image", mediaType: f.type, base64: "", url: "" };
+      images.push(im);
+      const rd = new FileReader();
+      rd.onload = () => { im.url = String(rd.result); im.base64 = im.url.split(",")[1] || ""; drawAttach(); };
+      rd.readAsDataURL(f);
+    }
+    drawAttach();
+  }
+  $("img-btn").onclick = () => $("img-input").click();
+  $("img-input").onchange = (e) => { addImages(e.target.files); e.target.value = ""; prompt.focus(); };
+  prompt.addEventListener("paste", (e) => {
+    const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
+    if (files.length) { e.preventDefault(); addImages(files); }
+  });
+  const box = $("composer");
+  box.addEventListener("dragover", (e) => { if ([...e.dataTransfer.items].some((i) => i.kind === "file")) { e.preventDefault(); box.classList.add("drop"); } });
+  box.addEventListener("dragleave", () => box.classList.remove("drop"));
+  box.addEventListener("drop", (e) => { e.preventDefault(); box.classList.remove("drop"); addImages(e.dataTransfer.files); });
+
+  // ---- ! commands: run one shell command in the project, like a built-in terminal ----
+  const shellLog = [];
+  function shellBlock(x) {
+    const status = x.pending ? "running…" : x.error ? esc(x.error) : `exit ${x.code}${x.timedOut ? " · timed out" : ""} · ${(x.ms / 1000).toFixed(1)}s`;
+    return `<div class="msg-shell"><div class="cmd">${esc(x.command)}</div>${x.output ? `<div class="out">${esc(x.output)}</div>` : ""}<div class="code">${status}</div></div>`;
+  }
+  async function runCommand(command) {
+    if (!command) return;
+    if (!caps.shell) { formError("Commands run only in the desktop app or a server on this computer. In the cloud, describe the task instead."); return; }
+    const x = { session: session || "", command, pending: true };
+    shellLog.push(x); drawTranscript(true);
+    try { Object.assign(x, await api("/v1/shell", { method: "POST", body: JSON.stringify({ command }) })); }
+    catch (err) { x.error = err.message; }
+    x.pending = false; drawTranscript(true);
+  }
 
   // ---- Actions ----
   async function decide(id, approved) {
@@ -811,6 +924,7 @@
 
   (async () => {
     drawComposer(); drawPanel();
+    loadCaps();
     await refresh();
     const want = (location.hash.match(/^#s=([\w-]+)/) || [])[1];
     if (want && byId.has(want)) openSession(rootOf(byId.get(want)).id);

@@ -1,6 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "architect-podium", "runtimeExecutable": "node", "runtimeArgs": ["dist/cli.js", "serve", "--port", "7337"], "port": 7337 }
+    { "name": "architect-podium", "runtimeExecutable": "node", "runtimeArgs": ["dist/cli.js", "serve", "--port", "7337"], "port": 7337 },
+    { "name": "architect-podium-test", "runtimeExecutable": "node", "runtimeArgs": ["dist/cli.js", "serve", "--port", "7338", "--workspace", "."], "port": 7338, "env": { "ARCHITECT_API_TOKEN": "podium-local-test" } }
   ]
 }
