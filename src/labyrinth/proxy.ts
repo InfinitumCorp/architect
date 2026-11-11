@@ -21,7 +21,9 @@ export async function proxyLabyrinthRequest(request: Request, endpoint: string |
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
     const body = JSON.parse(new TextDecoder().decode(bytes));
     if (!body || typeof body !== "object" || Array.isArray(body)) return fail(400, "Invalid command");
-    const upstream = await fetcher(url, { method: "POST", headers: { authorization: token, "content-type": "application/json", "x-labyrinth": "1" }, body: JSON.stringify({ ...body, product }), redirect: "error", signal: AbortSignal.timeout(10000) });
+    const upstream = await fetcher(url, { method: "POST", headers: { authorization: token, "content-type": "application/json", "x-labyrinth": "1" }, body: JSON.stringify({ ...body, product }), redirect: "manual", signal: AbortSignal.timeout(10000) });
+    // Workers reject redirect: "error", so redirects are refused here instead of followed.
+    if (upstream.type === "opaqueredirect" || (upstream.status >= 300 && upstream.status < 400)) { await upstream.body?.cancel(); return fail(502, "Labyrinth service unavailable"); }
     return new Response(upstream.body, { status: upstream.status, headers: { "content-type": "application/json", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
   } catch { return fail(502, "Labyrinth service unavailable"); }
 }
