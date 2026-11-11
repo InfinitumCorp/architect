@@ -256,7 +256,7 @@ ${knowledgePrompt(known)}`;
         id: `s${i + 1}`,
         title: s.title,
         instruction: s.instruction,
-        instruments: s.instruments.filter((n) => known.has(n)),
+        instruments: stepInstruments(s.instruments, known),
         checkpoint: s.checkpoint,
       })),
       successCriteria: draft.successCriteria,
@@ -975,6 +975,22 @@ function toBase64(bytes: Uint8Array): string {
 }
 
 /** Check attached images: a known type, a sane size, at most MAX_IMAGES. Throws with a message for the person. */
+/** Names smaller models use for the installed instruments. */
+const INSTRUMENT_ALIASES: Record<string, string> = {
+  shell: "workspace", terminal: "workspace", bash: "workspace", files: "workspace", file: "workspace", fs: "workspace",
+  filesystem: "workspace", editor: "workspace", code: "workspace", project: "workspace",
+  github: "repo", git: "repo", web: "browser", api: "http", fetch: "http",
+};
+
+/**
+ * A freshly composed step's instruments: the installed ones it names (aliases mapped), and the
+ * project workspace when it names none. Without tools a step can only claim it did the work.
+ */
+export function stepInstruments(names: string[], installed: Set<string>): string[] {
+  const out = [...new Set(names.map((n) => (installed.has(n) ? n : INSTRUMENT_ALIASES[n.toLowerCase()] ?? n)))].filter((n) => installed.has(n));
+  return out.length || !installed.has("workspace") ? out : ["workspace"];
+}
+
 export function validImages(images: unknown): ImageAttachment[] {
   if (images === undefined || images === null) return [];
   if (!Array.isArray(images)) throw new Error("images must be a list");
