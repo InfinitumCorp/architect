@@ -315,6 +315,7 @@
       <button type="button" role="tab" data-tab="plan" aria-selected="false">Plan</button>
       <button type="button" role="tab" data-tab="evidence" aria-selected="false">Evidence</button>
       <button type="button" role="tab" data-tab="log" aria-selected="false">Log</button>
+      <button type="button" role="tab" data-tab="saved" aria-selected="false" id="saved-tab" title="Runs saved to your Labyrinth repository" hidden>Saved</button>
       <button type="button" class="quiet close" id="panel-close" aria-label="Close panel">&#10005;</button>
     </div>
     <div class="panel-body" id="panel-body"></div>
@@ -637,6 +638,7 @@
     document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === panelTab)));
     if (!panelOpen) return;
     const body = $("panel-body"), r = latest();
+    if (panelTab === "saved" && caps.labyrinth) { drawSaved(body); return; }
     if (!r) { body.innerHTML = `<p class="empty">Changes, the plan, evidence and the live log of the open session show here.</p>`; return; }
     if (panelTab === "changes") {
       const ch = changesOf(thread);
@@ -675,6 +677,7 @@
     { c: "/diff", d: "Show the changes in this session", run: () => showPanel("changes") },
     { c: "/steps", d: "Show the current plan", run: () => showPanel("plan") },
     { c: "/log", d: "Show the live log", run: () => showPanel("log") },
+    { c: "/saved", d: "Runs saved to your Labyrinth repository", run: () => (caps.labyrinth ? showPanel("saved") : formError("Labyrinth is not available on this server yet.")) },
     { c: "/stop", d: "Stop the running task", run: () => stop() },
     { c: "/recover", d: "Recover the last failed task", run: () => latest() && act("recover", latest().id) },
     { c: "/options", d: "Start URL, site limits and spending limit", run: () => toggleOpts(true) },
@@ -803,6 +806,9 @@
     sel.innerHTML = opts.map((o) => `<option value="${esc(o.id)}">${esc(o.id === "auto" ? "Model: Auto" : o.tier && o.id !== o.tier ? `${o.label} · ${o.tier}` : o.label)}</option>`).join("");
     const want = store.get("architect.model", "auto");
     sel.value = opts.some((o) => o.id === want) ? want : "auto";
+    $("saved-tab").hidden = !caps.labyrinth;
+    if (!caps.labyrinth && panelTab === "saved") panelTab = "changes";
+    drawPanel();
     drawComposer(); if (thread.length) drawTranscript(false);
   }
   const chosenModel = () => ($("model-sel").hidden ? "auto" : $("model-sel").value || "auto");
@@ -873,10 +879,13 @@
     }
     return r.json();
   }
-  async function labToken() {
+  async function labToken(interactive = true) {
     if (labBearer && labBearer.until > Date.now() + 30_000) return labBearer.token;
     const cid = window.CumulusID && window.CumulusID.token();
-    if (!cid) { window.CumulusID?.signIn(); throw new Error("Sign in with Cumulus://ID to save to Labyrinth."); }
+    if (!cid) {
+      if (interactive) window.CumulusID?.signIn();
+      throw new Error(interactive ? "Sign in with Cumulus://ID to save to Labyrinth." : "Sign in with Cumulus://ID to see your saved runs.");
+    }
     const t = await lab({ action: "token" }, cid);
     labBearer = { token: t.token, until: Date.parse(t.expiresAt) || Date.now() + 10 * 60_000 };
     return labBearer.token;
@@ -901,11 +910,87 @@
       // One retry when someone else saved in between (the branch head moved).
       await save().catch((err) => (err.status === 409 ? save() : Promise.reject(err)));
       labSaved[runId] = true;
+      saved.state = "idle"; // the list is stale now
       btn.textContent = "Saved to Labyrinth";
+      if (panelOpen && panelTab === "saved") drawPanel();
     } catch (err) {
       btn.textContent = "Save to Labyrinth";
       formError(err.message);
     } finally { btn.disabled = false; }
+  }
+
+  // ---- Labyrinth: browse and open saved runs (read-only; reads only the "architect" repository) ----
+  const saved = { state: "idle", items: [], repo: null, head: null, open: null, error: "" };
+  // One entry per saved path, newest save first. History comes newest first; each commit's own
+  // change is the paths whose blob differs from its parent's tree. Saves older than the history
+  // page still show, from the head tree, under their run id.
+  function savedEntries(commits) {
+    const seen = new Map();
+    commits.forEach((c, i) => {
+      const before = (commits[i + 1] && commits[i + 1].id === c.parent ? commits[i + 1].tree : null) || {};
+      const task = String(c.message || "").replace(/^Architect run:\s*/, "");
+      for (const [p, blob] of Object.entries(c.tree || {})) {
+        if (!/^runs\/[\w-]+\.json$/.test(p) || seen.has(p) || (i + 1 < commits.length && before[p] === blob)) continue;
+        seen.set(p, { path: p, task, at: c.at });
+      }
+    });
+    for (const p of Object.keys((commits[0] && commits[0].tree) || {})) {
+      if (/^runs\/[\w-]+\.json$/.test(p) && !seen.has(p)) seen.set(p, { path: p, task: p.slice(5, -5), at: "" });
+    }
+    return [...seen.values()];
+  }
+  async function loadSaved(interactive = false) {
+    saved.state = "loading"; saved.error = ""; saved.open = null; drawPanel();
+    try {
+      const token = await labToken(interactive);
+      const repo = (await lab({ action: "list" }, token)).find((x) => x.name === "architect");
+      saved.repo = repo ? repo.id : null;
+      saved.head = repo && repo.branches ? repo.branches.main || null : null;
+      saved.items = saved.head ? savedEntries(await lab({ action: "history", repo: saved.repo, branch: "main", limit: 200 }, token)) : [];
+      saved.state = "ready";
+    } catch (err) {
+      saved.state = "error"; saved.error = err.message;
+    }
+    if (panelTab === "saved") drawPanel();
+  }
+  async function openSaved(path) {
+    saved.open = { path, loading: true }; drawPanel();
+    try {
+      const { content } = await lab({ action: "load", repo: saved.repo, commit: saved.head, path }, await labToken());
+      saved.open = { path, data: JSON.parse(content) };
+    } catch (err) {
+      saved.open = { path, error: err instanceof SyntaxError ? "This file is not a saved run." : err.message };
+    }
+    if (panelTab === "saved") drawPanel();
+  }
+  function drawSaved(body) {
+    if (saved.state === "idle") { loadSaved(); return; }
+    if (saved.state === "loading") { body.innerHTML = `<p class="empty">Loading your saved runs…</p>`; return; }
+    if (saved.state === "error") {
+      body.innerHTML = `<p class="err">${esc(saved.error)}</p><button type="button" class="chip" id="saved-retry">${/Sign in/.test(saved.error) ? "Sign in" : "Try again"}</button>`;
+      $("saved-retry").onclick = () => loadSaved(true);
+      return;
+    }
+    const o = saved.open;
+    if (o) {
+      const d = o.data || {}, steps = (d.plan && d.plan.steps) || [];
+      body.innerHTML = `<p><button type="button" class="chip" id="saved-back">&larr; Saved runs</button></p>` + (o.loading ? `<p class="empty">Opening…</p>` : o.error ? `<p class="err">${esc(o.error)}</p>` : `
+        <p><strong>${esc(d.task || o.path)}</strong></p>
+        <p class="kv">${esc(String(d.status || "").replace(/_/g, " "))}${d.updatedAt ? ` · ${esc(new Date(d.updatedAt).toLocaleString())}` : ""}${d.usage && d.usage.costUsd != null ? ` · $${Number(d.usage.costUsd).toFixed(2)}` : ""} · ${esc(d.id || "")}</p>
+        ${d.verdict ? `<p>${d.verdict.passed ? "Verified ✓" : "Not verified ✗"} ${esc(d.verdict.summary || "")}</p>` : ""}
+        ${steps.length ? `<ol class="plan-steps">${steps.map((s) => `<li><div>${esc(s.title)}</div><div class="i">${esc(s.instruction || "")}</div></li>`).join("")}</ol>` : ""}
+        ${d.walkthrough ? `<details class="walk" open><summary>Walkthrough</summary><pre>${esc(d.walkthrough)}</pre></details>` : ""}
+        ${d.task ? `<p><button type="button" class="chip" id="saved-reuse" title="Put this task in the composer">Use this task</button></p>` : ""}`);
+      $("saved-back").onclick = () => { saved.open = null; drawPanel(); };
+      if ($("saved-reuse")) $("saved-reuse").onclick = () => { prompt.value = d.task; grow(); prompt.focus(); };
+      return;
+    }
+    body.innerHTML = (saved.items.length
+      ? `<ul class="files saved">${saved.items.map((x, i) => `<li><a href="#" data-saved="${i}">${esc(x.task || x.path)}<span class="n">${x.at ? esc(new Date(x.at).toLocaleDateString()) : ""}</span></a></li>`).join("")}</ul>`
+      : `<p class="empty">No saved runs yet. Use “Save to Labyrinth” on a finished task.</p>`) +
+      `<p><button type="button" class="chip" id="saved-refresh">Refresh</button></p>`;
+    body.querySelectorAll("[data-saved]").forEach((a) => (a.onclick = (e) => { e.preventDefault(); openSaved(saved.items[Number(a.dataset.saved)].path); }));
+    $("saved-refresh").onclick = () => loadSaved(true);
   }
 
   // ---- Actions ----

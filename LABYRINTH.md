@@ -44,6 +44,15 @@ person clicks it, the Podium:
 The artifact (`kind: "architect.run"`) holds the task, status, plan, verdict, usage and the
 walkthrough. The product API token is never sent to Labyrinth, and nothing is exported automatically.
 
+## Saved runs in the Podium
+
+The **Saved** tab in the side panel (or `/saved`) lists the runs saved to the person's `architect`
+repository, newest save first, from the `main` history (`history`, up to 200 commits; older saves
+still show from the head tree under their run id). Opening one `load`s that file at the branch head
+and shows the task, outcome, plan and walkthrough; **Use this task** puts the task back in the
+composer. Browsing is read-only and only touches the `architect` repository. Opening the tab while
+signed out asks the person to sign in instead of starting sign-in on its own.
+
 ## Explicit save/load SDK
 
 Import `createArchitectLabyrinth` from `src/labyrinth/index.js`
