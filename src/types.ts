@@ -163,6 +163,10 @@ export interface Run {
   review?: ReviewPolicy;
   planReview?: { required: boolean; reason: string; approvedAt?: string; by?: string };
   comments?: RunComment[];
+  /** The model the person picked ("auto", a tier, or a model id). Absent means automatic. */
+  model?: string;
+  /** Images the person attached to the request, stored with the run under attachments/. */
+  attachments?: Array<{ file: string; mediaType: string }>;
   createdAt: string;
   updatedAt: string;
 }

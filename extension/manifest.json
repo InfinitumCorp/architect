@@ -3,7 +3,7 @@
   "default_locale": "en",
   "name": "__MSG_name__",
   "short_name": "__MSG_short_name__",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "__MSG_description__",
   "minimum_chrome_version": "116",
   "icons": {
@@ -23,21 +23,10 @@
     "default_path": "src/panel.html"
   },
   "options_page": "src/options.html",
-  "background": {
-    "service_worker": "src/background.js",
-    "type": "module"
-  },
-  "permissions": [
-    "sidePanel",
-    "contextMenus",
-    "storage",
-    "activeTab",
-    "scripting"
-  ],
-  "host_permissions": [
-    "https://rchtch.app/*"
-  ],
+  "background": { "service_worker": "src/background.js", "type": "module" },
+  "permissions": ["sidePanel", "contextMenus", "storage", "activeTab", "scripting", "identity"],
+  "host_permissions": ["https://rchtch.app/*", "https://id.cumuluscloud.app/*"],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://rchtch.app"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://rchtch.app https://id.cumuluscloud.app"
   }
 }

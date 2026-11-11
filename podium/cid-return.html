@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="referrer" content="no-referrer" />
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#ffffff" />
+<title>:\ARCHITECT\ - Signing in</title>
+<style>
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:#fff; color:#111820; font:400 16px/1.5 Arial, Helvetica, sans-serif; letter-spacing:-.01em; padding:16px; box-sizing:border-box; }
+  main { width:min(420px, 100%); display:grid; gap:14px; }
+  h1 { font-weight:400; letter-spacing:-.03em; margin:0; font-size:24px; }
+  p { margin:0; color:#52606b; }
+  a.btn { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 16px; border:1px solid #111820; background:#111820; color:#fff; text-decoration:none; }
+  a.btn:focus-visible { outline:2px solid #2454dd; outline-offset:2px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>:\ARCHITECT\<sup>™</sup></h1>
+  <p id="say">Returning you to :\ARCHITECT\…</p>
+  <a class="btn" id="back" href="#" hidden>Open :\ARCHITECT\</a>
+</main>
+<script>
+  // Cumulus ID sends the Android and desktop apps' sign-in back here (an https page on rchtch.app,
+  // which Cumulus ID accepts). This page only hands the one-time code to the app: the code is
+  // useless without the PKCE verifier that never left the app. Nothing is stored or sent anywhere.
+  (() => {
+    const q = new URLSearchParams(location.search);
+    const to = q.get("to");
+    const code = q.get("code"), state = q.get("state"), error = q.get("error");
+    const out = new URLSearchParams();
+    if (code) out.set("code", code);
+    if (state) out.set("state", state);
+    if (error) out.set("error", error);
+    let target = "";
+    if (to === "android") target = "intent://cid?" + out + "#Intent;scheme=architect;package=com.infinitum.architect;end";
+    else if (to === "desktop") target = "architect://cid?" + out;
+    history.replaceState(null, "", location.pathname);
+    if (!target || (!code && !error)) {
+      document.getElementById("say").textContent = "This page finishes signing in to the :\ARCHITECT\ app. Start again from the app.";
+      return;
+    }
+    const back = document.getElementById("back");
+    back.href = target;
+    back.hidden = false;
+    document.getElementById("say").textContent = "Signed in. If :\ARCHITECT\ didn't open, tap the button.";
+    location.replace(target);
+  })();
+</script>
+</body>
+</html>

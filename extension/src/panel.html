@@ -7,6 +7,23 @@
   <link rel="stylesheet" href="shell.css" />
   <link rel="stylesheet" href="i18n/i18n.css" />
   <script type="module" src="i18n/start.js"></script>
+  <style>
+    /* Conversation layout: sessions scroll, the composer stays at the bottom (as in the Podium). */
+    html, body { height:100%; }
+    body { display:flex; flex-direction:column; margin:0; }
+    .app-main.chat { flex:1; overflow:auto; }
+    .composer { border-top:1px solid var(--line, #d6dce1); padding:10px 12px 12px; background:var(--paper, #fff); }
+    .composer .box { border:1px solid var(--ink, #111820); }
+    .composer .box:focus-within { border-color:var(--accent, #2454dd); }
+    .composer textarea { display:block; width:100%; box-sizing:border-box; border:0; resize:none; padding:10px 12px 4px; font:inherit; min-height:44px; max-height:40vh; outline:none; background:none; }
+    .composer .opts { display:flex; gap:6px; padding:0 12px; align-items:center; }
+    .composer .opts input { flex:1; font-size:13px; }
+    .composer .bar { display:flex; gap:8px; align-items:center; padding:6px 8px; flex-wrap:wrap; }
+    .composer .grow { flex:1; }
+    .composer select { font:inherit; font-size:13px; border:0; background:none; color:var(--accent, #2454dd); cursor:pointer; }
+    .composer .send { width:34px; height:34px; padding:0; }
+    .btn.quiet { border-color:transparent; background:none; }
+  </style>
 </head>
 <body>
   <header class="app-bar">
@@ -17,57 +34,43 @@
     </nav>
   </header>
 
-  <main class="app-main">
+  <main class="app-main chat">
     <div id="notice" class="notice" hidden></div>
 
-    <section class="section" aria-labelledby="new-h">
-      <form id="new-run">
-        <div class="field">
-          <label class="label" id="new-h" for="goal">Goal</label>
-          <textarea class="input" id="goal" name="goal" required placeholder="What should :\ARCHITECT\ get done?"></textarea>
-        </div>
-        <div class="field">
-          <label class="label" for="start-url">Start URL</label>
-          <div class="row">
-            <input class="input" id="start-url" name="startUrl" type="url" placeholder="https://" />
-            <button class="btn" type="button" id="use-tab" title="Use the current tab's address">This tab</button>
-          </div>
-        </div>
-        <div class="field">
-          <label class="label" for="autonomy">Autonomy</label>
-          <select class="input" id="autonomy" name="autonomy">
-            <option value="rehearsal">Rehearsal: plan only</option>
-            <option value="accompaniment" selected>Accompaniment: ask before risky steps</option>
-            <option value="autopilot">Autopilot</option>
-          </select>
-        </div>
-        <div class="field">
-          <label class="label" for="review">Plan review</label>
-          <select class="input" id="review" name="review">
-            <option value="agent_decides" selected>Agent decides</option>
-            <option value="request_review">Show me the plan first</option>
-            <option value="always_proceed">Always proceed</option>
-          </select>
-        </div>
-        <label class="small"><input type="checkbox" id="same-site" /> Stay on the start URL's site</label>
-        <p class="small muted">Tip: start the goal with /plan, /fast, /rehearse or /autopilot.</p>
-        <button class="btn primary" id="start" type="submit">Start run</button>
-      </form>
-    </section>
-
     <section class="section" aria-labelledby="appr-h" id="approvals-section" hidden>
-      <h2 class="label" id="appr-h">Waiting for you</h2>
+      <h2 class="label" id="appr-h">Needs you</h2>
       <ul class="rows" id="approvals"></ul>
     </section>
 
     <section class="section" aria-labelledby="runs-h">
       <div class="row" style="justify-content:space-between">
-        <h2 class="label" id="runs-h">Recent runs</h2>
-        <button class="btn" type="button" id="refresh">Refresh</button>
+        <h2 class="label" id="runs-h">Sessions</h2>
+        <button class="btn quiet" type="button" id="refresh">Refresh</button>
       </div>
       <ul class="rows" id="runs"><li class="empty">Loading…</li></ul>
     </section>
   </main>
+
+  <form id="new-run" class="composer" aria-label="Message Architect">
+    <div class="box">
+      <textarea id="goal" name="goal" rows="2" required placeholder="Describe a task, or start with /plan, /fast, /rehearse"></textarea>
+      <div class="opts" id="url-row">
+        <input class="input" id="start-url" name="startUrl" type="url" placeholder="Start URL (optional)" aria-label="Start URL" />
+        <button class="btn quiet" type="button" id="use-tab" title="Use the current tab's address">This tab</button>
+      </div>
+      <div class="bar">
+        <select id="mode" aria-label="Mode" title="Mode (Shift+Tab in the message box)">
+          <option value="ask">Ask before acting</option>
+          <option value="plan">Plan first</option>
+          <option value="auto">Autopilot</option>
+          <option value="rehearse">Rehearse</option>
+        </select>
+        <label class="small"><input type="checkbox" id="same-site" /> Stay on this site</label>
+        <span class="grow"></span>
+        <button class="btn primary send" id="start" type="submit" aria-label="Send" title="Send (Enter)">&#8593;</button>
+      </div>
+    </div>
+  </form>
   <script type="module" src="panel.js"></script>
 </body>
 </html>

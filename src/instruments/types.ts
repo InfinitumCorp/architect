@@ -44,6 +44,8 @@ export interface Instrument {
   description: string;
   tools: ToolSpec[];
   execute(tool: string, input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput>;
+  /** Standing instructions this instrument contributes to the prompts (project rule files). */
+  rules?(ctx?: Pick<ToolContext, "runId">): Promise<string>;
   /** Called when a run is packaged for a person to take over. */
   handoff?(ctx: ToolContext): Promise<Record<string, string>>;
   /** Called when a run stops performing (any final status, including handed off), to free per-run resources. */
