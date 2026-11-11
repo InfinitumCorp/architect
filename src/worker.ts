@@ -23,6 +23,7 @@ import { budgetedAI } from "./brains/ai-budget.mjs";
 import { DurableRunStore } from "./stores/durable.js";
 import { conjureRoutesFromEnv } from "./conjure/conjure.mjs";
 import { openClawRoutesFromEnv } from "./openclaw/openclaw.mjs";
+import { searchRoutesFromEnv } from "./search/search.mjs";
 import { BrowserInstrument } from "./instruments/browser.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { HttpInstrument } from "./instruments/http.js";
@@ -132,6 +133,9 @@ export default {
       // @scalvs / @scalus: POST /v1/openclaw { text } hands the task to the SCALVS agent on OpenClaw (off until configured).
       const claw = await openClawRoutesFromEnv(env as unknown as Record<string, string | undefined>, { prefix: "/v1/openclaw", product: "architect" })(req, { user: "operator" });
       if (claw) return claw;
+      // @search: POST /v1/search { text | query } searches the web and answers with cited sources (off until configured).
+      const found = await searchRoutesFromEnv(env as unknown as Record<string, string | undefined>, { prefix: "/v1/search" })(req, { user: "operator" });
+      if (found) return found;
       return env.CONDUCTOR.get(env.CONDUCTOR.idFromName("main")).fetch(req);
     }
     return env.ASSETS.fetch(req);

@@ -15,6 +15,7 @@ import { checkAccess, cidIssuer, cidOwners, createCidVerifier, presentedToken, t
 import { InputError, NotFoundError, now } from "./policy.js";
 import { conjureRoutesFromEnv, toWebRequest, sendWebResponse, type ConjureRouteHandler } from "./conjure/conjure.mjs";
 import { openClawRoutesFromEnv, type OpenClawRouteHandler } from "./openclaw/openclaw.mjs";
+import { searchRoutesFromEnv, type SearchRoutes } from "./search/search.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -55,6 +56,7 @@ export interface ServerOptions {
   conjure?: ConjureRouteHandler;
   /** @scalvs / @scalus routes (SCALVS on OpenClaw); default OPENCLAW_GATEWAY_URL + OPENCLAW_GATEWAY_TOKEN from the environment (off until set). */
   openclaw?: OpenClawRouteHandler;
+  search?: SearchRoutes;
   library?: ScoreLibrary;
   schedules?: ScheduleStore;
 }
@@ -126,6 +128,8 @@ function permissions(v: unknown): Permission[] | undefined {
  *   POST /v1/signals/:product           ecosystem trigger      { type, payload }
  *   GET  /v1/openclaw                   is @scalvs connected   { connected, agent }
  *   POST /v1/openclaw                   @scalvs <task>         { text } -> { mention, text, agent }
+ *   GET  /v1/search                     is web search connected { connected, engines, answers }
+ *   POST /v1/search                     @search <question>     { text | query } -> { answer, sources, ... }
  */
 export function createArchitectServer(opts: ServerOptions): Server {
   const { architect } = opts;
@@ -138,6 +142,8 @@ export function createArchitectServer(opts: ServerOptions): Server {
   const conjure: ConjureRouteHandler = opts.conjure ?? conjureRoutesFromEnv(process.env, { prefix: "/v1/conjure", source: "architect" });
   // @scalvs / @scalus: POST /v1/openclaw { text } hands the task to the SCALVS agent on the owner's OpenClaw gateway; GET says whether it's connected.
   const openclaw: OpenClawRouteHandler = opts.openclaw ?? openClawRoutesFromEnv(process.env, { prefix: "/v1/openclaw", product: "architect" });
+  // @search: POST /v1/search searches the web and answers with numbered citations (off until a search engine is set).
+  const search: SearchRoutes = opts.search ?? searchRoutesFromEnv(process.env, { prefix: "/v1/search" });
 
   const owners = opts.cidOwners ?? cidOwners(process.env.ARCHITECT_CID_OWNERS);
   const verify = opts.cidVerify ?? createCidVerifier({ issuer: cidIssuer(process.env) });
@@ -202,6 +208,10 @@ export function createArchitectServer(opts: ServerOptions): Server {
       }
       if (resource === "openclaw" && !id) {
         const handled = await openclaw(await toWebRequest(req), { user: "operator" });
+        if (handled) return void (await sendWebResponse(res, handled));
+      }
+      if (resource === "search" && !id) {
+        const handled = await search(await toWebRequest(req), { user: "operator" });
         if (handled) return void (await sendWebResponse(res, handled));
       }
 
