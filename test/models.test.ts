@@ -236,7 +236,9 @@ describe("model configuration", () => {
 
   it("loads the example file", () => {
     const cfg = loadModelsFile(path.resolve("architect.models.example.json"));
-    expect(cfg.models).toHaveLength(3);
+    expect(cfg.models.map((m) => m.model)).toEqual([
+      "qwen3:8b", "qwen3:32b", "deepseek-v3.2", "kimi-k3", "glm4", "auto", "claude-opus-5-5",
+    ]);
     expect(cfg.policy?.act).toBe("fast");
   });
 
