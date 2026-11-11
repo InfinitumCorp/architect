@@ -42,6 +42,9 @@ Usage
   architect models                    Show the automatic model routing table and check each model
   architect mcp                       MCP server (stdio) for Claude Code, Cursor and other agents;
                                       talks to \`serve\` at ARCHITECT_URL. Approvals stay with people.
+  architect openclaw [-w <workspace>] [--server <url>]
+                                      Make Architect the coding agent of your OpenClaw assistant: installs
+                                      the "architect" skill and MCP server. See docs/openclaw.md.
   architect scan [dir] [--only ids] [--install-hooks]
                                       Safety checks with the scanners installed here (osv-scanner,
                                       git-secrets, SkillSpector, garak). See docs/safety-scanning.md.
@@ -143,7 +146,7 @@ function printEvent(ev: RunEvent) {
   }
 }
 
-const COMMANDS = new Set(["run", "compose", "recover", "encore", "runs", "show", "serve", "models", "mcp", "scan", "eval", "save", "scores", "play", "export", "import", "schedule"]);
+const COMMANDS = new Set(["openclaw", "run", "compose", "recover", "encore", "runs", "show", "serve", "models", "mcp", "scan", "eval", "save", "scores", "play", "export", "import", "schedule"]);
 
 function cliApprovals(): ApprovalHandler {
   return async (req) => {
@@ -188,6 +191,7 @@ async function main() {
       completions: { type: "string" },
       help: { type: "boolean", short: "h" },
       mode: { type: "string", short: "m" },
+      server: { type: "string" },
     },
   });
   const [command, ...rest] = positionals;
@@ -206,6 +210,28 @@ async function main() {
     const { createMcpServer } = await import("./mcp.js");
     const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
     await createMcpServer().connect(new StdioServerTransport());
+    return;
+  }
+  if (command === "openclaw") {
+    const { installOpenClaw, DEFAULT_ARCHITECT_URL } = await import("./openclaw-skill.js");
+    const { fileURLToPath } = await import("node:url");
+    const url = values.server ?? process.env.ARCHITECT_URL ?? DEFAULT_ARCHITECT_URL;
+    const r = await installOpenClaw({
+      workspace: values.workspace,
+      cli: fileURLToPath(import.meta.url),
+      url,
+      token: process.env.ARCHITECT_API_TOKEN || undefined,
+    });
+    console.log(`${C.green}✓${C.off} Skill installed: ${r.skill}`);
+    if (r.mcp.status === "added") console.log(`${C.green}✓${C.off} MCP server "architect" added to OpenClaw (Architect server: ${url})`);
+    else {
+      console.log(`${C.yellow}!${C.off} ${r.mcp.status === "no-openclaw" ? "The openclaw CLI was not found." : `openclaw mcp add failed${r.mcp.detail ? `: ${r.mcp.detail}` : "."} Stop the OpenClaw Gateway first, then retry.`}`);
+      console.log(`  Register the MCP server yourself with:
+  ${r.mcp.command}`);
+    }
+    console.log(`
+Next: start Architect on the project, e.g. ${C.bold}architect serve --workspace <project folder>${C.off}, then restart the OpenClaw Gateway`);
+    console.log(`and ask your assistant for coding work ("fix the failing test"). Check with: openclaw skills check · openclaw mcp doctor architect --probe`);
     return;
   }
 

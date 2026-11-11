@@ -32,6 +32,10 @@ export interface StartRunRequest {
   composeOnly?: boolean;
   /** Spending limit in USD; the run hands off when it is reached. */
   budgetUsd?: number;
+  /** Continue an earlier run: this goal is a follow-up message in the same session. */
+  followUp?: string;
+  /** A model id or tier from GET /v1/models; default "auto". */
+  model?: string;
 }
 
 export class ArchitectError extends Error {
