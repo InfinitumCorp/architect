@@ -14,6 +14,7 @@ import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type Ru
 import { checkAccess, cidIssuer, cidOwners, createCidVerifier, presentedToken, type CidVerifier } from "./cid.js";
 import { InputError, NotFoundError, now } from "./policy.js";
 import { conjureRoutesFromEnv, toWebRequest, sendWebResponse, type ConjureRouteHandler } from "./conjure/conjure.mjs";
+import { openClawRoutesFromEnv, type OpenClawRouteHandler } from "./openclaw/openclaw.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -52,6 +53,8 @@ export interface ServerOptions {
   cidVerify?: CidVerifier;
   /** @conjure routes; defaults to CONJURE_URL + CONJURE_PRODUCT_KEY from the environment. */
   conjure?: ConjureRouteHandler;
+  /** @scalvs / @scalus routes (SCALVS on OpenClaw); default OPENCLAW_GATEWAY_URL + OPENCLAW_GATEWAY_TOKEN from the environment (off until set). */
+  openclaw?: OpenClawRouteHandler;
   library?: ScoreLibrary;
   schedules?: ScheduleStore;
 }
@@ -121,6 +124,8 @@ function permissions(v: unknown): Permission[] | undefined {
  *   GET  /v1/approvals                  decisions waiting for a person
  *   POST /v1/approvals/:id              decide                 { approved, note?, by? }
  *   POST /v1/signals/:product           ecosystem trigger      { type, payload }
+ *   GET  /v1/openclaw                   is @scalvs connected   { connected, agent }
+ *   POST /v1/openclaw                   @scalvs <task>         { text } -> { mention, text, agent }
  */
 export function createArchitectServer(opts: ServerOptions): Server {
   const { architect } = opts;
@@ -131,6 +136,8 @@ export function createArchitectServer(opts: ServerOptions): Server {
 
   // @conjure: POST /v1/conjure { text } starts a live Conjure forecast; GET /v1/conjure/<ticket> follows it.
   const conjure: ConjureRouteHandler = opts.conjure ?? conjureRoutesFromEnv(process.env, { prefix: "/v1/conjure", source: "architect" });
+  // @scalvs / @scalus: POST /v1/openclaw { text } hands the task to the SCALVS agent on the owner's OpenClaw gateway; GET says whether it's connected.
+  const openclaw: OpenClawRouteHandler = opts.openclaw ?? openClawRoutesFromEnv(process.env, { prefix: "/v1/openclaw", product: "architect" });
 
   const owners = opts.cidOwners ?? cidOwners(process.env.ARCHITECT_CID_OWNERS);
   const verify = opts.cidVerify ?? createCidVerifier({ issuer: cidIssuer(process.env) });
@@ -191,6 +198,10 @@ export function createArchitectServer(opts: ServerOptions): Server {
 
       if (resource === "conjure") {
         const handled = await conjure(await toWebRequest(req), { user: "operator" });
+        if (handled) return void (await sendWebResponse(res, handled));
+      }
+      if (resource === "openclaw" && !id) {
+        const handled = await openclaw(await toWebRequest(req), { user: "operator" });
         if (handled) return void (await sendWebResponse(res, handled));
       }
 

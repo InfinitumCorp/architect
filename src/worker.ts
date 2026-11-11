@@ -22,6 +22,7 @@ import { DEFAULT_WORKERS_AI_MODEL, WORKERS_AI_BASE_URL, workersAiFetch, type AiB
 import { budgetedAI } from "./brains/ai-budget.mjs";
 import { DurableRunStore } from "./stores/durable.js";
 import { conjureRoutesFromEnv } from "./conjure/conjure.mjs";
+import { openClawRoutesFromEnv } from "./openclaw/openclaw.mjs";
 import { BrowserInstrument } from "./instruments/browser.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { HttpInstrument } from "./instruments/http.js";
@@ -128,6 +129,9 @@ export default {
       // @conjure: POST /v1/conjure { text } starts a live Conjure forecast; GET /v1/conjure/<ticket> follows it.
       const forecast = await conjureRoutesFromEnv(env as unknown as Record<string, string | undefined>, { prefix: "/v1/conjure", source: "architect" })(req, { user: "operator" });
       if (forecast) return forecast;
+      // @scalvs / @scalus: POST /v1/openclaw { text } hands the task to the SCALVS agent on OpenClaw (off until configured).
+      const claw = await openClawRoutesFromEnv(env as unknown as Record<string, string | undefined>, { prefix: "/v1/openclaw", product: "architect" })(req, { user: "operator" });
+      if (claw) return claw;
       return env.CONDUCTOR.get(env.CONDUCTOR.idFromName("main")).fetch(req);
     }
     return env.ASSETS.fetch(req);
