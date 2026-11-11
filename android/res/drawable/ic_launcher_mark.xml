@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- :\ARCHITECT\ launcher mark: ":\\". Black on transparent; it sits inside the 66dp safe zone. -->
+<!-- Infinitum icon: Arial Regular glyph, ink #111820 on white (icongen/rollout.mjs). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FF000000" android:pathData="M36,43m-4.5,0a4.5,4.5 0,1 1,9 0a4.5,4.5 0,1 1,-9 0" />
-    <path android:fillColor="#FF000000" android:pathData="M36,65m-4.5,0a4.5,4.5 0,1 1,9 0a4.5,4.5 0,1 1,-9 0" />
-    <path android:strokeColor="#FF000000" android:strokeWidth="6" android:fillColor="#00000000"
-        android:strokeLineCap="square" android:pathData="M51,35 L73,73" />
+    <path android:fillColor="#111820" android:pathData="M42.35 51.46L38.16 51.46L38.16 47.27L42.35 47.27L42.35 51.46ZM42.35 68.99L38.16 68.99L38.16 64.80L42.35 64.80L42.35 68.99ZM55.97 69.50L53.03 69.50L44.34 38.50L47.30 38.50L55.97 69.50ZM61.32 44.50L60.32 44.50L60.32 39.39L58.37 39.39L58.37 38.50L63.27 38.50L63.27 39.39L61.32 39.39L61.32 44.50ZM64.87 44.50L63.94 44.50L63.94 38.50L65.42 38.50L66.93 43.29L68.40 38.50L69.84 38.50L69.84 44.50L68.93 44.50L68.93 39.46L67.38 44.50L66.48 44.50L64.87 39.39L64.87 44.50Z" />
 </vector>
