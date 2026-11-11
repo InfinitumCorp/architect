@@ -78,7 +78,7 @@ node dist/cli.js encore run_ab12cd34 -i supplier="Acme Corp"
 node dist/cli.js recover run_ab12cd34
 
 # API + Podium (live view, approvals, evidence)
-ARCHITECT_API_TOKEN=change-me node dist/cli.js serve      # http://localhost:7337/?token=change-me
+ARCHITECT_CID_OWNERS=you@example.com node dist/cli.js serve   # http://localhost:7337, sign in with Cumulus ID
 ```
 
 ## Folding Architect into every Infinitum product
@@ -171,7 +171,7 @@ To reach the server over USB, run `adb reverse tcp:7337 tcp:7337` and use http:/
 
 `POST /v1/runs`, `/recover` and `/encore` also accept `budgetUsd`.
 
-All `/v1` routes require `Authorization: Bearer $ARCHITECT_API_TOKEN` when the token is set (set it whenever the server is reachable by others).
+People sign in with Cumulus ID (id.cumuluscloud.app): the Podium, the Android and desktop apps and the Chrome extension send that session as `Authorization: Bearer <Cumulus ID token>`, the server checks it at the issuer (`/api/id/userinfo`) and admits the Cumulus IDs, usernames, handles or emails in `ARCHITECT_CID_OWNERS`. `ARCHITECT_API_TOKEN` is for machines (scripts, MCP); nobody types it. With neither set, a local `architect serve` stays open; the hosted Worker refuses `/v1`.
 
 ## MCP server (Claude Code, Cursor, other agents)
 
@@ -207,7 +207,9 @@ Bring your own `Instrument` (any object with `tools` and `execute`) or your own 
 | `ARCHITECT_FALLBACKS` | on | server-side refusal fallback; set `off` on Bedrock / Vertex / Foundry |
 | `ARCHITECT_DATA_DIR` | `.architect` | runs, events, evidence |
 | `ARCHITECT_WORKSPACE` | `.architect/workspace` | the folder Architect may build in |
-| `ARCHITECT_API_TOKEN` | — | bearer token for `serve` |
+| `ARCHITECT_CID_OWNERS` | — | Cumulus IDs (or usernames, handles, emails) who may use `/v1` |
+| `CID_ISSUER` | `https://id.cumuluscloud.app` | Cumulus ID issuer, e.g. a mirror reachable from Russia |
+| `ARCHITECT_API_TOKEN` | — | machine bearer token for `serve` (scripts, MCP) |
 | `ARCHITECT_BRAIN` | automatic | `anthropic` forces one Claude model; `auto` requires routed models |
 | `OMNIROUTE_URL` | — | route through OmniRoute, e.g. `http://localhost:20128/v1` (see below) |
 

@@ -32,16 +32,22 @@ export function workersAiFetch(ai: AiBinding): typeof fetch {
       out = await run(rest);
     } catch (err) {
       // Some models reject response_format; JSON is also asked for in the prompt, so retry without it.
-      if (!rest.response_format) return reply(400, { error: { message: errText(err) } });
+      if (!rest.response_format) return reply(errStatus(err), { error: { message: errText(err) } });
       try {
         const { response_format: _drop, ...plain } = rest;
         out = await run(plain);
       } catch (err2) {
-        return reply(400, { error: { message: errText(err2) } });
+        return reply(errStatus(err2), { error: { message: errText(err2) } });
       }
     }
     return reply(200, toChatCompletion(out, String(model)));
   }) as typeof fetch;
+}
+
+/** 429 when the free daily allowance is used up (ai-budget's FreeAllowanceUsed), so callers back off; else 400. */
+function errStatus(err: unknown) {
+  const status = (err as { status?: unknown } | null)?.status;
+  return status === 429 ? 429 : 400;
 }
 
 function errText(err: unknown) {

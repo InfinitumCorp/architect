@@ -2,6 +2,7 @@
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import path from "node:path";
+import { chat, ignoreDataDir, MODES, type ModeKey } from "./chat.js";
 import { createArchitect } from "./index.js";
 import { WorkspaceInstrument } from "./instruments/workspace.js";
 import { PlaywrightMcpInstrument } from "./instruments/playwright-mcp.js";
@@ -26,9 +27,11 @@ import { RouterBrain } from "./brains/router.js";
 import { OpenAICompatBrain } from "./brains/openai.js";
 import { PERMISSIONS, type ApprovalHandler, type Autonomy, type Permission, type Run, type RunEvent } from "./types.js";
 
-const HELP = `:\\ARCHITECT\\™ — intent in, outcome out.
+const HELP = `:\\ARCHITECT\\™ — the coding agent.
 
 Usage
+  architect                           Start a coding session in this folder (like Claude Code)
+  architect "<task>"                  Start a session with a first task, e.g. architect "fix the failing test"
   architect run "<goal>" [options]    Compose a Score, perform it, verify the result
   architect compose "<goal>" [opts]   Compose and print the Score without performing it
   architect recover <runId>           Resume a failed or handed-off run
@@ -63,7 +66,8 @@ Options
   -u, --url <url>            Start URL for the browser
   -i, --input k=v            Score input (repeatable)
   -p, --permit <perm>        Limit permissions (repeatable): ${PERMISSIONS.join(", ")}
-  -w, --workspace <dir>      Folder Architect may build in (default: .architect/workspace)
+  -w, --workspace <dir>      Folder Architect works in (session: this folder; run/serve: .architect/workspace)
+  -m, --mode <mode>          Session mode: ask (default) | plan | auto | rehearse
       --headed               Show the browser window
       --state <file>         Playwright storage state to reuse a session you signed in to yourself
       --allow-host <host>    Restrict the browser to these hosts (repeatable)
@@ -113,6 +117,17 @@ function printEvent(ev: RunEvent) {
       console.log(`${C.dim}  ${mark} ${d.tool} ${input.length > 100 ? `${input.slice(0, 100)}…` : input}${C.off}`);
       break;
     }
+    case "evidence": {
+      // File edits come with a diff: show it, trimmed, like a coding agent does.
+      if (d.kind !== "file" || !/^(edited|created|rewrote) /.test(String(d.label)) || !d.content) break;
+      console.log(`${C.bold}  ${d.label}${C.off}`);
+      const lines = String(d.content).split("\n").filter((l) => !/^(---|\+\+\+) /.test(l));
+      for (const l of lines.slice(0, 40)) {
+        console.log(`    ${l.startsWith("+") ? C.green : l.startsWith("-") ? C.red : C.dim}${l}${C.off}`);
+      }
+      if (lines.length > 40) console.log(`${C.dim}    … ${lines.length - 40} more lines (/diff)${C.off}`);
+      break;
+    }
     case "architect.note":
       console.log(`${C.dim}  ${String(d.text).split("\n")[0]?.slice(0, 160)}${C.off}`);
       break;
@@ -127,6 +142,8 @@ function printEvent(ev: RunEvent) {
       break;
   }
 }
+
+const COMMANDS = new Set(["run", "compose", "recover", "encore", "runs", "show", "serve", "models", "mcp", "scan", "eval", "save", "scores", "play", "export", "import", "schedule"]);
 
 function cliApprovals(): ApprovalHandler {
   return async (req) => {
@@ -170,10 +187,17 @@ async function main() {
       samples: { type: "string" },
       completions: { type: "string" },
       help: { type: "boolean", short: "h" },
+      mode: { type: "string", short: "m" },
     },
   });
   const [command, ...rest] = positionals;
-  if (!command || values.help) {
+  if (values.help) {
+    console.log(HELP);
+    return;
+  }
+  // No command, or a task in words: an interactive coding session in this folder.
+  const session = !command || !COMMANDS.has(command);
+  if (session && !process.stdin.isTTY) {
     console.log(HELP);
     return;
   }
@@ -245,9 +269,16 @@ async function main() {
   const browserInstrument =
     browserBackend === "playwright-mcp" ? await PlaywrightMcpInstrument.start(browserOpts) : undefined;
 
+  const sessionMode = (values.mode ?? "ask") as ModeKey;
+  if (session && !(sessionMode in MODES)) throw new Error(`--mode must be one of ${Object.keys(MODES).join(", ")}`);
+  const folder = path.resolve(values.workspace ?? ".");
+  if (session) await ignoreDataDir(path.resolve(values.data ?? ".architect"));
+
   const architect = createArchitect({
     dataDir: values.data,
-    workspace: values.workspace,
+    // A session works in the project folder itself, like Claude Code; run/serve keep their own workspace.
+    workspace: session ? folder : values.workspace,
+    ...(session ? { supervisor: false as const } : {}),
     browser: browserOpts,
     browserInstrument,
     approvalHandler: command === "serve" ? undefined : cliApprovals(),
@@ -269,6 +300,15 @@ async function main() {
     else console.log(`\n${C.dim}run ${run.id} · ${run.status}${run.error ? ` · ${run.error}` : ""} · ${path.join(architect.store.runDir(run.id))}${C.off}`);
     process.exitCode = run.status === "succeeded" || run.status === "rehearsed" ? 0 : 1;
   };
+
+  if (session) {
+    try {
+      await chat({ architect, folder, initial: positionals.join(" ").trim() || undefined, mode: sessionMode, budgetUsd });
+    } finally {
+      await architect.dispose();
+    }
+    return;
+  }
 
   switch (command) {
     case "run": {

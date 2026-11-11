@@ -147,3 +147,24 @@ describe("Architect agent features", () => {
     expect(r.status).toBe("failed");
   });
 });
+
+describe("follow-ups in a session", () => {
+  it("carries the earlier task, outcome and changed files after a marker", async () => {
+    const { followUpGoal, FOLLOW_UP_MARK } = await import("../src/agentic.js");
+    const parent = {
+      id: "run_1", status: "succeeded", score: { goal: "Fix the login bug" }, error: undefined,
+      verdict: { passed: true, summary: "login works", criteria: [], at: "" },
+      steps: [{ id: "s1", status: "done", summary: "Patched auth.ts", attempts: 1 }],
+      evidence: [{ id: "e1", stepId: "s1", kind: "file", label: "edited src/auth.ts", content: "+x", at: "" }],
+    } as unknown as import("../src/types.js").Run;
+    const goal = followUpGoal("Now add a test", parent);
+    const [own, context] = goal.split(FOLLOW_UP_MARK);
+    expect(own).toBe("Now add a test");
+    expect(context).toContain("Task: Fix the login bug");
+    expect(context).toContain("Outcome: succeeded (login works)");
+    expect(context).toContain("Files changed: src/auth.ts");
+    // A follow-up of a follow-up keeps only the first part of the earlier goal as its task.
+    const again = followUpGoal("And docs", { ...parent, score: { goal } } as never);
+    expect(again.split(FOLLOW_UP_MARK)[1]).toContain("Task: Now add a test");
+  });
+});

@@ -9,3 +9,8 @@ architect.triggers.json
 android/build/
 .wrangler/
 .dev.vars
+
+# Desktop build output
+desktop/app/
+desktop/podium/
+*.upload.json

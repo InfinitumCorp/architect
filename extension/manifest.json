@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": ":\\ARCHITECT\\™",
   "short_name": "ARCHITECT",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "description": "Give :\\ARCHITECT\\ a goal from any page: send the selection or the current page, follow the run and answer approvals.",
   "minimum_chrome_version": "116",
   "icons": {
@@ -21,9 +21,9 @@
   "side_panel": { "default_path": "src/panel.html" },
   "options_page": "src/options.html",
   "background": { "service_worker": "src/background.js", "type": "module" },
-  "permissions": ["sidePanel", "contextMenus", "storage", "activeTab", "scripting"],
-  "host_permissions": ["https://rchtch.app/*"],
+  "permissions": ["sidePanel", "contextMenus", "storage", "activeTab", "identity"],
+  "host_permissions": ["https://rchtch.app/*", "https://id.cumuluscloud.app/*"],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://rchtch.app"
+    "extension_pages": "script-src 'self'; object-src 'none'; connect-src https://rchtch.app https://id.cumuluscloud.app"
   }
 }

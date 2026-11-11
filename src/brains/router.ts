@@ -53,6 +53,8 @@ export class RouterBrain implements Brain {
   readonly candidates: Candidate[];
   readonly policy: RouterPolicy;
   private down = new Map<string, number>();
+  /** A model the person picked for this run: tried first whenever it is healthy. */
+  private pin?: string;
   private now: () => number;
   /** Called on every routed call; Architect can log it. */
   onRoute?: (d: RouteDecision & { used: string; failures: Array<{ id: string; error: string }> }) => void;
@@ -85,9 +87,37 @@ export class RouterBrain implements Brain {
     };
     const t = this.now();
     const healthy = (c: Candidate) => (this.down.get(c.id) ?? 0) <= t;
+    const pinned = (c: Candidate) => Number(c.id === this.pin);
     return [...this.candidates].sort(
-      (a, b) => Number(healthy(b)) - Number(healthy(a)) || rank(a) - rank(b) || (a.cost ?? 0) - (b.cost ?? 0),
+      (a, b) =>
+        Number(healthy(b)) - Number(healthy(a)) || pinned(b) - pinned(a) || rank(a) - rank(b) || (a.cost ?? 0) - (b.cost ?? 0),
     );
+  }
+
+  /** The choices a person can pick from: automatic routing, a tier, or one model. */
+  choices(): Array<{ id: string; label: string; tier?: Tier }> {
+    const tiers = TIERS.filter((t) => this.candidates.some((c) => c.tier === t));
+    return [
+      { id: "auto", label: "Auto" },
+      ...(tiers.length > 1 ? tiers.map((t) => ({ id: t, label: t[0]!.toUpperCase() + t.slice(1), tier: t })) : []),
+      ...this.candidates.map((c) => ({ id: c.id, label: c.id.replace(`#${c.tier}`, ""), tier: c.tier })),
+    ];
+  }
+
+  /**
+   * The same router steered by a person's choice: a tier runs every call at that tier, a model id
+   * is tried first on every call. Failover still applies, and health is shared with this router.
+   */
+  pinned(choice: string): RouterBrain {
+    if (!choice || choice === "auto") return this;
+    const r = Object.create(RouterBrain.prototype) as RouterBrain;
+    const tier = (TIERS as string[]).includes(choice) ? (choice as Tier) : undefined;
+    if (!tier && !this.candidates.some((c) => c.id === choice)) throw new Error(`unknown model "${choice}"`);
+    Object.assign(r, this, {
+      policy: tier ? { ...this.policy, plan: tier, act: tier, verify: tier } : this.policy,
+      pin: tier ? undefined : choice,
+    });
+    return r;
   }
 
   private async route<T extends { model?: string }>(task: Task, tier: Tier, call: (b: Brain) => Promise<T>): Promise<T> {
