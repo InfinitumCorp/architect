@@ -119,5 +119,5 @@ describe("sandboxed execution", () => {
     expect(bad.passed).toBe(false);
     expect(bad.result).toMatch(/AssertionError/);
     expect(slow.result).toBe("timed out");
-  }, 20_000); // three Python start-ups plus a 1 s timeout: slow on Windows
+  }, 30_000); // three Python start-ups plus a 1 s timeout: more than vitest's 5 s default on Windows or a loaded runner
 });

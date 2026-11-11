@@ -29,6 +29,11 @@ const PODIUM_ASSETS: Record<string, { file: string; type: string }> = {
   "/cumulus-id.js": { file: "cumulus-id.js", type: "text/javascript; charset=utf-8" },
   "/privacy.html": { file: "privacy.html", type: "text/html; charset=utf-8" },
   "/cid-return.html": { file: "cid-return.html", type: "text/html; charset=utf-8" },
+  // Interface language (@infinitum/i18n): runtime and build-time catalogs, no model calls.
+  "/i18n/i18n.js": { file: "i18n/i18n.js", type: "text/javascript; charset=utf-8" },
+  "/i18n/i18n.css": { file: "i18n/i18n.css", type: "text/css; charset=utf-8" },
+  "/i18n/start.js": { file: "i18n/start.js", type: "text/javascript; charset=utf-8" },
+  "/i18n/catalogs.js": { file: "i18n/catalogs.js", type: "text/javascript; charset=utf-8" },
 };
 const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
 
