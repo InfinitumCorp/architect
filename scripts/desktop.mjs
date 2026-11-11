@@ -95,7 +95,8 @@ writeFileSync(path.join(out, "README.txt"), [
   ":\\ARCHITECT\\ Desktop",
   "",
   `Run ${platform === "win32" ? "Architect.exe" : platform === "linux" ? "./architect" : "Electron.app"}, open a project folder, and describe what to build or change.`,
-  "Add a model key first: Server > Open settings folder, edit .env (ANTHROPIC_API_KEY=… or OMNIROUTE_URL=…), then Server > Restart.",
+  "It works at once with the free open-weight model on rchtch.app (no key, no VPN needed).",
+  "For stronger models: Server > Open settings folder, edit .env (OMNIROUTE_URL=…, GROQ_API_KEY=… or ANTHROPIC_API_KEY=…), then Server > Restart.",
   "Project rules are read from ARCHITECT.md, AGENTS.md, CLAUDE.md, .cursorrules and GROK.md in the project folder.",
   "",
 ].join("\r\n"));

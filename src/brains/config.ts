@@ -11,6 +11,8 @@
  *   GROQ_API_KEY        – backup: Groq open models (gpt-oss, Qwen3)
  *   ARCHITECT_OPENAI_BASE_URL + ARCHITECT_OPENAI_MODEL – any other OpenAI-compatible endpoint (self-hosted vLLM, Ollama)
  *   ARCHITECT_BRAIN        – "anthropic" forces the single Claude brain (opt-in only); "auto" is the default router
+ *   (nothing set)       – the free open-weight model at rchtch.app/free/v1, no key needed
+ *                         (ARCHITECT_FREE_URL to point elsewhere, ARCHITECT_FREE=off to turn it off)
  *
  * Secrets never live in the models file: entries name the env var that holds the key (apiKeyEnv).
  */
@@ -18,6 +20,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { AnthropicBrain, type Brain } from "../brain.js";
+import { FREE_BASE_URL } from "../free.js";
 import { OpenAICompatBrain } from "./openai.js";
 import { DEFAULT_POLICY, RouterBrain, type Candidate } from "./router.js";
 
@@ -120,6 +123,18 @@ export function modelsFromEnv(env: Env = process.env): ModelsFile {
       { provider: "openai", id: "groq/qwen3-32b", baseUrl, model: "qwen/qwen3-32b", tier: "balanced", apiKeyEnv: "GROQ_API_KEY" },
       { provider: "openai", id: "groq/gpt-oss-20b", baseUrl, model: "openai/gpt-oss-20b", tier: "fast", apiKeyEnv: "GROQ_API_KEY" },
     );
+  }
+  // Built in: the free open-weight model on rchtch.app, so a fresh install works with no key.
+  // It is the fallback when OmniRoute is not running and nothing else is configured.
+  if (env.ARCHITECT_FREE !== "off" && models.length === 1 && !env.OMNIROUTE_URL) {
+    models.push({
+      provider: "openai",
+      id: "free/glm-4.7-flash",
+      baseUrl: env.ARCHITECT_FREE_URL ?? FREE_BASE_URL,
+      model: env.ARCHITECT_FREE_MODEL ?? "@cf/zai-org/glm-4.7-flash",
+      tier: "balanced",
+      cost: 0.5,
+    });
   }
   return { models };
 }

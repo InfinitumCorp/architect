@@ -3,6 +3,7 @@
  *
  *   /               the Podium (static assets, see wrangler.jsonc)
  *   /healthz        liveness
+ *   /free/v1/...    the free open-weight model (no key; see src/free.ts)
  *   /v1/...         the API, handled by one Durable Object ("Conductor") that owns the
  *                   Architect instance, so approvals and live runs behave as in `architect serve`
  *
@@ -26,6 +27,7 @@ import { GitHubInstrument } from "./instruments/github.js";
 import postgres from "postgres";
 import { postgresCaller, SupabaseRunStore, type UnsafeSql } from "./stores/supabase.js";
 import { publicDownload, uploadDownload, type DownloadBucket } from "./downloads.js";
+import { freeModel, type RateLimiter } from "./free.js";
 import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
 import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type RunEvent } from "./types.js";
 
@@ -49,6 +51,10 @@ export interface Env {
   ARCHITECT_GITHUB_REPOS?: string;
   /** R2 bucket architect-downloads: Architect Desktop builds served at /download. */
   DOWNLOADS?: DownloadBucket;
+  /** Per-address limit on the free model at /free/v1 (src/free.ts). */
+  FREE_RATE?: RateLimiter;
+  /** "off" turns the free model at /free/v1 off. */
+  ARCHITECT_FREE?: string;
   [key: string]: unknown;
 }
 
@@ -82,6 +88,9 @@ export default {
     if (url.pathname === "/healthz") return json(200, { ok: true, at: new Date().toISOString() });
     const download = await publicDownload(req, env.DOWNLOADS);
     if (download) return download;
+    // The free open-weight model that Architect Desktop and local servers use out of the box.
+    const free = await freeModel(req, env);
+    if (free) return free;
     if (url.pathname === "/v1" || url.pathname.startsWith("/v1/")) {
       // The hosted edition never runs open: no token configured means no API.
       if (!env.ARCHITECT_API_TOKEN) return json(503, { error: "The server has no ARCHITECT_API_TOKEN secret yet." });

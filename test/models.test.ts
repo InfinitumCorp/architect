@@ -216,7 +216,13 @@ describe("model configuration", () => {
     const cfg = modelsFromEnv({ OMNIROUTE_URL: "http://localhost:20128/v1", OMNIROUTE_FAST_MODEL: "qwen3:8b", ANTHROPIC_API_KEY: "x", CLOUDFLARE_ACCOUNT_ID: "acct", CLOUDFLARE_AI_TOKEN: "t" });
     expect(cfg.models.map((m) => `${m.tier}:${m.model}`)).toEqual(["balanced:auto", "fast:qwen3:8b", "strong:@cf/openai/gpt-oss-120b", "fast:@cf/openai/gpt-oss-20b"]);
     expect(cfg.models.every((m) => m.provider === "openai")).toBe(true);
-    expect(modelsFromEnv({}).models.map((m) => [m.provider === "openai" && m.baseUrl, m.model])).toEqual([["http://localhost:20128/v1", "auto"]]);
+    // Nothing configured: OmniRoute if it runs locally, else the built-in free model (no key).
+    expect(modelsFromEnv({}).models.map((m) => [m.provider === "openai" && m.baseUrl, m.model])).toEqual([
+      ["http://localhost:20128/v1", "auto"],
+      ["https://rchtch.app/free/v1", "@cf/zai-org/glm-4.7-flash"],
+    ]);
+    expect(modelsFromEnv({ ARCHITECT_FREE: "off" }).models).toHaveLength(1);
+    expect(modelsFromEnv({ ARCHITECT_FREE_URL: "http://localhost:8787/free/v1" }).models[1]).toMatchObject({ baseUrl: "http://localhost:8787/free/v1" });
     const b = brainFromEnv({ OMNIROUTE_URL: "http://localhost:20128/v1" }, dir);
     expect(b).toBeInstanceOf(RouterBrain);
     expect((b as RouterBrain).candidates).toHaveLength(1);
