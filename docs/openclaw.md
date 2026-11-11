@@ -7,7 +7,7 @@ requests you send it ("fix the failing test in the shop repo", "add a dark mode 
 tests, and OpenClaw sends you the verified result in the same chat.
 
 This page covers OpenClaw → Architect. For the other direction, where people inside Architect
-type `@scalvs` to ask the SCALVS agent running on OpenClaw, see `src/openclaw/README.md` (PR #33).
+type `@scalvs` to ask the SCALVS agent running on OpenClaw, see `src/openclaw/README.md` (PR #33). How the gateway behind it is run: [scalvs-gateway.md](scalvs-gateway.md).
 
 ## Set up
 
