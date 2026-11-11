@@ -39,6 +39,8 @@
     "SUPABASE_URL": "https://ivqiskeziohbbtkcvlun.supabase.co"
   },
   "observability": { "enabled": true }
-  // Secrets (wrangler secret put): ARCHITECT_API_TOKEN, SUPABASE_SERVICE_ROLE_KEY,
+  // People sign in with Cumulus ID: set ARCHITECT_CID_OWNERS (who may use /v1) as a var or secret;
+  // CID_ISSUER overrides https://id.cumuluscloud.app (e.g. a mirror reachable from Russia).
+  // Secrets (wrangler secret put): ARCHITECT_API_TOKEN (machines only), SUPABASE_SERVICE_ROLE_KEY,
   // and a model: ANTHROPIC_API_KEY or OMNIROUTE_URL / ARCHITECT_OPENAI_* settings.
 }
