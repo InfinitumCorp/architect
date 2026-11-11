@@ -73,4 +73,4 @@ garak probes a live model, so it runs only when you say which one:
 | `ARCHITECT_GARAK_HOSTS` | Comma-separated hosts garak may reach (the model endpoint) |
 | `ARCHITECT_GARAK_PASS_ENV` | Comma-separated names of key variables garak needs. Commands normally don't see secret-looking variables. |
 
-Keys stay in your environment or `.env`; never paste them into a chat or a Score.
+Keys stay in your environment or `.env`; never paste them into a chat or a plan.

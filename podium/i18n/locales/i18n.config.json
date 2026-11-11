@@ -1,9 +1,8 @@
 {
- "context": ":\\ARCHITECT\\ (Conductor): Infinitum autonomous AI execution engine. Give it a goal, follow the run, approve risky steps.",
+ "context": ":\\ARCHITECT\\: Infinitum's coding agent. Give it a task, follow the run, approve risky steps.",
  "keep": [
   ":\\ARCHITECT\\",
   "ARCHITECT",
-  "Podium",
   "Conjure",
   "FIRM",
   "Firmament",

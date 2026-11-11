@@ -274,7 +274,7 @@ function buildMenu() {
     {
       label: "Help",
       submenu: [
-        { label: "Cloud Podium (rchtch.app)", click: () => shell.openExternal("https://rchtch.app/") },
+        { label: "Architect in the cloud (rchtch.app)", click: () => shell.openExternal("https://rchtch.app/") },
         { label: "About", click: () => dialog.showMessageBox(win, { message: ":\\ARCHITECT\\ Desktop", detail: `Version ${app.getVersion()}\nInfinitum Corporation` }) },
       ],
     },

@@ -67,7 +67,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
   const server = new McpServer({ name: "architect", version: "0.1.0" });
   const approvalNote = (run: Run) =>
     run.status === "awaiting_approval"
-      ? { note: "This run is waiting for a person to approve an action in the Podium or CLI. You cannot approve it." }
+      ? { note: "This run is waiting for a person to approve an action in the Architect app or CLI. You cannot approve it." }
       : {};
 
   server.registerTool(
@@ -75,7 +75,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
     {
       title: "Start an Architect run",
       description:
-        "Give Architect a goal in plain language. It plans a Score, drives a browser and other instruments, and verifies the result. " +
+        "Give Architect a goal in plain language. It plans the work, edits and runs code or drives a browser, and verifies the result. " +
         "autonomy: rehearsal (plan and simulate, no side effects), accompaniment (default; risky actions wait for a person), autopilot. " +
         "With wait=true, returns when the run finishes, needs approval, or wait_seconds pass.",
       inputSchema: {
@@ -111,7 +111,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
     "architect_get_run",
     {
       title: "Get a run",
-      description: "Status, Score steps, verdict and spend for one run. With wait=true, waits until it finishes or needs approval.",
+      description: "Status, plan steps, verdict and spend for one run. With wait=true, waits until it finishes or needs approval.",
       inputSchema: { run_id: z.string().min(1), wait: z.boolean().optional(), wait_seconds: z.number().int().positive().max(1800).optional() },
     },
     async (a) => {
@@ -146,7 +146,7 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
     "architect_pending_approvals",
     {
       title: "Pending approvals",
-      description: "Actions waiting for a person. Read-only: approve or decline them in the Podium or CLI, not through this server.",
+      description: "Actions waiting for a person. Read-only: approve or decline them in the Architect app or CLI, not through this server.",
       inputSchema: {},
       annotations: { readOnlyHint: true },
     },

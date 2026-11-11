@@ -44,4 +44,4 @@ missing, starting the backend fails with the install command.
 - **Playwright MCP**: accessibility-snapshot driving (refs instead of coordinates), tabs, and
   form filling that tracks upstream Playwright closely.
 
-Both register as the `browser` instrument, so Scores and permissions don't change.
+Both register as the `browser` instrument, so plans and permissions don't change.
