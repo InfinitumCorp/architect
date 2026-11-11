@@ -161,44 +161,162 @@ export function extractText(html) {
   return { title, description, text };
 }
 
-/** Rules from robots.txt for our agent (or "*"): a list of Disallow prefixes, with Allow overrides. */
-export function parseRobots(txt, agent = "infinitumsearch") {
-  const groups = [];
-  let cur = null;
-  let lastWasAgent = false;
-  for (const line of String(txt).split(/\r?\n/)) {
-    const l = line.replace(/#.*$/, "").trim();
-    const m = /^([a-z-]+)\s*:\s*(.*)$/i.exec(l);
-    if (!m) continue;
-    const key = m[1].toLowerCase();
-    const val = m[2].trim();
-    if (key === "user-agent") {
-      if (!lastWasAgent) groups.push((cur = { agents: [], allow: [], disallow: [] }));
-      cur.agents.push(val.toLowerCase());
-      lastWasAgent = true;
-    } else {
-      lastWasAgent = false;
-      if (!cur) continue;
-      if (key === "disallow" && val) cur.disallow.push(val);
-      if (key === "allow" && val) cur.allow.push(val);
-    }
-  }
-  const mine = groups.find((g) => g.agents.some((a) => a !== "*" && agent.startsWith(a))) || groups.find((g) => g.agents.includes("*"));
-  return mine ? { allow: mine.allow, disallow: mine.disallow } : { allow: [], disallow: [] };
+// robots.txt parsing and matching below follow Google's open-source robots.txt parser
+// (github.com/google/robotstxt, robots.cc, Copyright 1999 Google LLC, Apache License 2.0),
+// ported to JavaScript. The rules it follows (RFC 9309 plus Google's documented leniencies):
+//   - keys are case-insensitive and matched by prefix; common typos are accepted
+//     ("useragent", "user agent", "dissallow", "disalow", ...); a missing colon is accepted
+//     when the line is exactly "<key> <value>";
+//   - a user-agent value is cut to its [a-zA-Z_-] product token and compared case-insensitively;
+//     "*" (or "* anything") is the global group;
+//   - every group naming our agent is merged; when any group names us, the global groups are
+//     ignored even if ours is empty;
+//   - the longest matching pattern wins, and Allow wins a tie; "*" matches anything, a final "$"
+//     anchors the end; an empty pattern matches nothing;
+//   - "Allow: /dir/index.htm(l)" also allows "/dir/"; patterns are %-normalised (non-ASCII is
+//     UTF-8 %-encoded, %xx is upper-cased); the path itself is used as given;
+//   - a UTF-8 BOM is skipped; lines end at \n, \r or \r\n; a line longer than 16,664 characters
+//     is cut; Sitemap and unknown lines don't end a group.
+// We also always allow /robots.txt itself (RFC 9309 section 2.2.2).
+const ROBOTS_MAX_LINE = 2083 * 8 - 1;
+const ROBOTS_AGENT_TOKEN = /^[a-zA-Z_-]*/;
+const startsI = (s, p) => s.slice(0, p.length).toLowerCase() === p;
+
+function robotsKeyType(key) {
+  if (["user-agent", "useragent", "user agent"].some((p) => startsI(key, p))) return "user-agent";
+  if (startsI(key, "allow")) return "allow";
+  if (["disallow", "dissallow", "dissalow", "disalow", "diasllow", "disallaw"].some((p) => startsI(key, p))) return "disallow";
+  if (["sitemap", "site-map"].some((p) => startsI(key, p))) return "sitemap";
+  return "unknown";
 }
 
-function robotsAllows(rules, path) {
-  const match = (rule) => {
-    const anchored = rule.endsWith("$");
-    const body = anchored ? rule.slice(0, -1) : rule;
-    const re = new RegExp("^" + body.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + (anchored ? "$" : ""));
-    return re.test(path) ? body.length : -1;
-  };
-  let best = -1;
-  let allowed = true;
-  for (const r of rules.disallow) { const n = match(r); if (n > best) { best = n; allowed = false; } }
-  for (const r of rules.allow) { const n = match(r); if (n >= best && n >= 0) { best = n; allowed = true; } }
-  return allowed;
+/** Google's MaybeEscapePattern: %-encode non-ASCII as UTF-8 and upper-case existing %xx escapes. */
+export function escapeRobotsPattern(value) {
+  let out = "";
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (ch === "%" && /^[0-9a-fA-F]{2}$/.test(value.slice(i + 1, i + 3))) {
+      out += "%" + value.slice(i + 1, i + 3).toUpperCase();
+      i += 2;
+    } else if (ch.charCodeAt(0) > 0x7f) {
+      const cp = value.codePointAt(i);
+      const s = String.fromCodePoint(cp);
+      if (s.length === 2) i++;
+      out += Array.from(new TextEncoder().encode(s), (b) => "%" + b.toString(16).toUpperCase().padStart(2, "0")).join("");
+    } else {
+      out += ch;
+    }
+  }
+  return out;
+}
+
+function robotsLines(txt) {
+  let body = String(txt);
+  if (body.charCodeAt(0) === 0xfeff) body = body.slice(1);
+  else if (body.startsWith("ï»¿")) body = body.slice(3);
+  return body.split(/\r\n|\r|\n/).map((l) => (l.length > ROBOTS_MAX_LINE ? l.slice(0, ROBOTS_MAX_LINE) : l));
+}
+
+function robotsKeyValue(raw) {
+  const line = raw.replace(/#.*$/, "").trim();
+  if (!line) return null;
+  let sep = line.indexOf(":");
+  if (sep < 0) {
+    // No colon: accept "<key> <value>" when there are exactly two words.
+    const m = /^(\S+)[ \t]+(\S+)$/.exec(line);
+    return m ? { key: m[1], value: m[2] } : null;
+  }
+  const key = line.slice(0, sep).trim();
+  return key ? { key, value: line.slice(sep + 1).trim() } : null;
+}
+
+/**
+ * Parses robots.txt for our agent(s), the way Google's parser does. Returns the merged rules of
+ * every group that names us ("specific"), else of the global "*" groups, else none.
+ */
+export function parseRobots(txt, agents = ["InfinitumSearch"]) {
+  const wanted = (Array.isArray(agents) ? agents : [agents]).map((a) => String(a).toLowerCase());
+  const specific = { allow: [], disallow: [] };
+  const global = { allow: [], disallow: [] };
+  let seenGlobal = false;
+  let seenSpecific = false;
+  let everSpecific = false;
+  let seenSeparator = false;
+  for (const raw of robotsLines(txt)) {
+    const kv = robotsKeyValue(raw);
+    if (!kv) continue;
+    const type = robotsKeyType(kv.key);
+    if (type === "user-agent") {
+      if (seenSeparator) seenSpecific = seenGlobal = seenSeparator = false;
+      if (kv.value[0] === "*" && (kv.value.length === 1 || /\s/.test(kv.value[1]))) {
+        seenGlobal = true;
+      } else {
+        const token = ROBOTS_AGENT_TOKEN.exec(kv.value)[0].toLowerCase();
+        if (token && wanted.includes(token)) everSpecific = seenSpecific = true;
+      }
+    } else if (type === "allow" || type === "disallow") {
+      if (!seenGlobal && !seenSpecific) continue;
+      seenSeparator = true;
+      if (!kv.value) continue; // An empty pattern matches nothing (priority 0 never wins).
+      const target = seenSpecific ? specific : global;
+      const pattern = escapeRobotsPattern(kv.value);
+      target[type].push(pattern);
+      if (type === "allow") {
+        const slash = pattern.lastIndexOf("/");
+        if (slash >= 0 && pattern.slice(slash).startsWith("/index.htm")) target.allow.push(pattern.slice(0, slash + 1) + "$");
+      }
+    }
+  }
+  if (everSpecific) return { group: "specific", ...specific };
+  if (global.allow.length || global.disallow.length) return { group: "global", ...global };
+  return { group: "none", allow: [], disallow: [] };
+}
+
+/** Google's RobotsMatchStrategy::Matches: "*" is a wildcard, a final "$" anchors the end. Linear in path length. */
+export function robotsPatternMatches(path, pattern) {
+  let pos = [0];
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === "$" && i === pattern.length - 1) return pos[pos.length - 1] === path.length;
+    if (ch === "*") {
+      const from = pos[0];
+      pos = [];
+      for (let p = from; p <= path.length; p++) pos.push(p);
+    } else {
+      const next = [];
+      for (const p of pos) if (p < path.length && path[p] === ch) next.push(p + 1);
+      if (!next.length) return false;
+      pos = next;
+    }
+  }
+  return true;
+}
+
+/** Google's GetPathParamsQuery: the path, params and query of a URL (no fragment), always starting with "/". */
+export function robotsPath(url) {
+  const s = String(url);
+  const start = s.startsWith("//") ? 2 : 0;
+  const early = s.slice(start).search(/[/?;]/);
+  let proto = s.indexOf("://", start);
+  if (early >= 0 && start + early < proto) proto = -1;
+  proto = proto < 0 ? start : proto + 3;
+  const rel = s.slice(proto).search(/[/?;]/);
+  if (rel < 0) return "/";
+  const pathStart = proto + rel;
+  const hash = s.indexOf("#", start);
+  if (hash >= 0 && hash < pathStart) return "/";
+  const out = s.slice(pathStart, hash < 0 ? s.length : hash);
+  return out[0] === "/" ? out : "/" + out;
+}
+
+/** True when the rules let us fetch this path (path + query, starting with "/"). Longest match wins; Allow wins ties. */
+export function robotsAllows(rules, path) {
+  if (path === "/robots.txt") return true;
+  let allow = -1;
+  let disallow = -1;
+  for (const p of rules.allow) if (p.length > allow && robotsPatternMatches(path, p)) allow = p.length;
+  for (const p of rules.disallow) if (p.length > disallow && robotsPatternMatches(path, p)) disallow = p.length;
+  return !(disallow > allow);
 }
 
 /**

@@ -33,7 +33,13 @@ export declare function hasSearchMention(text: unknown): boolean;
 export declare function decodeEntities(s: string): string;
 export declare function isPublicUrl(url: string): boolean;
 export declare function extractText(html: string): { title: string; description: string; text: string };
-export declare function parseRobots(txt: string, agent?: string): { allow: string[]; disallow: string[] };
+export interface RobotsRules { group: "specific" | "global" | "none"; allow: string[]; disallow: string[] }
+/** robots.txt rules for our agent(s), following Google's open-source parser (google/robotstxt, Apache-2.0). */
+export declare function parseRobots(txt: string, agents?: string | string[]): RobotsRules;
+export declare function robotsAllows(rules: Pick<RobotsRules, "allow" | "disallow">, path: string): boolean;
+export declare function robotsPatternMatches(path: string, pattern: string): boolean;
+export declare function robotsPath(url: string): string;
+export declare function escapeRobotsPattern(value: string): string;
 export declare function createCrawler(options?: { fetch?: typeof fetch; timeoutMs?: number; robots?: boolean; userAgent?: string }): (url: string, options?: { signal?: AbortSignal }) => Promise<CrawledPage | null>;
 export declare function searxngEngine(options: { url: string; fetch?: typeof fetch; timeoutMs?: number }): SearchEngine;
 export declare function yandexEngine(options: { apiKey: string; folderId: string; fetch?: typeof fetch; timeoutMs?: number }): SearchEngine;
