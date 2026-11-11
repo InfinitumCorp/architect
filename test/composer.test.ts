@@ -135,6 +135,7 @@ describe("composer endpoints", () => {
       options: [{ id: "auto", label: "claude-opus-5-5" }],
       files: true,
       shell: true,
+      labyrinth: false,
     });
     expect(await (await call("/v1/files?q=ind")).json()).toEqual({ files: ["index.html"] });
     const out = (await (await call("/v1/shell", { method: "POST", body: JSON.stringify({ command: "node -e \"console.log('ok')\"" }) })).json()) as { code: number; output: string };

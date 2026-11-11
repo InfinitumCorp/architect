@@ -4,6 +4,7 @@
  *   /               the Podium (static assets, see wrangler.jsonc)
  *   /healthz        liveness
  *   /free/v1/...    the free open-weight model (no key; see src/free.ts)
+ *   /api/labyrinth  relay to the central Labyrinth service (see LABYRINTH.md)
  *   /v1/...         the API, handled by one Durable Object ("Conductor") that owns the
  *                   Architect instance, so approvals and live runs behave as in `architect serve`
  *
@@ -28,6 +29,7 @@ import postgres from "postgres";
 import { postgresCaller, SupabaseRunStore, type UnsafeSql } from "./stores/supabase.js";
 import { publicDownload, uploadDownload, type DownloadBucket } from "./downloads.js";
 import { freeModel, type RateLimiter } from "./free.js";
+import { proxyLabyrinthRequest } from "./labyrinth/proxy.js";
 import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
 import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type RunEvent } from "./types.js";
 
@@ -53,6 +55,8 @@ export interface Env {
   DOWNLOADS?: DownloadBucket;
   /** Per-address limit on the free model at /free/v1 (src/free.ts). */
   FREE_RATE?: RateLimiter;
+  /** The central Labyrinth service (Nexus /api/labyrinth). Unset: /api/labyrinth answers 503. */
+  LBRNTH_ENDPOINT?: string;
   /** "off" turns the free model at /free/v1 off. */
   ARCHITECT_FREE?: string;
   [key: string]: unknown;
@@ -91,6 +95,9 @@ export default {
     // The free open-weight model that Architect Desktop and local servers use out of the box.
     const free = await freeModel(req, env);
     if (free) return free;
+    // Labyrinth: explicit, user-chosen saves to the person's private repository, authenticated
+    // by their own Cumulus ID bearer (never the product API token). Same relay as `architect serve`.
+    if (url.pathname === "/api/labyrinth") return proxyLabyrinthRequest(req, env.LBRNTH_ENDPOINT, "architect");
     if (url.pathname === "/v1" || url.pathname.startsWith("/v1/")) {
       // The hosted edition never runs open: no token configured means no API.
       if (!env.ARCHITECT_API_TOKEN) return json(503, { error: "The server has no ARCHITECT_API_TOKEN secret yet." });
@@ -176,7 +183,7 @@ export class Conductor extends DurableObject<Env> {
         return parsed as Record<string, unknown>;
       };
 
-      if (resource === "models" && req.method === "GET") return json(200, { ...a.models(), files: false, shell: false });
+      if (resource === "models" && req.method === "GET") return json(200, { ...a.models(), files: false, shell: false, labyrinth: Boolean(this.env.LBRNTH_ENDPOINT) });
 
       if (resource === "runs" && !id) {
         if (req.method === "GET") return json(200, await a.store.list(Number(url.searchParams.get("limit") ?? 50)));

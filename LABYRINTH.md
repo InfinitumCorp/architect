@@ -22,6 +22,28 @@ bearer linked to parent-session revocation. It cannot log in to other CID apps,
 renew itself or grant consent. Keep it in memory, not URLs/logs/localStorage.
 The cross-origin popup/PKCE login GUI is a follow-on, not supplied by this SDK.
 
+## Where it runs
+
+- `architect serve` (local and desktop) and the hosted Worker (rchtch.app) both serve
+  `POST /api/labyrinth` through the same relay (`src/labyrinth/proxy.ts`). Both answer 503
+  until the operator sets `LBRNTH_ENDPOINT` (a Worker var or secret, a local env var).
+- `GET /v1/models` reports `labyrinth: true` when it is configured, so the Podium knows to offer it.
+
+## Save to Labyrinth in the Podium
+
+A finished run shows a **Save to Labyrinth** button when Labyrinth is configured. Only when the
+person clicks it, the Podium:
+
+1. takes their own Cumulus://ID session (`window.CumulusID.token()`, from the sign-in button;
+   if they are not signed in it starts sign-in instead),
+2. exchanges it once for the 15-minute repository-only bearer (`token`), kept in memory only,
+3. finds or creates their private `architect` repository,
+4. saves `runs/<run id>.json` on `main` against the branch head it just read
+   (one retry if the head moved; otherwise the conflict is reported, never overwritten).
+
+The artifact (`kind: "architect.run"`) holds the task, status, plan, verdict, usage and the
+walkthrough. The product API token is never sent to Labyrinth, and nothing is exported automatically.
+
 ## Explicit save/load SDK
 
 Import `createArchitectLabyrinth` from `src/labyrinth/index.js`

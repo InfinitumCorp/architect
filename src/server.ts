@@ -153,7 +153,14 @@ export function createArchitectServer(opts: ServerOptions): Server {
       const [, resource, id, action, file] = parts;
       const project = opts.workspace ?? architect.workspaceRoot;
 
-      if (resource === "models" && req.method === "GET") return json(res, 200, { ...architect.models(), files: Boolean(project), shell: Boolean(project) && loopback(req) });
+      if (resource === "models" && req.method === "GET") {
+        return json(res, 200, {
+          ...architect.models(),
+          files: Boolean(project),
+          shell: Boolean(project) && loopback(req),
+          labyrinth: Boolean(opts.lbrnthEndpoint ?? process.env.LBRNTH_ENDPOINT),
+        });
+      }
       if (resource === "files" && req.method === "GET") {
         if (!project) return json(res, 200, { files: [] });
         return json(res, 200, { files: await findFiles(project, String(url.searchParams.get("q") ?? "").slice(0, 200)) });
