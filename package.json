@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "test": "vitest run",
-    "build": "tsc -p tsconfig.json && node -e \"require('fs').cpSync('src/conjure','dist/conjure',{recursive:true})\"",
+    "build": "tsc -p tsconfig.json && node -e \"const fs=require('fs');fs.cpSync('src/conjure','dist/conjure',{recursive:true});fs.cpSync('src/brains/ai-budget.mjs','dist/brains/ai-budget.mjs');fs.cpSync('src/brains/ai-budget.d.mts','dist/brains/ai-budget.d.mts')\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx src/cli.ts",
     "serve": "tsx src/cli.ts serve",
