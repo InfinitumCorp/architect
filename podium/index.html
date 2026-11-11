@@ -167,6 +167,8 @@
   .msg-shell .cmd::before { content:"! "; color:var(--accent); }
   .msg-shell .out { white-space:pre-wrap; word-break:break-word; color:var(--muted); border-left:1px solid var(--line); margin:4px 0 0 6px; padding:2px 10px; max-height:360px; overflow:auto; }
   .msg-shell .code { color:var(--muted); font-size:12px; margin:2px 0 0 16px; }
+  .msg-shell.claw .cmd::before { content:""; }
+  .msg-shell.claw .out { color:var(--ink); font-family:inherit; }
   .popup button .c.file { min-width:0; }
   .mode b { font-weight:400; color:var(--accent); }
   .send { width:36px; height:36px; padding:0; display:grid; place-items:center; }
@@ -784,6 +786,9 @@
     if (cmd) { prompt.value = ""; grow(); cmd.run(); return; }
     $("form-error").hidden = true;
     if (text.startsWith("!")) { prompt.value = ""; grow(); runCommand(text.slice(1).trim()); return; }
+    // @conjure wins when a message has both, the same order as +SPCTR's Ask.
+    if (CONJURE.test(text)) { prompt.value = ""; grow(); askConjure(text); return; }
+    if (SCALVS.test(text)) { prompt.value = ""; grow(); askScalvs(text); return; }
     const btn = $("send-btn"); btn.disabled = true;
     const r = latest();
     try {
@@ -868,7 +873,37 @@
   const shellLog = [];
   function shellBlock(x) {
     const status = x.pending ? "running…" : x.error ? esc(x.error) : `exit ${x.code}${x.timedOut ? " · timed out" : ""} · ${(x.ms / 1000).toFixed(1)}s`;
+    if (x.claw) return `<div class="msg-shell claw"><div class="cmd">${esc(x.command)}</div>${x.output ? `<div class="out">${esc(x.output)}</div>` : ""}<div class="code">${x.pending ? `${x.label} is working…` : x.error ? esc(x.error) : esc(x.label)}</div></div>`;
     return `<div class="msg-shell"><div class="cmd">${esc(x.command)}</div>${x.output ? `<div class="out">${esc(x.output)}</div>` : ""}<div class="code">${status}</div></div>`;
+  }
+
+  // ---- @scalvs / @scalus <task>: the SCALVS agent (on the owner's OpenClaw gateway) answers ----
+  // ---- @conjure <question>: a live Conjure™ forecast, followed until the report is in ----
+  const SCALVS = /(^|[^\w@＠./])[@＠]scal(?:vs|us)(?![\w-]|\.[a-z])/i;
+  const CONJURE = /(^|[^\w@＠./])[@＠]conjure(?![\w-]|\.[a-z])/i;
+  async function askScalvs(text) {
+    const x = { session: session || "", command: text, pending: true, claw: true, label: "SCALVS" };
+    shellLog.push(x); drawTranscript(true);
+    try {
+      const d = await api("/v1/openclaw", { method: "POST", body: JSON.stringify({ text }) });
+      if (d.mention) { x.output = d.text; x.agent = d.agent; } else x.error = "Write a task after @scalvs.";
+    } catch (err) { x.error = err.message; }
+    x.pending = false; drawTranscript(true);
+  }
+  async function askConjure(text) {
+    const x = { session: session || "", command: text, pending: true, claw: true, label: "Conjure™" };
+    shellLog.push(x); drawTranscript(true);
+    try {
+      let d = await api("/v1/conjure", { method: "POST", body: JSON.stringify({ text: text.replace(/[@＠]conjure/i, "@conjure") }) });
+      if (!d.mention) throw new Error("Write a question after @conjure.");
+      x.output = d.text; drawTranscript(true);
+      for (let i = 0; d.ticket && i < 200 && !["done", "failed", "cancelled"].includes(d.prediction && d.prediction.status); i++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        d = { ...d, ...(await api(`/v1/conjure/${d.ticket}`)) };
+        x.output = d.text; drawTranscript(true);
+      }
+    } catch (err) { x.error = err.message; }
+    x.pending = false; drawTranscript(true);
   }
   async function runCommand(command) {
     if (!command) return;
