@@ -87,6 +87,15 @@ describe("MCP server", () => {
     expect(list[0].id).toBe(started.id);
   }, 30_000);
 
+  it("passes follow_up and model through to the server", async () => {
+    // Both reach the server and are checked there: an unknown earlier run, an unknown model.
+    const follow = await agent.callTool({ name: "architect_run", arguments: { goal: "also add a test", follow_up: "run_nope" } });
+    expect(follow.isError).toBe(true);
+    const model = await agent.callTool({ name: "architect_run", arguments: { goal: "x", model: "gpt-nope" } });
+    expect(model.isError).toBe(true);
+    expect((model.content as Array<{ text: string }>)[0]!.text).toMatch(/model/i);
+  });
+
   it("returns an error result for an unknown run", async () => {
     const r = await agent.callTool({ name: "architect_get_run", arguments: { run_id: "run_nope" } });
     expect(r.isError).toBe(true);

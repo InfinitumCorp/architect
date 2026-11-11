@@ -181,7 +181,11 @@ People sign in with Cumulus ID (id.cumuluscloud.app): the Podium, the Android an
 claude mcp add architect -- node /path/to/architect/dist/cli.js mcp
 ```
 
-Tools: `architect_run` (with `wait`), `architect_get_run`, `architect_list_runs`, `architect_pending_approvals`, `architect_recover`, `architect_cancel`. There is deliberately no approve tool: a calling agent can start and watch runs, but risky actions still wait for a person in the Podium or CLI.
+Tools: `architect_run` (with `wait`, `follow_up` to continue an earlier run, and `model`), `architect_get_run`, `architect_list_runs`, `architect_pending_approvals`, `architect_recover`, `architect_cancel`. There is deliberately no approve tool: a calling agent can start and watch runs, but risky actions still wait for a person in the Podium or CLI.
+
+### OpenClaw
+
+`architect openclaw` makes Architect the coding agent of your [OpenClaw](https://docs.openclaw.ai) assistant, so you can ask for coding work from Telegram, WhatsApp, Discord or any other OpenClaw channel. It installs an `architect` skill and registers this MCP server with `openclaw mcp add`. See [docs/openclaw.md](docs/openclaw.md).
 
 ## Library
 
@@ -271,7 +275,8 @@ src/
   brains/openai.ts    any OpenAI-compatible model (OmniRoute, Ollama, vLLM, OpenRouter …)
   brains/router.ts    automatic model selection: tiers, escalation, failover, cooldowns
   brains/config.ts    architect.models.json and OMNIROUTE_URL / ARCHITECT_OPENAI_* shortcuts
-  mcp.ts              MCP server for Claude Code, Cursor and other agents
+  mcp.ts              MCP server for Claude Code, Cursor, OpenClaw and other agents
+  openclaw-skill.ts   `architect openclaw`: the OpenClaw skill and MCP registration
   architect.ts        Compose → Perform → Verify, Encore / Recover / Handoff, approvals
   prompts.ts          system prompts and safety rules
   instruments/        browser (Playwright), workspace, http, ecosystem

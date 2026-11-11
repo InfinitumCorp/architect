@@ -1,5 +1,6 @@
 /**
- * :\ARCHITECT\ as an MCP server, so Claude Code, Cursor and other agents can hand Architect a goal.
+ * :\ARCHITECT\ as an MCP server, so Claude Code, Cursor, OpenClaw and other agents can hand Architect
+ * a coding task (see src/openclaw-skill.ts and docs/openclaw.md).
  *
  *   architect mcp                      # stdio; talks to `architect serve` at ARCHITECT_URL (default http://localhost:7337)
  *
@@ -75,7 +76,9 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
     {
       title: "Start an Architect run",
       description:
-        "Give Architect a goal in plain language. It plans a Score, drives a browser and other instruments, and verifies the result. " +
+        "Give Architect, a coding agent, a task in plain language: fix a bug, build a feature, write tests, review or explain code, " +
+        "or drive a browser. It plans a Score, edits and runs code in its workspace, and verifies the result. " +
+        "follow_up: an earlier run id to continue that conversation (\"now add a test for it\"). " +
         "autonomy: rehearsal (plan and simulate, no side effects), accompaniment (default; risky actions wait for a person), autopilot. " +
         "With wait=true, returns when the run finishes, needs approval, or wait_seconds pass.",
       inputSchema: {
@@ -85,6 +88,8 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
         inputs: z.record(z.string(), z.string()).optional(),
         permissions: z.array(z.enum(PERMISSIONS)).optional(),
         budget_usd: z.number().positive().optional(),
+        follow_up: z.string().min(1).optional(),
+        model: z.string().min(1).max(200).optional(),
         wait: z.boolean().optional(),
         wait_seconds: z.number().int().positive().max(1800).optional(),
       },
@@ -98,6 +103,8 @@ export function createMcpServer(opts: McpOptions = {}): McpServer {
           inputs: a.inputs,
           permissions: a.permissions,
           budgetUsd: a.budget_usd,
+          followUp: a.follow_up,
+          model: a.model,
         });
         if (a.wait) run = await waitFor(client, run.id, a.wait_seconds ?? 600, pollMs);
         return json({ ...summarizeRun(run), ...approvalNote(run) });
