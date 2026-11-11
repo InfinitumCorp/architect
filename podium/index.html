@@ -786,8 +786,9 @@
     if (cmd) { prompt.value = ""; grow(); cmd.run(); return; }
     $("form-error").hidden = true;
     if (text.startsWith("!")) { prompt.value = ""; grow(); runCommand(text.slice(1).trim()); return; }
-    if (SCALVS.test(text)) { prompt.value = ""; grow(); askScalvs(text); return; }
+    // @conjure wins when a message has both, the same order as +SPCTR's Ask.
     if (CONJURE.test(text)) { prompt.value = ""; grow(); askConjure(text); return; }
+    if (SCALVS.test(text)) { prompt.value = ""; grow(); askScalvs(text); return; }
     const btn = $("send-btn"); btn.disabled = true;
     const r = latest();
     try {
