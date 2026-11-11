@@ -32,6 +32,7 @@ import { publicDownload, uploadDownload, type DownloadBucket } from "./downloads
 import { freeModel, type RateLimiter } from "./free.js";
 import { proxyLabyrinthRequest } from "./labyrinth/proxy.js";
 import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
+import { checkAccess, cidIssuer, cidOwners, createCidVerifier, presentedToken, type CidVerifier } from "./cid.js";
 import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type RunEvent } from "./types.js";
 
 const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
@@ -50,7 +51,12 @@ export interface Env {
   SUPABASE_SERVICE_ROLE_KEY?: string;
   /** Hyperdrive to the Supabase pooler as the architect_worker login (see supabase/migrations). */
   HYPERDRIVE?: Hyperdrive;
+  /** Machine token for scripts and MCP. People sign in with Cumulus ID instead (src/cid.ts). */
   ARCHITECT_API_TOKEN?: string;
+  /** Who may use the hosted server: Cumulus IDs, usernames, handles or emails, comma separated. */
+  ARCHITECT_CID_OWNERS?: string;
+  /** Cumulus ID issuer (default https://id.cumuluscloud.app); a mirror for Russia can go here. */
+  CID_ISSUER?: string;
   /** Cloud coding: a fine-grained GitHub token (contents + pull requests) and the owner/name repos it may change. */
   GITHUB_TOKEN?: string;
   ARCHITECT_GITHUB_REPOS?: string;
@@ -77,9 +83,7 @@ class HttpError extends Error {
   }
 }
 
-async function authorized(req: Request, token: string): Promise<boolean> {
-  const url = new URL(req.url);
-  const given = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? url.searchParams.get("token") ?? "";
+async function sameToken(given: string, token: string): Promise<boolean> {
   const enc = new TextEncoder();
   const [a, b] = await Promise.all([
     crypto.subtle.digest("SHA-256", enc.encode(given)),
@@ -88,6 +92,14 @@ async function authorized(req: Request, token: string): Promise<boolean> {
   // Workers extension to SubtleCrypto (not in the DOM typings).
   return (crypto.subtle as unknown as { timingSafeEqual(a: ArrayBuffer, b: ArrayBuffer): boolean }).timingSafeEqual(a, b);
 }
+
+// One verifier per isolate, so its short cache is shared across requests.
+let verifier: { issuer: string; verify: CidVerifier } | undefined;
+const cidVerifier = (env: Env): CidVerifier => {
+  const issuer = cidIssuer(env);
+  if (verifier?.issuer !== issuer) verifier = { issuer, verify: createCidVerifier({ issuer }) };
+  return verifier.verify;
+};
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -102,9 +114,15 @@ export default {
     // by their own Cumulus ID bearer (never the product API token). Same relay as `architect serve`.
     if (url.pathname === "/api/labyrinth") return proxyLabyrinthRequest(req, env.LBRNTH_ENDPOINT, "architect");
     if (url.pathname === "/v1" || url.pathname.startsWith("/v1/")) {
-      // The hosted edition never runs open: no token configured means no API.
-      if (!env.ARCHITECT_API_TOKEN) return json(503, { error: "The server has no ARCHITECT_API_TOKEN secret yet." });
-      if (!(await authorized(req, env.ARCHITECT_API_TOKEN))) return json(401, { error: "missing or invalid bearer token" });
+      // People: a Cumulus ID listed in ARCHITECT_CID_OWNERS. Machines: ARCHITECT_API_TOKEN.
+      // The hosted edition never runs open: neither configured means no API.
+      const access = await checkAccess(presentedToken(req.headers.get("authorization"), url), {
+        apiToken: env.ARCHITECT_API_TOKEN,
+        owners: cidOwners(env.ARCHITECT_CID_OWNERS),
+        verify: cidVerifier(env),
+        tokenMatches: sameToken,
+      });
+      if (!access.ok) return json(access.status, { error: access.error });
       const upload = await uploadDownload(req, env.DOWNLOADS);
       if (upload) return upload;
       // @conjure: POST /v1/conjure { text } starts a live Conjure forecast; GET /v1/conjure/<ticket> follows it.

@@ -85,3 +85,44 @@ describe("extension agent features", () => {
     expect(() => client.comment("run_1", "  ")).toThrow(/comment/);
   });
 });
+
+describe("extension Cumulus ID sign-in", () => {
+  it("signs in with PKCE through chrome.identity and keeps the session", async () => {
+    const stored: Record<string, unknown> = {};
+    let authUrl = "";
+    (globalThis as unknown as { chrome: unknown }).chrome = {
+      storage: {
+        local: {
+          get: async (k: string) => (k in stored ? { [k]: stored[k] } : {}),
+          set: async (o: Record<string, unknown>) => Object.assign(stored, o),
+          remove: async (k: string) => delete stored[k],
+        },
+      },
+      identity: {
+        getRedirectURL: (p: string) => `https://abc.chromiumapp.org/${p}`,
+        launchWebAuthFlow: async ({ url }: { url: string }) => {
+          authUrl = url;
+          return `https://abc.chromiumapp.org/cid?code=c0de&state=${new URL(url).searchParams.get("state")}`;
+        },
+      },
+    };
+    const { session, signIn } = await import("../extension/src/cid.js");
+    let body: Record<string, string> = {};
+    const s = await signIn({
+      create: true,
+      fetchImpl: async (_u: URL, init: RequestInit) => {
+        body = JSON.parse(String(init.body));
+        return jsonRes(200, { access_token: "cid-tok", expires_in: 900, profile: { cid: "C1", email: "a@b.co" } });
+      },
+    });
+    const q = new URL(authUrl).searchParams;
+    expect(authUrl.startsWith("https://id.cumuluscloud.app/api/id/authorize?")).toBe(true);
+    expect(q.get("client_id")).toBe("architect");
+    expect(q.get("prompt")).toBe("create");
+    expect(q.get("code_challenge_method")).toBe("S256");
+    expect(body).toMatchObject({ code: "c0de", client_id: "architect", redirect_uri: "https://abc.chromiumapp.org/cid" });
+    expect(body.code_verifier.length).toBeGreaterThan(40);
+    expect(s.token).toBe("cid-tok");
+    expect((await session())?.profile).toEqual({ cid: "C1", email: "a@b.co" });
+  });
+});

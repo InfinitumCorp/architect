@@ -1,6 +1,6 @@
-// :\ARCHITECT\ API client for the extension. No keys live here: the server sits
-// behind Cloudflare Access (the browser's rchtch.app sign-in cookie is reused) and
-// its own API token is pasted by the user into Options and kept in chrome.storage.
+// :\ARCHITECT\ API client for the extension. No keys live here: people sign in with
+// Cumulus ID (cid.js) and every call carries that session as its Bearer. If rchtch.app is
+// also behind Cloudflare Access, the browser's sign-in cookie there is reused.
 
 export const DEFAULT_BASE = "https://rchtch.app";
 export const AUTONOMY = ["rehearsal", "accompaniment", "autopilot"];
@@ -38,8 +38,8 @@ export async function readResponse(res) {
   const data = await res.json().catch(() => ({}));
   if (res.ok) return data;
   const message = typeof data?.error === "string" ? data.error : `Request failed (${res.status}).`;
-  if (res.status === 401) throw new ApiError("token", "Add your :\\ARCHITECT\\ API token in Options.", 401);
-  if (res.status === 503 && /ARCHITECT_API_TOKEN/.test(message)) throw new ApiError("server", message, 503);
+  if (res.status === 401) throw new ApiError("token", "Sign in with Cumulus ID.", 401);
+  if (res.status === 503) throw new ApiError("server", message, 503);
   throw new ApiError("http", message, res.status);
 }
 
