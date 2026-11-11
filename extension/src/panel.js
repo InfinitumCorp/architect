@@ -1,4 +1,5 @@
 import { ApiError, DEFAULT_BASE, FINAL, createClient, planWaiting, runLabel } from "./api.js";
+import { session, signIn as cidSignIn } from "./cid.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...children) => {
@@ -11,7 +12,7 @@ let client = createClient();
 let timer = 0;
 
 async function loadClient() {
-  const { token = "" } = await chrome.storage.local.get("token");
+  const token = (await session())?.token || "";
   client = createClient({ base: DEFAULT_BASE, token });
   return token;
 }
@@ -29,7 +30,18 @@ function showNotice(err) {
     box.append(el("p", {}, el("button", { className: "btn primary", type: "button", textContent: "Sign in at rchtch.app", onclick: signIn })));
     box.append(el("p", { className: "small muted", textContent: "After signing in, come back and press Refresh." }));
   } else if (err.kind === "token") {
-    box.append(el("p", {}, el("button", { className: "btn primary", type: "button", textContent: "Open Options", onclick: () => chrome.runtime.openOptionsPage() })));
+    const go = (create) => async () => {
+      try {
+        await cidSignIn({ create });
+        await loadClient();
+        await refresh();
+      } catch (e) {
+        showNotice(new ApiError("http", e.message || String(e)));
+      }
+    };
+    box.append(el("p", { className: "row" },
+      el("button", { className: "btn primary", type: "button", textContent: "Sign in with Cumulus ID", onclick: go(false) }),
+      el("button", { className: "btn", type: "button", textContent: "Create a Cumulus ID", onclick: go(true) })));
   }
 }
 
@@ -159,7 +171,7 @@ $("refresh").addEventListener("click", () => refresh());
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "session" && changes.draft?.newValue) applyDraft(changes.draft.newValue);
-  if (area === "local" && changes.token) loadClient().then(refresh);
+  if (area === "local" && changes.cid) loadClient().then(refresh);
 });
 
 (async () => {

@@ -2,7 +2,11 @@
 // Runs the Architect server locally (Electron's own Node, no install needed) on a project folder
 // you choose, protected by a fresh random token each launch, and shows the Podium in a window.
 // Model keys live in the settings folder's .env (Settings > Open settings folder); never in the app.
-const { app, BrowserWindow, Menu, dialog, shell } = require("electron");
+// People sign in with Cumulus ID (id.cumuluscloud.app) in their browser: the app sends them to
+// Cumulus ID with PKCE, rchtch.app/cid-return.html hands the one-time code back over architect://,
+// and the app trades it for a session here. The local server's token is a machine secret the app
+// adds to its own requests; nobody types or sees it.
+const { app, BrowserWindow, Menu, dialog, safeStorage, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
@@ -23,6 +27,118 @@ const writePrefs = (p) => fs.writeFileSync(prefsFile(), JSON.stringify(p, null, 
 let win = null;
 let server = null;
 let current = null; // { port, token, project }
+
+// ---- Cumulus ID ----
+const CID_CLIENT = "architect";
+const cidIssuer = () => {
+  const v = process.env.CID_ISSUER || readPrefs().cidIssuer || "";
+  return (/^https:\/\//.test(v) ? v : "https://id.cumuluscloud.app").replace(/\/+$/, "");
+};
+const CID_RETURN = "https://rchtch.app/cid-return.html?to=desktop";
+const cidFile = () => path.join(userDir(), "cumulus-id.bin");
+const b64url = (buf) => Buffer.from(buf).toString("base64url");
+let pending = null; // { verifier, state } while the browser is out signing in
+
+function readCid() {
+  try {
+    const raw = fs.readFileSync(cidFile());
+    const s = JSON.parse(safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(raw) : raw.toString("utf8"));
+    return s && s.token && s.until > Date.now() + 60_000 ? s : null;
+  } catch {
+    return null;
+  }
+}
+function writeCid(s) {
+  fs.mkdirSync(userDir(), { recursive: true });
+  if (!s) return fs.rmSync(cidFile(), { force: true });
+  const text = JSON.stringify(s);
+  fs.writeFileSync(cidFile(), safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(text) : text, { mode: 0o600 });
+}
+
+function startCidSignIn(create) {
+  const verifier = b64url(crypto.randomBytes(48));
+  const state = b64url(crypto.randomBytes(16));
+  pending = { verifier, state };
+  const u = new URL("/api/id/authorize", cidIssuer());
+  u.search = new URLSearchParams({
+    client_id: CID_CLIENT,
+    redirect_uri: CID_RETURN,
+    code_challenge: b64url(crypto.createHash("sha256").update(verifier).digest()),
+    code_challenge_method: "S256",
+    state,
+    ...(create ? { prompt: "create" } : {}),
+  }).toString();
+  shell.openExternal(u.toString());
+  showSignIn("Finish in your browser. :\\ARCHITECT\\ continues here once you're signed in.");
+}
+
+/** architect://cid?code&state from the return page: trade the code for a session. */
+async function finishCidSignIn(link) {
+  let u;
+  try {
+    u = new URL(link);
+  } catch {
+    return;
+  }
+  if (u.protocol !== "architect:" || u.hostname !== "cid") return;
+  if (win && win.isMinimized()) win.restore();
+  win?.focus();
+  const code = u.searchParams.get("code");
+  const state = u.searchParams.get("state");
+  const was = pending;
+  pending = null;
+  if (!was || !code || state !== was.state) return showSignIn(u.searchParams.get("error") || "That sign-in didn't match. Please try again.");
+  try {
+    const r = await fetch(new URL("/api/id/token", cidIssuer()), {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ code, code_verifier: was.verifier, client_id: CID_CLIENT, redirect_uri: CID_RETURN }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.access_token) throw new Error(d.error || `Cumulus ID answered ${r.status}`);
+    writeCid({ token: d.access_token, profile: d.profile || null, until: Date.now() + Number(d.expires_in || 3600) * 1000 });
+    const prefs = readPrefs();
+    if (prefs.project && fs.existsSync(prefs.project)) await openPodium(prefs.project);
+    else {
+      await openPodium(undefined);
+      await chooseProject();
+    }
+  } catch (err) {
+    showSignIn(`Sign-in failed: ${err.message}`);
+  }
+}
+
+function showSignIn(note) {
+  stopServer();
+  current = null;
+  win.setTitle(":\\ARCHITECT\\");
+  win.loadFile(path.join(__dirname, "signin.html"), note ? { query: { note } } : undefined);
+  buildMenu();
+}
+
+function signOut() {
+  const s = readCid();
+  writeCid(null);
+  if (s) fetch(new URL("/api/id/signout", cidIssuer()), { method: "POST", headers: { authorization: `Bearer ${s.token}` } }).catch(() => {});
+  showSignIn("Signed out.");
+}
+
+// architect:// links reach this app: as a second launch on Windows/Linux, as open-url on macOS.
+if (process.defaultApp) app.setAsDefaultProtocolClient("architect", process.execPath, [path.resolve(process.argv[1] || ".")]);
+else app.setAsDefaultProtocolClient("architect");
+if (!app.requestSingleInstanceLock()) app.exit(0);
+app.on("second-instance", (_e, argv) => {
+  const link = argv.find((a) => a.startsWith("architect://"));
+  if (link) return finishCidSignIn(link);
+  if (win) {
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  }
+});
+app.on("open-url", (e, link) => {
+  e.preventDefault();
+  app.whenReady().then(() => finishCidSignIn(link));
+});
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -109,9 +225,13 @@ async function chooseProject() {
 }
 
 async function openPodium(project) {
-  const { port, token } = await startServer(project);
+  const cid = readCid();
+  if (!cid) return showSignIn();
+  const { port } = await startServer(project);
   win.setTitle(`:\\ARCHITECT\\ — ${project ? path.basename(project) : "no project"}`);
-  await win.loadURL(`http://127.0.0.1:${port}/?token=${encodeURIComponent(token)}`);
+  // The Podium shows who is signed in and can save to Labyrinth with this Cumulus ID session.
+  const handoff = b64url(JSON.stringify({ token: cid.token, profile: cid.profile, until: cid.until }));
+  await win.loadURL(`http://127.0.0.1:${port}/#cid_handoff=${handoff}`);
   buildMenu();
 }
 
@@ -138,8 +258,17 @@ function buildMenu() {
       submenu: [
         { label: "Restart", click: () => openPodium(current?.project) },
         { label: "Open settings folder (.env with model keys)", click: () => shell.openPath(path.dirname(ensureSettings())) },
-        { label: "Open in browser", click: () => current && shell.openExternal(`http://127.0.0.1:${current.port}/?token=${encodeURIComponent(current.token)}`) },
       ],
+    },
+    {
+      label: "Account",
+      submenu: (() => {
+        const s = readCid();
+        const who = s && s.profile && (s.profile.email || s.profile.username);
+        return s
+          ? [{ label: `Signed in with Cumulus ID${who ? ` as ${who}` : ""}`, enabled: false }, { label: "Sign out", click: signOut }]
+          : [{ label: "Sign in with Cumulus ID", click: () => startCidSignIn(false) }, { label: "Create a Cumulus ID", click: () => startCidSignIn(true) }];
+      })(),
     },
     { label: "View", submenu: [{ role: "reload" }, { role: "toggleDevTools" }, { type: "separator" }, { role: "zoomIn" }, { role: "zoomOut" }, { role: "resetZoom" }] },
     {
@@ -161,18 +290,32 @@ app.whenReady().then(async () => {
     title: ":\\ARCHITECT\\",
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
+  // Marks this window as the app, so the Podium accepts the Cumulus ID handoff (and nothing else does).
+  win.webContents.setUserAgent(`${win.webContents.getUserAgent()} ArchitectShell/desktop`);
+  // The local server's machine token rides on the app's own requests; it never appears in the page.
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ["http://127.0.0.1/*"] }, (details, done) => {
+    const headers = details.requestHeaders;
+    if (current && details.url.startsWith(`http://127.0.0.1:${current.port}/`)) headers.Authorization = `Bearer ${current.token}`;
+    done({ requestHeaders: headers });
+  });
   // Links away from the local Podium open in the system browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (!url.startsWith(`http://127.0.0.1:${current?.port}/`)) shell.openExternal(url);
     return { action: url.startsWith(`http://127.0.0.1:${current?.port}/`) ? "allow" : "deny" };
   });
   win.webContents.on("will-navigate", (e, url) => {
-    if (current && !url.startsWith(`http://127.0.0.1:${current.port}/`)) {
+    // The sign-in page's two buttons.
+    if (url === "architect://signin" || url === "architect://create") {
+      e.preventDefault();
+      return startCidSignIn(url === "architect://create");
+    }
+    if (current &&!url.startsWith(`http://127.0.0.1:${current.port}/`)) {
       e.preventDefault();
       shell.openExternal(url);
     }
   });
   buildMenu();
+  if (!readCid()) return showSignIn();
   const prefs = readPrefs();
   if (prefs.project && fs.existsSync(prefs.project)) await openPodium(prefs.project);
   else {

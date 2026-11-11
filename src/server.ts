@@ -11,6 +11,7 @@ import { ScheduleStore, validateSchedule } from "./schedules.js";
 import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
 import { expandMentions, findFiles, runShell } from "./mentions.js";
 import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type RunEvent, type Signal } from "./types.js";
+import { checkAccess, cidIssuer, cidOwners, createCidVerifier, presentedToken, type CidVerifier } from "./cid.js";
 import { InputError, NotFoundError, now } from "./policy.js";
 import { conjureRoutesFromEnv, toWebRequest, sendWebResponse, type ConjureRouteHandler } from "./conjure/conjure.mjs";
 
@@ -27,6 +28,7 @@ const PODIUM_ASSETS: Record<string, { file: string; type: string }> = {
   "/billing.js": { file: "billing.js", type: "text/javascript; charset=utf-8" },
   "/cumulus-id.js": { file: "cumulus-id.js", type: "text/javascript; charset=utf-8" },
   "/privacy.html": { file: "privacy.html", type: "text/html; charset=utf-8" },
+  "/cid-return.html": { file: "cid-return.html", type: "text/html; charset=utf-8" },
 };
 const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
 
@@ -37,8 +39,12 @@ export interface ServerOptions {
   /** CID repository service; independent of the legacy product API bearer. */
   lbrnthEndpoint?: string;
   triggers?: TriggerRouter;
-  /** Bearer token required on /v1/*. Strongly recommended whenever the server is reachable by others. */
+  /** Machine bearer token on /v1/* (scripts, MCP, the desktop app). People sign in with Cumulus ID. */
   token?: string;
+  /** Cumulus IDs (or usernames, handles, emails) who may use /v1 when signed in. Default: ARCHITECT_CID_OWNERS. */
+  cidOwners?: string[];
+  /** Checks a Cumulus ID token. Default: the issuer in CID_ISSUER (https://id.cumuluscloud.app). */
+  cidVerify?: CidVerifier;
   /** @conjure routes; defaults to CONJURE_URL + CONJURE_PRODUCT_KEY from the environment. */
   conjure?: ConjureRouteHandler;
   library?: ScoreLibrary;
@@ -121,13 +127,16 @@ export function createArchitectServer(opts: ServerOptions): Server {
   // @conjure: POST /v1/conjure { text } starts a live Conjure forecast; GET /v1/conjure/<ticket> follows it.
   const conjure: ConjureRouteHandler = opts.conjure ?? conjureRoutesFromEnv(process.env, { prefix: "/v1/conjure", source: "architect" });
 
-  const authorized = (req: IncomingMessage, url: URL) => {
-    if (!opts.token) return true;
-    const header = req.headers.authorization?.replace(/^Bearer\s+/i, "") ?? url.searchParams.get("token") ?? "";
-    const a = Buffer.from(header);
-    const b = Buffer.from(opts.token);
+  const owners = opts.cidOwners ?? cidOwners(process.env.ARCHITECT_CID_OWNERS);
+  const verify = opts.cidVerify ?? createCidVerifier({ issuer: cidIssuer(process.env) });
+  const sameToken = (given: string, token: string) => {
+    const a = Buffer.from(given);
+    const b = Buffer.from(token);
     return a.length === b.length && timingSafeEqual(a, b);
   };
+  // Neither a machine token nor Cumulus ID owners configured: open, as a local `architect serve` always was.
+  const access = (req: IncomingMessage, url: URL) =>
+    checkAccess(presentedToken(req.headers.authorization, url), { apiToken: opts.token, owners, verify, tokenMatches: sameToken, open: true });
 
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -148,7 +157,8 @@ export function createArchitectServer(opts: ServerOptions): Server {
       }
       if (url.pathname === "/healthz") return json(res, 200, { ok: true, at: now() });
       if (parts[0] !== "v1") throw new HttpError(404, "not found");
-      if (!authorized(req, url)) throw new HttpError(401, "missing or invalid bearer token");
+      const allowed = await access(req, url);
+      if (!allowed.ok) throw new HttpError(allowed.status, allowed.error);
 
       const [, resource, id, action, file] = parts;
       const project = opts.workspace ?? architect.workspaceRoot;

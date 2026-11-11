@@ -77,7 +77,7 @@ const resources = platform === "darwin" ? path.join(out, "Electron.app", "Conten
 rmSync(path.join(resources, "default_app.asar"), { force: true });
 const appDir = path.join(resources, "app");
 mkdirSync(appDir, { recursive: true });
-for (const f of ["package.json", "main.cjs", "app", "podium"]) cpSync(path.join(desktop, f), path.join(appDir, f), { recursive: true });
+for (const f of ["package.json", "main.cjs", "signin.html", "app", "podium"]) cpSync(path.join(desktop, f), path.join(appDir, f), { recursive: true });
 
 // The external packages and everything they depend on, from this checkout's node_modules.
 const seen = new Set();

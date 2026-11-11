@@ -252,7 +252,7 @@
 <a class="skip-link" href="#prompt">Skip to the composer</a>
 <div class="app" id="app">
   <aside class="side" aria-label="Sessions">
-    <div class="brand"><h1>:\ARCHITECT\<sup class="tm">™</sup></h1><span class="cid-slot" data-cumulus-id data-label="Sign in"></span></div>
+    <div class="brand"><h1>:\ARCHITECT\<sup class="tm">™</sup></h1><span class="cid-slot" data-cumulus-id data-label="Sign in" data-create="off"></span></div>
     <div class="side-actions">
       <button type="button" id="new-session">New session <kbd>Alt N</kbd></button>
       <input id="search" type="search" placeholder="Search sessions" aria-label="Search sessions" />
@@ -322,13 +322,13 @@
   </aside>
 </div>
 
-<div class="sheet" id="token-sheet" hidden>
-  <form id="token-form">
-    <h2>Connect to this server</h2>
-    <label for="token-input">This server needs its API token (ARCHITECT_API_TOKEN). It stays in this browser.</label>
-    <input id="token-input" type="password" autocomplete="off" placeholder="API token" required />
-    <button class="primary">Connect</button>
-  </form>
+<div class="sheet" id="signin-sheet" hidden>
+  <div>
+    <h2>Sign in to :\ARCHITECT\</h2>
+    <p>Use your Cumulus ID. No Cumulus ID yet? Create one here; you come straight back signed in.</p>
+    <span data-cumulus-id data-label="Sign in with Cumulus ID"></span>
+    <p class="empty" id="signin-msg" role="alert"></p>
+  </div>
 </div>
 <div class="sheet" id="help-sheet" hidden>
   <div>
@@ -356,26 +356,41 @@
   const ownText = (goal) => String(goal || "").split(FOLLOW_UP_MARK)[0].split(MENTION_MARK)[0].replace(/^(\/[a-z-]+\s+)+/i, "");
   const isLocal = /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
 
+  // ---- Sign-in: Cumulus ID (cumulus-id.js). The API takes the Cumulus ID token as its Bearer. ----
+  // The Android and desktop apps sign in natively and hand their session over once, in the fragment.
+  // Only honoured inside those apps (their user agent says so), so a link can't sign anyone in.
+  (() => {
+    const m = location.hash.match(/^#cid_handoff=([\w-]+)$/);
+    if (!m) return;
+    history.replaceState(null, "", location.pathname + location.search);
+    if (!/ArchitectShell\//.test(navigator.userAgent)) return;
+    try {
+      const bytes = Uint8Array.from(atob(m[1].replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+      const s = JSON.parse(new TextDecoder().decode(bytes));
+      if (s.token && s.until > Date.now()) sessionStorage.setItem("cumulus-id:architect", JSON.stringify({ token: s.token, profile: s.profile || null, until: s.until }));
+    } catch {}
+  })();
+  try { localStorage.removeItem("architect.token"); } catch {} // the old pasted API token is no longer used
+
   // ---- API ----
-  let token = new URLSearchParams(location.search).get("token") || store.get("architect.token", "");
-  if (token) store.set("architect.token", token);
-  if (new URLSearchParams(location.search).has("token")) history.replaceState(null, "", location.pathname + location.hash);
-  const authHeaders = () => (token ? { authorization: "Bearer " + token } : {});
-  const withToken = (u) => (token ? u + (u.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token) : u);
+  const cidToken = () => (window.CumulusID && window.CumulusID.token()) || "";
+  const authHeaders = () => { const t = cidToken(); return t ? { authorization: "Bearer " + t } : {}; };
+  // EventSource and <img> can't send headers.
+  const withToken = (u) => { const t = cidToken(); return t ? u + (u.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(t) : u; };
+  const signInNeeded = () => !$("signin-sheet").hidden;
   async function api(p, opts = {}) {
     const r = await fetch(p, { ...opts, headers: { "content-type": "application/json", ...authHeaders() } });
     const d = await r.json().catch(() => ({}));
-    if (r.status === 401) { $("token-sheet").hidden = false; $("token-input").focus(); }
+    if (r.status === 401 || r.status === 403) {
+      $("signin-msg").textContent = r.status === 403 ? d.error || "This Cumulus ID doesn't have access to this server." : "";
+      $("signin-sheet").hidden = false;
+    }
     if (!r.ok) throw new Error(d.error || r.statusText);
     return d;
   }
-  $("token-form").onsubmit = (e) => {
-    e.preventDefault();
-    token = $("token-input").value.trim();
-    store.set("architect.token", token);
-    $("token-sheet").hidden = true; e.target.reset();
-    refresh(); loadCaps();
-  };
+  addEventListener("cumulus-id", (e) => {
+    if (e.detail && signInNeeded()) { $("signin-sheet").hidden = true; refresh(); loadCaps(); }
+  });
 
   // ---- Modes (Shift+Tab cycles, like a coding agent's permission modes) ----
   const MODES = [
@@ -1027,7 +1042,7 @@
     if (e.altKey && e.code === "KeyN") { e.preventDefault(); newSession(); return; }
     if (e.altKey && e.code === "KeyB") { e.preventDefault(); panelOpen ? hidePanel() : showPanel(); return; }
     if (e.key === "Escape") {
-      document.querySelectorAll(".sheet").forEach((s) => { if (s.id !== "token-sheet") s.hidden = true; });
+      document.querySelectorAll(".sheet").forEach((s) => { if (s.id !== "signin-sheet") s.hidden = true; });
       $("slash").hidden = true; toggleOpts(false); closeDrawer();
       if (matchMedia("(max-width: 1180px)").matches && panelOpen) hidePanel();
       return;
@@ -1046,7 +1061,7 @@
       drawSessions();
       if (session) await drawSession(false);
     } catch (e) {
-      if (!$("token-sheet").hidden) return;
+      if (signInNeeded()) return;
       $("sessions").innerHTML = `<p class="empty" style="padding:14px 10px">${esc(e.message)}</p>`;
     }
   }
@@ -1061,6 +1076,8 @@
   } else $("cloud-link").hidden = false;
 
   (async () => {
+    // cumulus-id.js (deferred) has run by DOMContentLoaded, so the first requests carry the session.
+    if (document.readyState === "loading") await new Promise((r) => addEventListener("DOMContentLoaded", r, { once: true }));
     drawComposer(); drawPanel();
     loadCaps();
     await refresh();
@@ -1075,6 +1092,6 @@
   setInterval(refresh, 5000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 </script>
-<script src="https://id.cumuluscloud.app/id/button.js" data-client="architect" defer></script>
+<script src="/cumulus-id.js" data-client="architect" data-issuer="https://id.cumuluscloud.app" defer></script>
 </body>
 </html>
