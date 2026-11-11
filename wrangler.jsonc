@@ -24,7 +24,13 @@
   // Architect Desktop builds, served publicly at /download (src/downloads.ts).
   "r2_buckets": [{ "binding": "DOWNLOADS", "bucket_name": "architect-downloads" }],
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "537874bc5c0a494b870ddc39bd008cb4" }],
-  "durable_objects": { "bindings": [{ "name": "CONDUCTOR", "class_name": "Conductor" }] },
+  // AI_BUDGET: the account-wide free Workers AI ledger, owned by the conjure-llm Worker.
+  "durable_objects": {
+    "bindings": [
+      { "name": "CONDUCTOR", "class_name": "Conductor" },
+      { "name": "AI_BUDGET", "class_name": "Budget", "script_name": "conjure-llm" }
+    ]
+  },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Conductor"] }],
   // The Worker reuses the Node build of the browser instrument; this swaps in Browser Rendering.
   "alias": { "playwright": "@cloudflare/playwright" },

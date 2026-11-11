@@ -19,6 +19,7 @@ import { Architect, type PerformOptions } from "./architect.js";
 import { brainFromEnv, hasExplicitModelConfig } from "./brains/config.js";
 import { OpenAICompatBrain } from "./brains/openai.js";
 import { DEFAULT_WORKERS_AI_MODEL, WORKERS_AI_BASE_URL, workersAiFetch, type AiBinding } from "./brains/workersai.js";
+import { budgetedAI } from "./brains/ai-budget.mjs";
 import { DurableRunStore } from "./stores/durable.js";
 import { conjureRoutesFromEnv } from "./conjure/conjure.mjs";
 import { BrowserInstrument } from "./instruments/browser.js";
@@ -41,6 +42,8 @@ export interface Env {
   BROWSER: BrowserWorker;
   /** Workers AI: the model when no ANTHROPIC_API_KEY / OMNIROUTE_URL / ARCHITECT_OPENAI_* is set. */
   AI?: AiBinding;
+  /** The account-wide Workers AI ledger (conjure-llm's Budget): keeps Workers AI inside its free daily allowance. */
+  AI_BUDGET?: DurableObjectNamespace;
   /** Workers AI model id (default DEFAULT_WORKERS_AI_MODEL). */
   ARCHITECT_WORKERS_AI_MODEL?: string;
   SUPABASE_URL: string;
@@ -130,7 +133,7 @@ export class Conductor extends DurableObject<Env> {
         : new OpenAICompatBrain({
             baseUrl: WORKERS_AI_BASE_URL,
             model: this.env.ARCHITECT_WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL,
-            fetch: workersAiFetch(this.env.AI),
+            fetch: workersAiFetch(budgetedAI(this.env.AI, this.env.AI_BUDGET)),
             maxTokens: 8_000,
           });
     // Storage: Supabase over Hyperdrive as the limited architect_worker login; else with the

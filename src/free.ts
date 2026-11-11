@@ -7,8 +7,10 @@
  *   POST /free/v1/chat/completions   OpenAI chat completions (tools supported), rate-limited per address
  *
  * Nothing secret is shipped in the build: the Worker's AI binding pays, and the per-address
- * limit keeps one caller from using up the account's daily allocation.
+ * limit keeps one caller from using up the account's daily allocation. Calls also go through the
+ * account-wide AI_BUDGET ledger, so the free model stays inside Workers AI's free daily allowance.
  */
+import { budgetedAI } from "./brains/ai-budget.mjs";
 import { DEFAULT_WORKERS_AI_MODEL, workersAiFetch, type AiBinding } from "./brains/workersai.js";
 
 export const FREE_PREFIX = "/free/v1";
@@ -41,7 +43,7 @@ export function freeModels(model = DEFAULT_WORKERS_AI_MODEL): string[] {
 /** Handles /free/v1/*; returns undefined for any other path. */
 export async function freeModel(
   req: Request,
-  env: { AI?: AiBinding; FREE_RATE?: RateLimiter; ARCHITECT_WORKERS_AI_MODEL?: string; ARCHITECT_FREE?: string },
+  env: { AI?: AiBinding; AI_BUDGET?: Parameters<typeof budgetedAI>[1]; FREE_RATE?: RateLimiter; ARCHITECT_WORKERS_AI_MODEL?: string; ARCHITECT_FREE?: string },
 ): Promise<Response | undefined> {
   const url = new URL(req.url);
   if (url.pathname !== FREE_PREFIX && !url.pathname.startsWith(`${FREE_PREFIX}/`)) return undefined;
@@ -74,7 +76,7 @@ export async function freeModel(
   const model = typeof body.model === "string" && models.includes(body.model) ? body.model : models[0]!;
   const maxTokens = Math.min(Number(body.max_tokens ?? body.max_completion_tokens) || FREE_MAX_TOKENS, FREE_MAX_TOKENS);
   const { stream: _stream, max_completion_tokens: _mct, ...rest } = body;
-  const res = await workersAiFetch(env.AI)(`${FREE_PREFIX}/chat/completions`, {
+  const res = await workersAiFetch(budgetedAI(env.AI, env.AI_BUDGET))(`${FREE_PREFIX}/chat/completions`, {
     method: "POST",
     body: JSON.stringify({ ...rest, model, max_tokens: maxTokens }),
   });
