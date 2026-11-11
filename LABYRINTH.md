@@ -27,12 +27,12 @@ The cross-origin popup/PKCE login GUI is a follow-on, not supplied by this SDK.
 - `architect serve` (local and desktop) and the hosted Worker (rchtch.app) both serve
   `POST /api/labyrinth` through the same relay (`src/labyrinth/proxy.ts`). Both answer 503
   until the operator sets `LBRNTH_ENDPOINT` (a Worker var or secret, a local env var).
-- `GET /v1/models` reports `labyrinth: true` when it is configured, so the Podium knows to offer it.
+- `GET /v1/models` reports `labyrinth: true` when it is configured, so the app knows to offer it.
 
-## Save to Labyrinth in the Podium
+## Save to Labyrinth in the app
 
 A finished run shows a **Save to Labyrinth** button when Labyrinth is configured. Only when the
-person clicks it, the Podium:
+person clicks it, the app:
 
 1. takes their own Cumulus://ID session (`window.CumulusID.token()`, from the sign-in button;
    if they are not signed in it starts sign-in instead),
@@ -44,7 +44,7 @@ person clicks it, the Podium:
 The artifact (`kind: "architect.run"`) holds the task, status, plan, verdict, usage and the
 walkthrough. The product API token is never sent to Labyrinth, and nothing is exported automatically.
 
-## Saved runs in the Podium
+## Saved runs in the app
 
 The **Saved** tab in the side panel (or `/saved`) lists the runs saved to the person's `architect`
 repository, newest save first, from the `main` history (`history`, up to 200 commits; older saves

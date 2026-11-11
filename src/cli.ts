@@ -32,13 +32,13 @@ const HELP = `:\\ARCHITECT\\™ — the coding agent.
 Usage
   architect                           Start a coding session in this folder (like Claude Code)
   architect "<task>"                  Start a session with a first task, e.g. architect "fix the failing test"
-  architect run "<goal>" [options]    Compose a Score, perform it, verify the result
-  architect compose "<goal>" [opts]   Compose and print the Score without performing it
+  architect run "<goal>" [options]    Plan the task, carry it out, verify the result
+  architect compose "<goal>" [opts]   Plan and print the plan without carrying it out
   architect recover <runId>           Resume a failed or handed-off run
-  architect encore <runId> -i k=v ... Rerun a Score with new inputs
+  architect encore <runId> -i k=v ... Rerun a plan with new inputs
   architect runs                      List recent runs
   architect show <runId>              Print a run as JSON
-  architect serve [--port 7337]       Start the API, triggers, schedules and the Podium
+  architect serve [--port 7337]       Start the API, triggers, schedules and the app
   architect models                    Show the automatic model routing table and check each model
   architect mcp                       MCP server (stdio) for Claude Code, Cursor and other agents;
                                       talks to \`serve\` at ARCHITECT_URL. Approvals stay with people.
@@ -52,12 +52,12 @@ Usage
                                       Score code-writing ability on HumanEval-format tasks, running
                                       the model's code only inside the sandbox. See docs/evals.md.
 
-Saved Scores (reusable workflows)
-  architect save <runId> <name>       Save a run's Score to the library
-  architect scores                    List saved Scores
-  architect play <name> -i k=v ...    Perform a saved Score with inputs
-  architect export <name>             Print a Marketplace package (JSON) for a saved Score
-  architect import <file.json>        Install a Score package
+Saved plans (reusable workflows)
+  architect save <runId> <name>       Save a run's plan to the library
+  architect scores                    List saved plans
+  architect play <name> -i k=v ...    Run a saved plan with inputs
+  architect export <name>             Print a Marketplace package (JSON) for a saved plan
+  architect import <file.json>        Install a plan package
 
 Autopilot schedules (run by \`serve\`)
   architect schedule add <name> --score <saved> (--every <min> | --daily HH:MM) [-i k=v] [--budget usd]
@@ -67,7 +67,7 @@ Autopilot schedules (run by \`serve\`)
 Options
   -a, --autonomy <level>     rehearsal | accompaniment (default) | autopilot
   -u, --url <url>            Start URL for the browser
-  -i, --input k=v            Score input (repeatable)
+  -i, --input k=v            Plan input (repeatable)
   -p, --permit <perm>        Limit permissions (repeatable): ${PERMISSIONS.join(", ")}
   -w, --workspace <dir>      Folder Architect works in (session: this folder; run/serve: .architect/workspace)
   -m, --mode <mode>          Session mode: ask (default) | plan | auto | rehearse
@@ -93,7 +93,7 @@ function printEvent(ev: RunEvent) {
   switch (ev.type) {
     case "run.composed": {
       const score = d.score as Run["score"];
-      console.log(`\n${C.bold}Score${C.off} ${score.summary}`);
+      console.log(`\n${C.bold}Plan${C.off} ${score.summary}`);
       score.steps.forEach((s, i) => console.log(`  ${i + 1}. ${s.title}${s.checkpoint ? `${C.yellow} [checkpoint]${C.off}` : ""}`));
       console.log(`${C.dim}  permissions: ${score.permissions.join(", ")}${C.off}`);
       console.log(`${C.dim}  done when: ${score.successCriteria.join(" · ")}${C.off}`);
@@ -444,7 +444,7 @@ Next: start Architect on the project, e.g. ${C.bold}architect serve --workspace 
       const triggers = await TriggerRouter.fromFile(path.resolve("architect.triggers.json"));
       createArchitectServer({ architect, token, triggers, library, schedules }).listen(port, () => {
         new Scheduler(architect, library, schedules).start();
-        console.log(`:\\ARCHITECT\\ listening on http://localhost:${port}  (Podium at /)`);
+        console.log(`:\\ARCHITECT\\ listening on http://localhost:${port}  (app at /)`);
         if (!token) console.log(`${C.yellow}ARCHITECT_API_TOKEN is not set: the API is open to anyone who can reach this port.${C.off}`);
       });
       return;

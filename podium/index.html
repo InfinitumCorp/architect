@@ -11,7 +11,7 @@
 <script type="module" src="/firm-suite.js"></script>
 <script type="module" src="/billing.js"></script>
 <link rel="apple-touch-icon" href="/icon-192.png" />
-<title>:\ARCHITECT\™ Podium</title>
+<title>:\ARCHITECT\™</title>
 <style>
   /* Infinitum house style (InfinitumCorp/RULES BUILD_RULES.md + brand/infinitum.css): system Helvetica,
      five colour tokens, weight-400 type with tight tracking, hairline rules, no shadows or rounded cards.
@@ -262,7 +262,7 @@
     <nav class="sessions" id="sessions" aria-label="Session list"></nav>
     <div class="side-foot">
       <a class="get" id="get-desktop" href="/download" hidden>Download Architect Desktop</a>
-      <a href="https://rchtch.app/" id="cloud-link" hidden target="_blank" rel="noopener">Open the cloud Podium</a>
+      <a href="https://rchtch.app/" id="cloud-link" hidden target="_blank" rel="noopener">Open Architect in the cloud</a>
       <details><summary>Plan and account</summary>
         <architect-plan class="plan"></architect-plan>
         <firm-suite class="firm" product="architect" compact></firm-suite>
@@ -621,7 +621,7 @@
     const s = $("state");
     s.textContent = !r ? "" : needsMe(r) ? "needs you" : r.status.replace(/_/g, " ");
     s.className = "state" + (r && (LIVE.includes(r.status) || needsMe(r)) ? " live" : "");
-    document.title = thread.length ? `${ownText(thread[0].score.goal).slice(0, 40)} · :\\ARCHITECT\\` : ":\\ARCHITECT\\ Podium";
+    document.title = thread.length ? `${ownText(thread[0].score.goal).slice(0, 40)} · :\\ARCHITECT\\` : ":\\ARCHITECT\\™";
   }
 
   // ---- Side panel ----

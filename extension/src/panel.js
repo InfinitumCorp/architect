@@ -77,7 +77,7 @@ function renderRuns(runs) {
   list.replaceChildren();
   if (!runs.length) return list.append(el("li", { className: "empty", textContent: "No runs yet." }));
   for (const run of runs) {
-    const open = el("a", { href: `${DEFAULT_BASE}/`, title: `Run ${run.id}: open the Podium`, target: "_blank", rel: "noopener", textContent: runLabel(run) });
+    const open = el("a", { href: `${DEFAULT_BASE}/`, title: `Run ${run.id}: open in Architect`, target: "_blank", rel: "noopener", textContent: runLabel(run) });
     const meta = el("div", { className: "row small" },
       el("span", { className: `status ${planWaiting(run) ? "awaiting_approval" : run.status}`, textContent: planWaiting(run) ? "plan review" : run.status.replace(/_/g, " ") }),
       el("span", { className: "muted", textContent: new Date(run.updatedAt || run.createdAt).toLocaleString() }));
