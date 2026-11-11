@@ -115,14 +115,35 @@ function applyDraft(draft) {
   chrome.storage.session.remove("draft");
 }
 
+// Modes, as in the Podium: Shift+Tab in the message box cycles them.
+const MODES = {
+  ask: { autonomy: "accompaniment", review: "agent_decides" },
+  plan: { autonomy: "accompaniment", review: "request_review" },
+  auto: { autonomy: "autopilot", review: "always_proceed" },
+  rehearse: { autonomy: "rehearsal", review: "always_proceed" },
+};
+chrome.storage.local.get("mode").then(({ mode }) => { if (MODES[mode]) $("mode").value = mode; });
+$("mode").addEventListener("change", () => chrome.storage.local.set({ mode: $("mode").value }));
+$("goal").addEventListener("keydown", (e) => {
+  if (e.key === "Tab" && e.shiftKey) {
+    e.preventDefault();
+    const keys = Object.keys(MODES);
+    $("mode").value = keys[(keys.indexOf($("mode").value) + 1) % keys.length];
+    $("mode").dispatchEvent(new Event("change"));
+  } else if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    $("new-run").requestSubmit();
+  }
+});
+
 $("new-run").addEventListener("submit", (e) => {
   e.preventDefault();
   const button = $("start");
   button.disabled = true;
   guard(async () => {
     const run = await client.start({
-      goal: $("goal").value, startUrl: $("start-url").value, autonomy: $("autonomy").value,
-      review: $("review").value, sameSite: $("same-site").checked,
+      goal: $("goal").value, startUrl: $("start-url").value, ...MODES[$("mode").value],
+      sameSite: $("same-site").checked,
     });
     $("goal").value = "";
     $("start-url").value = "";

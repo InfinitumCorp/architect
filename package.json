@@ -76,5 +76,8 @@
     "dist",
     "podium",
     "README.md"
-  ]
+  ],
+  "overrides": {
+    "zod": "$zod"
+  }
 }

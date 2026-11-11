@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { workersAiFetch } from "../src/brains/workersai.js";
 import { budgetedAI } from "../src/brains/ai-budget.mjs";
+import { freeModel } from "../src/free.js";
 
 function ledger(limit: number) {
   let used = 0;
@@ -26,8 +27,18 @@ describe("shared AI budget", () => {
   it("refuses past the allowance without calling the model", async () => {
     let ran = false;
     const res = await call(workersAiFetch(budgetedAI({ run: async () => ((ran = true), {}) }, ledger(0).ns)));
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(429);
     expect((await res.json()).error.message).toMatch(/free daily AI allowance is used up/);
+    expect(ran).toBe(false);
+  });
+
+  it("covers the public free model at /free/v1 too", async () => {
+    let ran = false;
+    const res = (await freeModel(
+      new Request("https://rchtch.app/free/v1/chat/completions", { method: "POST", body: JSON.stringify({ messages: [{ role: "user", content: "hi" }] }) }),
+      { AI: { run: async () => ((ran = true), {}) }, AI_BUDGET: ledger(0).ns },
+    ))!;
+    expect(res.status).toBe(429);
     expect(ran).toBe(false);
   });
 });

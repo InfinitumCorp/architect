@@ -2,9 +2,10 @@ import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import type { Brain, ContentBlockParam, MessageParam, ToolDef, ToolResultBlockParam } from "./brain.js";
-import { commentsMessage, hostRefusal, knowledgePrompt, planReview, relatedKnowledge, validTarget } from "./agentic.js";
+import { commentsMessage, followUpGoal, hostRefusal, knowledgePrompt, planReview, relatedKnowledge, validTarget } from "./agentic.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { ToolInputError, validateInput, type Instrument, type ToolContext, type ToolSpec } from "./instruments/types.js";
+import { RouterBrain } from "./brains/router.js";
 import { gate, newId, now, truncate } from "./policy.js";
 import { composePrompt, composeSystem, interpolate, performSystem, verifySystem } from "./prompts.js";
 import { RunStore, type RunStoreLike } from "./store.js";
@@ -64,7 +65,24 @@ export interface PerformOptions extends ComposeOptions {
   source?: string;
   /** Whether the composed plan waits for a person's review. Default: always_proceed (callers opt in). */
   review?: ReviewPolicy;
+  /** The earlier run this one continues (a follow-up in the same session). */
+  parentRunId?: string;
+  /** The model to use: "auto" (default), a tier ("fast", "balanced", "strong") or a model id from models(). */
+  model?: string;
+  /** Images the person attached (screenshots, mockups). The performer sees them in the first step. */
+  images?: ImageAttachment[];
 }
+
+export interface ImageAttachment {
+  mediaType: string;
+  /** Base64 without a data: prefix. */
+  base64: string;
+}
+
+export const IMAGE_TYPES: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
+/** Per image, in base64 characters (about 3.75 MB of image). */
+export const MAX_IMAGE_BASE64 = 5_000_000;
+export const MAX_IMAGES = 4;
 
 interface ControlTool {
   def: ToolDef;
@@ -182,21 +200,49 @@ export class Architect extends EventEmitter {
     return (await this.composeWithUsage(goal, opts)).score;
   }
 
+  /** The shared project folder of the workspace instrument, when there is one (local and desktop). */
+  get workspaceRoot(): string | undefined {
+    const ws = this.instruments.find((i) => i.name === "workspace") as { root?: unknown } | undefined;
+    return typeof ws?.root === "string" ? ws.root : undefined;
+  }
+
+  /** The models a person can pick for a run. A single configured model offers just that one. */
+  models(): { default: string; options: Array<{ id: string; label: string; tier?: string }> } {
+    if (this.brain instanceof RouterBrain) return { default: "auto", options: this.brain.choices() };
+    return { default: "auto", options: [{ id: "auto", label: this.brain.model }] };
+  }
+
+  /** The brain for a person's model choice ("auto" or absent: automatic routing). Throws on an unknown choice. */
+  private brainFor(choice?: string): Brain {
+    if (!choice || choice === "auto") return this.brain;
+    if (this.brain instanceof RouterBrain) return this.brain.pinned(choice);
+    if (choice === this.brain.model) return this.brain;
+    throw new Error(`unknown model "${choice}"`);
+  }
+
   /** Rough cost range for performing a Score with the current model. */
   estimate(score: Score) {
     return estimateCost(score, this.brain.model);
   }
 
-  private async composeWithUsage(goal: string, opts: ComposeOptions): Promise<{ score: Score; usage?: TurnUsage; model?: string }> {
+  private async composeWithUsage(
+    goal: string,
+    opts: ComposeOptions & { model?: string; images?: ImageAttachment[] },
+  ): Promise<{ score: Score; usage?: TurnUsage; model?: string }> {
     const ceiling = opts.permissions ? this.ceiling.filter((p) => opts.permissions!.includes(p)) : this.ceiling;
     let prompt = composePrompt(goal, opts.inputs ?? {}, opts.startUrl);
+    if (opts.images?.length) {
+      prompt += `\n\nThe person attached ${opts.images.length} image(s) (screenshots, designs or diagrams). The performer sees them at the start of the first step, so make the first step study them.`;
+    }
+    const rules = await this.projectContext();
+    if (rules) prompt += `\n\nProject rules (standing instructions from the project's rule files):\n${rules}`;
     if (opts.knowledge !== false) {
       const known = await this.knowledge(goal).catch(() => []);
       if (known.length) prompt += `
 
 ${knowledgePrompt(known)}`;
     }
-    const { draft, usage, model } = await this.brain.compose(composeSystem(this.instruments, ceiling), prompt);
+    const { draft, usage, model } = await this.brainFor(opts.model).compose(composeSystem(this.instruments, ceiling), prompt);
     const known = new Set(this.instruments.map((i) => i.name));
     const score: Score = {
       id: newId("score"),
@@ -210,7 +256,7 @@ ${knowledgePrompt(known)}`;
         id: `s${i + 1}`,
         title: s.title,
         instruction: s.instruction,
-        instruments: s.instruments.filter((n) => known.has(n)),
+        instruments: stepInstruments(s.instruments, known),
         checkpoint: s.checkpoint,
       })),
       successCriteria: draft.successCriteria,
@@ -249,19 +295,37 @@ ${knowledgePrompt(known)}`;
 
   /** Compose a Score and persist a run without performing it yet. */
   async start(goal: string, opts: PerformOptions = {}): Promise<Run> {
-    const { score, usage, model } = await this.composeWithUsage(goal, opts);
+    const images = validImages(opts.images);
+    this.brainFor(opts.model); // reject an unknown model before spending anything
+    const { score, usage, model } = await this.composeWithUsage(goal, { ...opts, images });
     const run = this.createRun(score, opts.autonomy ?? "accompaniment", {
       trigger: opts.trigger,
       budgetUsd: opts.budgetUsd,
       source: opts.source,
       review: opts.review ?? "always_proceed",
+      parentRunId: opts.parentRunId,
+      ...(opts.model && opts.model !== "auto" ? { model: opts.model } : {}),
     });
+    if (images.length) {
+      run.attachments = [];
+      for (const [i, img] of images.entries()) {
+        const file = `attachments/image-${i + 1}.${IMAGE_TYPES[img.mediaType]}`;
+        await this.store.putFile(run.id, file, Buffer.from(img.base64, "base64"));
+        run.attachments.push({ file, mediaType: img.mediaType });
+      }
+    }
     run.planReview = planReview(score, run.review!, run.autonomy);
     if (usage) addUsage(run.usage, usage, model ?? this.brain.model);
     await this.store.save(run);
     await this.emitEvent(run.id, "run.composed", { score, estimate: this.estimate(score), budgetUsd: run.budgetUsd });
     if (run.planReview.required) await this.emitEvent(run.id, "plan.review_requested", { reason: run.planReview.reason });
     return run;
+  }
+
+  /** A follow-up in the same session: a new run that carries the earlier run's outcome as context. */
+  async followUp(parentRunId: string, text: string, opts: PerformOptions = {}): Promise<Run> {
+    const parent = await this.store.load(parentRunId);
+    return this.start(followUpGoal(text, parent), { ...opts, parentRunId: parent.id });
   }
 
   /** True when the plan is waiting for a person's review (perform it with approvePlan). */
@@ -295,6 +359,12 @@ ${knowledgePrompt(known)}`;
     await this.persist(run);
     await this.emitEvent(run.id, "comment", { ...c });
     return c;
+  }
+
+  /** Rule files (AGENTS.md, CLAUDE.md, .cursorrules…) from the instruments that have them. */
+  private async projectContext(instruments: Instrument[] = this.instruments, runId?: string): Promise<string> {
+    const parts = await Promise.all(instruments.map((i) => i.rules?.(runId ? { runId } : undefined).catch(() => "") ?? ""));
+    return parts.filter(Boolean).join("\n\n").slice(0, 16_000);
   }
 
   /** Verified earlier runs that resemble a goal. */
@@ -391,6 +461,22 @@ ${knowledgePrompt(known)}`;
       interpolate(step.instruction, run.score.inputs),
     ];
     if (run.score.startUrl && step.id === run.score.steps[0]?.id) intro.push(`Start URL: ${run.score.startUrl}`);
+    const rules = await this.projectContext(instruments, run.id);
+    if (rules) intro.push(`Project rules (standing instructions from the project's rule files; follow them):\n${rules}`);
+    if (instruments.some((i) => i.tools.some((t) => t.name === "workspace_edit"))) {
+      intro.push(
+        "Working on code: find things with workspace_glob and workspace_search, read a file before changing it, " +
+          "change existing files with workspace_edit (small exact replacements) rather than rewriting them, " +
+          "run the project's build and tests with workspace_run after changes, and review your changes with workspace_diff before step_complete.",
+      );
+    }
+    if (instruments.some((i) => i.tools.some((t) => t.name === "repo_edit"))) {
+      intro.push(
+        "Working on a GitHub repository in the cloud: explore with repo_list, repo_search and repo_read, change files with repo_edit " +
+          "(exact replacements) or repo_write, review everything with repo_diff, and finish with repo_open_pr when the goal asks for a pull request. " +
+          "Your commits go to your own branch; the default branch is never changed directly.",
+      );
+    }
     if (priorAttempt.length) {
       intro.push(
         `This step was attempted before (Recover). Do not repeat work that already succeeded. Earlier actions:\n${priorAttempt
@@ -399,7 +485,17 @@ ${knowledgePrompt(known)}`;
           .join("\n")}`,
       );
     }
-    const result = await this.loop(run, step.id, performSystem(run, step, instruments), intro.join("\n\n"), instruments, [
+    // The first step sees the images the person attached.
+    let first: string | ContentBlockParam[] = intro.join("\n\n");
+    if (run.attachments?.length && step.id === run.score.steps[0]?.id) {
+      const blocks: ContentBlockParam[] = [{ type: "text", text: `${first}\n\nThe person attached these images:` }];
+      for (const a of run.attachments) {
+        const data = await this.store.getFile(run.id, a.file).catch(() => undefined);
+        if (data) blocks.push({ type: "image", source: { type: "base64", media_type: a.mediaType as "image/png", data: Buffer.from(data).toString("base64") } });
+      }
+      first = blocks;
+    }
+    const result = await this.loop(run, step.id, performSystem(run, step, instruments), first, instruments, [
       "step_complete",
       "step_failed",
       "request_handoff",
@@ -460,7 +556,7 @@ ${knowledgePrompt(known)}`;
         for (const c of fresh) c.deliveredAt = at;
         void this.emitEvent(run.id, "comment.delivered", { ids: fresh.map((c) => c.id), stepId });
       }
-      const res = await this.brain.turn({ system, messages, tools });
+      const res = await this.brainFor(run.model).turn({ system, messages, tools });
       if (res.usage) {
         addUsage(run.usage, res.usage, res.model ?? this.brain.model);
         void this.emitEvent(run.id, "usage", { ...run.usage, model: res.model ?? this.brain.model });
@@ -876,4 +972,35 @@ function toBase64(bytes: Uint8Array): string {
   let bin = "";
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(bin);
+}
+
+/** Check attached images: a known type, a sane size, at most MAX_IMAGES. Throws with a message for the person. */
+/** Names smaller models use for the installed instruments. */
+const INSTRUMENT_ALIASES: Record<string, string> = {
+  shell: "workspace", terminal: "workspace", bash: "workspace", files: "workspace", file: "workspace", fs: "workspace",
+  filesystem: "workspace", editor: "workspace", code: "workspace", project: "workspace",
+  github: "repo", git: "repo", web: "browser", api: "http", fetch: "http",
+};
+
+/**
+ * A freshly composed step's instruments: the installed ones it names (aliases mapped), and the
+ * project workspace when it names none. Without tools a step can only claim it did the work.
+ */
+export function stepInstruments(names: string[], installed: Set<string>): string[] {
+  const out = [...new Set(names.map((n) => (installed.has(n) ? n : INSTRUMENT_ALIASES[n.toLowerCase()] ?? n)))].filter((n) => installed.has(n));
+  return out.length || !installed.has("workspace") ? out : ["workspace"];
+}
+
+export function validImages(images: unknown): ImageAttachment[] {
+  if (images === undefined || images === null) return [];
+  if (!Array.isArray(images)) throw new Error("images must be a list");
+  if (images.length > MAX_IMAGES) throw new Error(`attach at most ${MAX_IMAGES} images`);
+  return images.map((img, i) => {
+    const o = (img ?? {}) as Record<string, unknown>;
+    const mediaType = String(o.mediaType ?? "");
+    const base64 = String(o.base64 ?? "").replace(/^data:[^,]*,/, "");
+    if (!IMAGE_TYPES[mediaType]) throw new Error(`image ${i + 1}: use PNG, JPEG, WebP or GIF`);
+    if (!base64 || base64.length > MAX_IMAGE_BASE64 || !/^[A-Za-z0-9+/]+=*$/.test(base64)) throw new Error(`image ${i + 1} is empty, too large or not base64`);
+    return { mediaType, base64 };
+  });
 }

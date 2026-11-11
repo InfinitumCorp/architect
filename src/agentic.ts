@@ -189,3 +189,22 @@ export function hostList(v: unknown): string[] | undefined {
   const list = v.map((x) => String(x).trim().toLowerCase()).filter((x) => /^(\*\.)?[a-z0-9.-]+$/.test(x));
   return list.length ? list.slice(0, 50) : undefined;
 }
+
+/** Marks where a follow-up's own words end and the carried-over session context begins. */
+export const FOLLOW_UP_MARK = "\n\n--- Earlier in this session ---\n";
+
+/** The goal for a follow-up: the person's new words, then what the earlier run set out to do and how it ended. */
+export function followUpGoal(text: string, parent: Run): string {
+  const earlier = parent.score.goal.split(FOLLOW_UP_MARK);
+  const files = [...new Set(parent.evidence.filter((e) => e.kind === "file" && /^(edited|created|rewrote) /.test(e.label)).map((e) => e.label.replace(/^\w+ /, "")))];
+  const prs = parent.evidence.filter((e) => e.kind === "url" && e.label === "pull request").map((e) => e.content);
+  const lines = [
+    `Task: ${earlier[0]}`,
+    `Outcome: ${parent.status}${parent.verdict ? ` (${parent.verdict.summary})` : ""}${parent.error ? ` (${parent.error})` : ""}`,
+    ...parent.steps.filter((s) => s.summary).map((s) => `- ${s.summary}`),
+    files.length ? `Files changed: ${files.slice(0, 30).join(", ")}` : "",
+    prs.length ? `Pull request: ${prs.join(", ")}` : "",
+    earlier[1] ? `Before that:\n${earlier[1]}`.slice(0, 2_000) : "",
+  ].filter(Boolean);
+  return `${text.trim()}${FOLLOW_UP_MARK}${lines.join("\n")}`.slice(0, 8_000);
+}

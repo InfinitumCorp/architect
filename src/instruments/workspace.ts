@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { glob, mkdir, readdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { truncate } from "../policy.js";
 import { evaluateCommand, policyFromEnv, riskOf, type CommandPolicy } from "../sandbox/execpolicy.js";
@@ -12,7 +12,10 @@ import {
   type SandboxMode,
 } from "../sandbox/runtime.js";
 import type { RunSupervisor } from "../supervisor.js";
+import { lineDiff } from "./diff.js";
 import type { Instrument, ToolContext, ToolOutput, ToolSpec } from "./types.js";
+
+export { lineDiff };
 
 export interface WorkspaceOptions {
   commandTimeoutMs?: number;
@@ -27,6 +30,11 @@ export interface WorkspaceOptions {
   /** Give every run its own folder under this supervisor instead of sharing `root`. */
   supervisor?: RunSupervisor;
 }
+
+/** Files a coding agent reads as standing project instructions (Claude Code, Cursor, Codex, Grok conventions). */
+export const RULE_FILES = ["ARCHITECT.md", "AGENTS.md", "CLAUDE.md", ".cursorrules", "GROK.md", ".github/copilot-instructions.md"];
+const SKIP_DIRS = ["node_modules", ".git", "dist", "build", ".next", ".architect", "coverage", "target", ".venv", "__pycache__"];
+const skip = (rel: string) => rel.split(/[\\/]/).some((part) => SKIP_DIRS.includes(part));
 
 export interface CommandResult {
   code: number;
@@ -89,6 +97,45 @@ export class WorkspaceInstrument implements Instrument {
       risk: "write",
     },
     {
+      name: "workspace_edit",
+      description:
+        "Edit a file by exact string replacement. old_string must match the file exactly (including indentation) and be unique unless replace_all is true. " +
+        "Prefer this over workspace_write for changes to existing files. Returns the diff.",
+      input_schema: {
+        type: "object",
+        properties: { path: { type: "string" }, old_string: { type: "string" }, new_string: { type: "string" }, replace_all: { type: "boolean" } },
+        required: ["path", "old_string", "new_string"],
+      },
+      permission: "workspace.write",
+      risk: "write",
+    },
+    {
+      name: "workspace_search",
+      description:
+        "Search file contents with a regular expression (like ripgrep). Optional path (folder) and glob (e.g. **/*.ts). Returns file:line: text, up to max results (default 100).",
+      input_schema: {
+        type: "object",
+        properties: { pattern: { type: "string" }, path: { type: "string" }, glob: { type: "string" }, ignore_case: { type: "boolean" }, max: { type: "number" } },
+        required: ["pattern"],
+      },
+      permission: "workspace.read",
+      risk: "read",
+    },
+    {
+      name: "workspace_glob",
+      description: "Find files by glob pattern, e.g. src/**/*.tsx or **/package.json. Skips node_modules, .git and build output.",
+      input_schema: { type: "object", properties: { pattern: { type: "string" } }, required: ["pattern"] },
+      permission: "workspace.read",
+      risk: "read",
+    },
+    {
+      name: "workspace_diff",
+      description: "Show uncommitted changes in the workspace's git repository (git status and git diff). Use it to review your work before finishing.",
+      input_schema: { type: "object", properties: { path: { type: "string" } } },
+      permission: "workspace.read",
+      risk: "read",
+    },
+    {
       name: "workspace_run",
       description:
         "Run a shell command with the workspace as the working directory. Returns exit code, stdout and stderr. Use for installs, builds, tests and git. " +
@@ -99,6 +146,37 @@ export class WorkspaceInstrument implements Instrument {
       risk: (input) => riskOf(evaluateCommand(String(input.command), this.policy).decision),
     },
   ];
+
+  rules(ctx?: Pick<ToolContext, "runId">): Promise<string> {
+    return this.projectRules(ctx);
+  }
+
+  /** Standing project instructions from rule files at the workspace root, for the prompts. */
+  async projectRules(ctx?: Pick<ToolContext, "runId">): Promise<string> {
+    const root = await this.rootFor(ctx).catch(() => this.root);
+    const parts: string[] = [];
+    for (const name of RULE_FILES) {
+      const text = await readFile(path.join(root, name), "utf8").catch(() => "");
+      if (text.trim()) parts.push(`--- ${name} ---\n${truncate(text.trim(), 8_000)}`);
+    }
+    for (const rel of await this.files(root, ".cursor/rules/*", 20).catch(() => [])) {
+      const text = await readFile(path.join(root, rel), "utf8").catch(() => "");
+      if (text.trim()) parts.push(`--- ${rel} ---\n${truncate(text.trim(), 4_000)}`);
+    }
+    return parts.join("\n\n");
+  }
+
+  /** Files under root matching a glob, skipping dependency and build folders. */
+  private async files(root: string, pattern: string, limit = 5_000): Promise<string[]> {
+    const out: string[] = [];
+    for await (const f of glob(pattern || "**/*", { cwd: root, exclude: (p: unknown) => skip(String(typeof p === "string" ? p : (p as { name: string }).name)) })) {
+      const rel = String(f).replace(/\\/g, "/");
+      if (skip(rel)) continue;
+      out.push(rel);
+      if (out.length >= limit) break;
+    }
+    return out.sort();
+  }
 
   /** The folder a run works in: its own folder under the supervisor, or the shared root. */
   async rootFor(ctx?: Pick<ToolContext, "runId">): Promise<string> {
@@ -166,9 +244,65 @@ export class WorkspaceInstrument implements Instrument {
       case "workspace_write": {
         const file = await this.resolve(String(input.path), root);
         await mkdir(path.dirname(file), { recursive: true });
+        const previous = await readFile(file, "utf8").catch(() => "");
         await writeFile(file, String(input.content), "utf8");
-        ctx.addEvidence({ kind: "file", label: "wrote", content: path.relative(root, file) });
+        const relw = path.relative(root, file).replace(/\\/g, "/");
+        ctx.addEvidence({ kind: "file", label: `${previous ? "rewrote" : "created"} ${relw}`, content: truncate(lineDiff(previous, String(input.content), relw), 6_000) });
         return { text: `Wrote ${path.relative(root, file)} (${String(input.content).length} chars).` };
+      }
+      case "workspace_edit": {
+        const file = await this.resolve(String(input.path), root);
+        const rel = path.relative(root, file).replace(/\\/g, "/");
+        const before = await readFile(file, "utf8").catch(() => undefined);
+        if (before === undefined) return { text: `${rel} does not exist; create it with workspace_write.`, isError: true };
+        const oldS = String(input.old_string);
+        const newS = String(input.new_string);
+        if (!oldS) return { text: "old_string is empty; use workspace_write to create or replace a whole file.", isError: true };
+        if (oldS === newS) return { text: "old_string and new_string are the same; nothing to change.", isError: true };
+        const count = before.split(oldS).length - 1;
+        if (count === 0) return { text: `old_string was not found in ${rel}. Read the file and copy the text exactly, including indentation.`, isError: true };
+        if (count > 1 && !input.replace_all) return { text: `old_string matches ${count} places in ${rel}. Add surrounding lines to make it unique, or set replace_all.`, isError: true };
+        const after = input.replace_all ? before.split(oldS).join(newS) : before.replace(oldS, () => newS);
+        await writeFile(file, after, "utf8");
+        const diff = lineDiff(before, after, rel);
+        ctx.addEvidence({ kind: "file", label: `edited ${rel}`, content: truncate(diff, 6_000) });
+        return { text: `Edited ${rel}${count > 1 ? ` (${count} replacements)` : ""}.\n${truncate(diff, 4_000)}` };
+      }
+      case "workspace_search": {
+        let re: RegExp;
+        try {
+          re = new RegExp(String(input.pattern), input.ignore_case ? "i" : "");
+        } catch (err) {
+          return { text: `Invalid regular expression: ${String(err)}`, isError: true };
+        }
+        const base = String(input.path ?? "").replace(/\\/g, "/").replace(/^\.\/?/, "").replace(/\/$/, "");
+        if (base) await this.resolve(base, root);
+        const pattern = (base ? `${base}/` : "") + String(input.glob ?? "**/*");
+        const max = Math.min(Math.max(Number(input.max) || 100, 1), 500);
+        const hits: string[] = [];
+        for (const rel of await this.files(root, pattern, 20_000)) {
+          const full = path.join(root, rel);
+          const info = await stat(full).catch(() => undefined);
+          if (!info?.isFile() || info.size > 1_000_000) continue;
+          const text = await readFile(full, "utf8").catch(() => "");
+          if (text.includes("\u0000")) continue;
+          const lines = text.split("\n");
+          for (let i = 0; i < lines.length && hits.length < max; i++) {
+            if (re.test(lines[i]!)) hits.push(`${rel}:${i + 1}: ${lines[i]!.trim().slice(0, 240)}`);
+          }
+          if (hits.length >= max) break;
+        }
+        return { text: hits.length ? hits.join("\n") + (hits.length >= max ? `\n…stopped at ${max} matches` : "") : "No matches." };
+      }
+      case "workspace_glob": {
+        const found = await this.files(root, String(input.pattern), 1_000);
+        return { text: found.length ? found.join("\n") + (found.length >= 1_000 ? "\n…first 1000 files" : "") : "No files match." };
+      }
+      case "workspace_diff": {
+        const target = input.path ? ` -- "${String(input.path).replace(/"/g, "")}"` : "";
+        const r = await this.run(`git status --short && git diff${target}`, { cwd: root, timeoutMs: 30_000 });
+        if (r.code !== 0) return { text: `Not a git repository, or git failed: ${truncate(r.stderr, 1_000)}`, isError: true };
+        return { text: truncate(r.stdout || "No uncommitted changes.", 30_000) };
       }
       case "workspace_run": {
         const command = String(input.command);
