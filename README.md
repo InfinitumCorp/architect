@@ -171,7 +171,7 @@ To reach the server over USB, run `adb reverse tcp:7337 tcp:7337` and use http:/
 
 `POST /v1/runs`, `/recover` and `/encore` also accept `budgetUsd`.
 
-People sign in with Cumulus ID (id.cumuluscloud.app): the web app, the Android and desktop apps and the Chrome extension send that session as `Authorization: Bearer <Cumulus ID token>`, the server checks it at the issuer (`/api/id/userinfo`) and admits the Cumulus IDs, usernames, handles or emails in `ARCHITECT_CID_OWNERS`. `ARCHITECT_API_TOKEN` is for machines (scripts, MCP); nobody types it. With neither set, a local `architect serve` stays open; the hosted Worker refuses `/v1`.
+People sign in with Cumulus://ID (OIDC issuer `https://id.cumuluscloud.app/realms/cumulus`, public client `architect`, PKCE S256; "Create a Cumulus://ID" sends `prompt=create`). The web app (the Cumulus://ID button), the Android and desktop apps and the Chrome extension send that session as `Authorization: Bearer <access token>`. The server verifies it against the issuer's JWKS (ES256, `typ: at+jwt`, `iss`, `aud: architect`, `exp`), confirms the session at the issuer's `userinfo`, keys the person by `sub` (the cid), and admits the cids, usernames, handles or emails in `ARCHITECT_CID_OWNERS`. The extension and the desktop app use the OIDC endpoints with a nonce and verify the ID token against the JWKS (`iss`, `aud`, `exp`, `nonce`) before keeping a session; the Android app and the web button use the issuer's `/api/id/*` compatibility routes. `ARCHITECT_API_TOKEN` is for machines (scripts, MCP); nobody types it. With neither set, a local `architect serve` stays open; the hosted Worker refuses `/v1`.
 
 ## MCP server (Claude Code, Cursor, other agents)
 
@@ -212,7 +212,7 @@ Bring your own `Instrument` (any object with `tools` and `execute`) or your own 
 | `ARCHITECT_DATA_DIR` | `.architect` | runs, events, evidence |
 | `ARCHITECT_WORKSPACE` | `.architect/workspace` | the folder Architect may build in |
 | `ARCHITECT_CID_OWNERS` | — | Cumulus IDs (or usernames, handles, emails) who may use `/v1` |
-| `CID_ISSUER` | `https://id.cumuluscloud.app` | Cumulus ID issuer, e.g. a mirror reachable from Russia |
+| `CID_ISSUER` | `https://id.cumuluscloud.app/realms/cumulus` | Cumulus://ID issuer, e.g. a mirror |
 | `ARCHITECT_API_TOKEN` | — | machine bearer token for `serve` (scripts, MCP) |
 | `ARCHITECT_BRAIN` | automatic | `anthropic` forces one Claude model; `auto` requires routed models |
 | `OMNIROUTE_URL` | — | route through OmniRoute, e.g. `http://localhost:20128/v1` (see below) |

@@ -56,7 +56,7 @@ export interface Env {
   ARCHITECT_API_TOKEN?: string;
   /** Who may use the hosted server: Cumulus IDs, usernames, handles or emails, comma separated. */
   ARCHITECT_CID_OWNERS?: string;
-  /** Cumulus ID issuer (default https://id.cumuluscloud.app); a mirror for Russia can go here. */
+  /** Cumulus://ID issuer (default https://id.cumuluscloud.app/realms/cumulus); a mirror can go here. */
   CID_ISSUER?: string;
   /** Cloud coding: a fine-grained GitHub token (contents + pull requests) and the owner/name repos it may change. */
   GITHUB_TOKEN?: string;

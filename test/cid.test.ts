@@ -14,13 +14,29 @@ const verify: CidVerifier = async (t) =>
   t === OWNER ? { cid: "C123", username: "william", email: "w@example.com" } : t === STRANGER ? { cid: "C999", username: "someone" } : null;
 const same = (a: string, b: string) => a === b;
 
+const ISSUER = "https://id.cumuluscloud.app/realms/cumulus";
+const b64u = (v: unknown) => Buffer.from(typeof v === "string" ? v : new Uint8Array(v as ArrayBuffer)).toString("base64url");
+async function keys() {
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const jwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k1", use: "sig", alg: "ES256" };
+  const sign = async (over: Record<string, unknown> = {}, typ = "at+jwt") => {
+    const now = Math.floor(Date.now() / 1000);
+    const claims = { iss: ISSUER, aud: "architect", sub: "cid_7c1e", client_id: "architect", sid: "s1", iat: now, exp: now + 600, ...over };
+    const h = b64u(JSON.stringify({ alg: "ES256", typ, kid: "k1" }));
+    const p = b64u(JSON.stringify(claims));
+    const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, pair.privateKey, new TextEncoder().encode(`${h}.${p}`));
+    return `${h}.${p}.${b64u(sig)}`;
+  };
+  return { jwk, sign };
+}
+
 describe("Cumulus ID access", () => {
   it("reads owners and the issuer from the environment", () => {
     expect(cidOwners(" William, C123 ,,")).toEqual(["william", "c123"]);
     expect(cidOwners(undefined)).toEqual([]);
-    expect(cidIssuer({})).toBe("https://id.cumuluscloud.app");
-    expect(cidIssuer({ CID_ISSUER: "https://ru.id.example/" })).toBe("https://ru.id.example");
-    expect(cidIssuer({ CID_ISSUER: "http://plain.example" })).toBe("https://id.cumuluscloud.app");
+    expect(cidIssuer({})).toBe("https://id.cumuluscloud.app/realms/cumulus");
+    expect(cidIssuer({ CID_ISSUER: "https://ru.id.example/realms/cumulus/" })).toBe("https://ru.id.example/realms/cumulus");
+    expect(cidIssuer({ CID_ISSUER: "http://plain.example" })).toBe("https://id.cumuluscloud.app/realms/cumulus");
   });
 
   it("matches owners by cid, username, handle or email", () => {
@@ -56,24 +72,55 @@ describe("Cumulus ID access", () => {
     expect(presentedToken(undefined, u)).toBe("q");
   });
 
-  it("asks the issuer's userinfo once per token within the cache window", async () => {
+  it("verifies the access token against the JWKS, then asks userinfo once per token", async () => {
+    const { jwk, sign } = await keys();
     const calls: string[] = [];
     const fake = (async (url: string, init?: RequestInit) => {
-      calls.push(`${url} ${(init?.headers as Record<string, string>).authorization}`);
-      return new Response(JSON.stringify({ cid: "C123", username: "william" }), { status: 200 });
+      calls.push(`${url} ${(init?.headers as Record<string, string>).authorization ?? ""}`.trim());
+      if (url.endsWith("/certs")) return new Response(JSON.stringify({ keys: [jwk] }));
+      return new Response(JSON.stringify({ sub: "cid_7c1e", preferred_username: "william", email: "w@cumuluscloud.app" }), { status: 200 });
     }) as unknown as typeof fetch;
-    const v = createCidVerifier({ issuer: "https://id.example/", fetch: fake });
-    expect(await v(OWNER)).toMatchObject({ cid: "C123" });
-    expect(await v(OWNER)).toMatchObject({ cid: "C123" });
-    expect(calls).toEqual([`https://id.example/api/id/userinfo Bearer ${OWNER}`]);
+    const v = createCidVerifier({ issuer: `${ISSUER}/`, fetch: fake });
+    const token = await sign();
+    expect(await v(token)).toEqual({ cid: "cid_7c1e", username: "william", email: "w@cumuluscloud.app", handle: undefined, name: undefined });
+    expect(await v(token)).toMatchObject({ cid: "cid_7c1e" });
+    expect(calls).toEqual([`${ISSUER}/protocol/openid-connect/certs`, `${ISSUER}/protocol/openid-connect/userinfo Bearer ${token}`]);
     expect(await v("bad token with spaces")).toBeNull();
-    expect(calls).toHaveLength(1);
+    expect(await v(OWNER)).toBeNull();
+    expect(calls).toHaveLength(2);
+  });
+
+  it("refuses another issuer, client, type, key, expiry or subject without asking userinfo", async () => {
+    const { jwk, sign } = await keys();
+    let userinfo = 0;
+    const fake = (async (url: string) => {
+      if (url.endsWith("/certs")) return new Response(JSON.stringify({ keys: [jwk] }));
+      userinfo++;
+      return new Response(JSON.stringify({ sub: "cid_7c1e" }));
+    }) as unknown as typeof fetch;
+    const v = createCidVerifier({ fetch: fake });
+    expect(await v(await sign({ iss: "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_x" }))).toBeNull();
+    expect(await v(await sign({ aud: "scalvs" }))).toBeNull();
+    expect(await v(await sign({}, "JWT"))).toBeNull();
+    expect(await v(await sign({ exp: Math.floor(Date.now() / 1000) - 3600 }))).toBeNull();
+    expect(await v(await sign({ sub: "C123" }))).toBeNull();
+    expect(await v(await (await keys()).sign())).toBeNull();
+    expect(userinfo).toBe(0);
+    const mismatch = createCidVerifier({
+      fetch: (async (url: string) => new Response(JSON.stringify(url.endsWith("/certs") ? { keys: [jwk] } : { sub: "cid_other" }))) as unknown as typeof fetch,
+    });
+    expect(await mismatch(await sign())).toBeNull();
   });
 
   it("treats a 401 from the issuer as signed out and a 5xx as unavailable", async () => {
-    const status = (s: number) => (async () => new Response("{}", { status: s })) as unknown as typeof fetch;
-    expect(await createCidVerifier({ fetch: status(401) })(OWNER)).toBeNull();
-    await expect(createCidVerifier({ fetch: status(503) })(OWNER)).rejects.toThrow();
+    const { jwk, sign } = await keys();
+    const status = (s: number) =>
+      (async (url: string) => (url.endsWith("/certs") ? new Response(JSON.stringify({ keys: [jwk] })) : new Response("{}", { status: s }))) as unknown as typeof fetch;
+    const token = await sign();
+    expect(await createCidVerifier({ fetch: status(401) })(token)).toBeNull();
+    await expect(createCidVerifier({ fetch: status(503) })(token)).rejects.toThrow();
+    const noKeys = (async () => new Response("{}", { status: 503 })) as unknown as typeof fetch;
+    await expect(createCidVerifier({ fetch: noKeys })(token)).rejects.toThrow();
   });
 });
 

@@ -1,14 +1,17 @@
 /**
- * Cumulus ID on the Architect API.
+ * Cumulus://ID on the Architect API.
  *
- * People sign in with Cumulus ID (id.cumuluscloud.app) and call /v1 with that token as a Bearer.
- * The server checks it with the issuer (GET /api/id/userinfo) and admits the people listed in
- * ARCHITECT_CID_OWNERS (Cumulus ID, username, handle or email, comma separated). ARCHITECT_API_TOKEN
+ * People sign in with Cumulus://ID (OIDC issuer https://id.cumuluscloud.app/realms/cumulus) and
+ * call /v1 with its access token as a Bearer. The server verifies the token offline against the
+ * issuer's JWKS (ES256, `typ: at+jwt`, `iss`, `aud` = "architect", `exp`), then asks the issuer's
+ * userinfo whether the session is still live (sign-out takes effect at once) and that it names the
+ * same `sub`. The person is keyed by `sub` (the cid). It admits the people listed in
+ * ARCHITECT_CID_OWNERS (cid, username, handle or email, comma separated). ARCHITECT_API_TOKEN
  * stays for machines (scripts, MCP, the desktop app's own local server), never for people.
  *
- * CID_ISSUER points at another issuer, e.g. a mirror reachable from Russia without a VPN.
+ * CID_ISSUER points at another issuer, e.g. a mirror.
  */
-export const DEFAULT_CID_ISSUER = "https://id.cumuluscloud.app";
+export const DEFAULT_CID_ISSUER = "https://id.cumuluscloud.app/realms/cumulus";
 export const CID_CLIENT = "architect";
 
 export interface CidProfile {
@@ -34,52 +37,120 @@ export function isCidOwner(profile: CidProfile | null, owners: readonly string[]
   return owners.some((o) => ids.includes(o));
 }
 
-const TOKEN = /^[A-Za-z0-9._~+/=-]{16,8000}$/;
+const JWT = /^[A-Za-z0-9_-]{2,4000}\.[A-Za-z0-9_-]{2,4000}\.[A-Za-z0-9_-]{2,400}$/;
+const CID = /^cid_[A-Za-z0-9_-]{1,64}$/;
 
 async function hash(token: string): Promise<string> {
   const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
   return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+const b64urlBytes = (text: string): Uint8Array<ArrayBuffer> => {
+  const b64 = text.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+};
+const b64urlJson = (text: string): Record<string, unknown> => JSON.parse(new TextDecoder().decode(b64urlBytes(text))) as Record<string, unknown>;
+
+type Jwk = { kty?: string; crv?: string; x?: string; y?: string; kid?: string; use?: string };
+
 /**
- * Checks a token with the issuer. Answers are cached briefly (by the token's hash, never the
- * token) so a busy Podium does not ask the issuer on every poll; a revoked session stops working
- * within `ttlMs`.
+ * Verify a Cumulus://ID ES256 JWT against a JWKS: signature, `typ`, `iss`, `aud`, `exp`/`nbf`.
+ * Returns the claims, or null when anything does not hold.
  */
-export function createCidVerifier(opts: { issuer?: string; fetch?: typeof fetch; ttlMs?: number; max?: number } = {}): CidVerifier {
+export async function verifyCidJwt(
+  token: string,
+  opts: { issuer: string; audience: string; typ: "at+jwt" | "JWT"; keys: readonly Jwk[]; now?: number },
+): Promise<Record<string, unknown> | null> {
+  if (!JWT.test(token)) return null;
+  const [h, p, sig] = token.split(".") as [string, string, string];
+  let header: Record<string, unknown>;
+  let claims: Record<string, unknown>;
+  try {
+    header = b64urlJson(h);
+    claims = b64urlJson(p);
+  } catch {
+    return null;
+  }
+  if (header.alg !== "ES256" || String(header.typ ?? "JWT").toLowerCase() !== opts.typ.toLowerCase()) return null;
+  const jwk = opts.keys.find((k) => k.kty === "EC" && k.crv === "P-256" && (!header.kid || k.kid === header.kid) && (!k.use || k.use === "sig"));
+  if (!jwk?.x || !jwk.y) return null;
+  try {
+    const key = await crypto.subtle.importKey("jwk", { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y }, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+    const ok = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, b64urlBytes(sig), new TextEncoder().encode(`${h}.${p}`));
+    if (!ok) return null;
+  } catch {
+    return null;
+  }
+  const now = Math.floor((opts.now ?? Date.now()) / 1000);
+  const skew = 60;
+  if (claims.iss !== opts.issuer) return null;
+  const aud = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  if (!aud.includes(opts.audience)) return null;
+  if (typeof claims.exp !== "number" || claims.exp + skew <= now) return null;
+  if (typeof claims.nbf === "number" && claims.nbf - skew > now) return null;
+  if (typeof claims.sub !== "string" || !CID.test(claims.sub)) return null;
+  return claims;
+}
+
+const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+
+/**
+ * Checks an access token: offline against the JWKS, then the issuer's userinfo. Answers are cached
+ * briefly (by the token's hash, never the token) so a busy Podium does not ask the issuer on every
+ * poll; a revoked session stops working within `ttlMs`.
+ */
+export function createCidVerifier(
+  opts: { issuer?: string; audience?: string; fetch?: typeof fetch; ttlMs?: number; max?: number; now?: () => number } = {},
+): CidVerifier {
   const issuer = (opts.issuer ?? DEFAULT_CID_ISSUER).replace(/\/+$/, "");
+  const oidc = `${issuer}/protocol/openid-connect`;
+  const audience = opts.audience ?? CID_CLIENT;
   const doFetch = opts.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
+  const now = opts.now ?? (() => Date.now());
   const ttl = opts.ttlMs ?? 60_000;
   const max = opts.max ?? 500;
   const cache = new Map<string, { profile: CidProfile | null; until: number }>();
+  let jwks: { keys: Jwk[]; until: number } | null = null;
+  const keys = async (): Promise<Jwk[]> => {
+    if (jwks && jwks.until > now()) return jwks.keys;
+    const r = await doFetch(`${oidc}/certs`, { headers: { accept: "application/json" } });
+    if (!r.ok) throw new Error(`Cumulus ID JWKS answered ${r.status}`);
+    const body = (await r.json()) as { keys?: unknown };
+    jwks = { keys: Array.isArray(body.keys) ? (body.keys as Jwk[]) : [], until: now() + 10 * 60_000 };
+    return jwks.keys;
+  };
   return async (token) => {
-    if (!TOKEN.test(token)) return null;
+    if (!JWT.test(token)) return null;
     const key = await hash(token);
     const hit = cache.get(key);
-    if (hit && hit.until > Date.now()) return hit.profile;
+    if (hit && hit.until > now()) return hit.profile;
     let profile: CidProfile | null = null;
     try {
-      const r = await doFetch(`${issuer}/api/id/userinfo`, { headers: { authorization: `Bearer ${token}`, accept: "application/json" } });
-      if (r.ok) {
-        const p = (await r.json()) as Record<string, unknown>;
-        if (typeof p.cid === "string" && p.cid) {
-          profile = {
-            cid: p.cid,
-            username: typeof p.username === "string" ? p.username : undefined,
-            handle: typeof p.handle === "string" ? p.handle : undefined,
-            email: typeof p.email === "string" ? p.email : undefined,
-            name: typeof p.name === "string" ? p.name : undefined,
-          };
+      const claims = await verifyCidJwt(token, { issuer, audience, typ: "at+jwt", keys: await keys(), now: now() });
+      if (claims) {
+        const r = await doFetch(`${oidc}/userinfo`, { headers: { authorization: `Bearer ${token}`, accept: "application/json" } });
+        if (r.ok) {
+          const p = (await r.json()) as Record<string, unknown>;
+          if (p.sub === claims.sub) {
+            profile = {
+              cid: claims.sub as string,
+              username: str(p.preferred_username) ?? str(p.username),
+              handle: str(p.handle),
+              email: str(p.email),
+              name: str(p.name),
+            };
+          }
+        } else if (r.status >= 500) {
+          throw new Error(`Cumulus ID answered ${r.status}`);
         }
-      } else if (r.status >= 500) {
-        throw new Error(`Cumulus ID answered ${r.status}`);
       }
     } catch (err) {
       // The issuer is unreachable: don't cache, and say so instead of "not signed in".
       throw new CidUnavailable(err instanceof Error ? err.message : String(err));
     }
     if (cache.size >= max) cache.delete(cache.keys().next().value as string);
-    cache.set(key, { profile, until: Date.now() + ttl });
+    cache.set(key, { profile, until: now() + ttl });
     return profile;
   };
 }
