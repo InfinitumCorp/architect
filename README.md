@@ -243,6 +243,14 @@ Architect uses open-weight models only by default. Claude is used only if `archi
 
 **Full control** comes from a `architect.models.json` file (copy `architect.models.example.json`). It lists models with a `tier`, an optional `price` in USD per million tokens, a `vision` flag for models that can read screenshots, and `apiKeyEnv`, the *name* of the env var that holds the key. Keys themselves are rejected in this file. You can also override the routing `policy`.
 
+Google Gemini on the AI Studio free tier (a plain key, not Vertex AI) is an OpenAI-compatible entry like any other. Add it to the file and set `GEMINI_API_KEY`:
+
+```json
+{ "provider": "openai", "id": "gemini/flash-lite", "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai", "model": "gemini-3.5-flash-lite", "tier": "fast", "apiKeyEnv": "GEMINI_API_KEY" }
+```
+
+When the free tier answers HTTP 429, the router falls back to the next model in that tier.
+
 ```bash
 architect models     # routing table, and whether each model is reachable
 ```

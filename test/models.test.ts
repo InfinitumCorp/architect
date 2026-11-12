@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Brain, TurnRequest } from "../src/brain.js";
-import { brainFromEnv, hasExplicitModelConfig, loadModelsFile, modelsFromEnv } from "../src/brains/config.js";
+import { brainFromEnv, candidatesFrom, hasExplicitModelConfig, loadModelsFile, modelsFromEnv } from "../src/brains/config.js";
 import { OpenAICompatBrain, toOpenAIMessages } from "../src/brains/openai.js";
 import { RouterBrain, trailingErrors } from "../src/brains/router.js";
 import { Architect } from "../src/architect.js";
@@ -240,6 +240,19 @@ describe("model configuration", () => {
       "qwen3:8b", "qwen3:32b", "deepseek-v3.2", "kimi-k3", "glm4", "auto", "claude-opus-5-5",
     ]);
     expect(cfg.policy?.act).toBe("fast");
+  });
+
+  it("takes Gemini (AI Studio) as an ordinary OpenAI-compatible entry, key from the env", async () => {
+    const file = path.join(dir, "gemini.models.json");
+    const entry = { provider: "openai", id: "gemini/flash-lite", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.5-flash-lite", tier: "fast", apiKeyEnv: "GEMINI_API_KEY" };
+    await writeFile(file, JSON.stringify({ models: [entry] }));
+    const [c] = candidatesFrom(loadModelsFile(file), { GEMINI_API_KEY: "test-key" });
+    expect(c).toMatchObject({ id: "gemini/flash-lite", tier: "fast" });
+    expect(c!.brain).toBeInstanceOf(OpenAICompatBrain);
+    expect((c!.brain as OpenAICompatBrain).baseUrl).toBe(entry.baseUrl);
+    expect((c!.brain as unknown as { opts: { apiKey?: string } }).opts.apiKey).toBe("test-key");
+    // Not added from the env alone: Gemini is used only when the models file names it.
+    expect(modelsFromEnv({ GEMINI_API_KEY: "test-key" }).models.some((m) => m.model.startsWith("gemini"))).toBe(false);
   });
 
   it("defaults to OmniRoute's open models when nothing is configured; Claude is opt-in only", () => {
