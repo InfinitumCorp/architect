@@ -2,6 +2,7 @@
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import path from "node:path";
+import { chat, ignoreDataDir, MODES, type ModeKey } from "./chat.js";
 import { createArchitect } from "./index.js";
 import { WorkspaceInstrument } from "./instruments/workspace.js";
 import { PlaywrightMcpInstrument } from "./instruments/playwright-mcp.js";
@@ -27,19 +28,24 @@ import { OpenAICompatBrain } from "./brains/openai.js";
 import { writeGeoSettings } from "./geo/settings.js";
 import { PERMISSIONS, type ApprovalHandler, type Autonomy, type Permission, type Run, type RunEvent } from "./types.js";
 
-const HELP = `:\\ARCHITECT\\™ — intent in, outcome out.
+const HELP = `:\\ARCHITECT\\™ — the coding agent.
 
 Usage
-  architect run "<goal>" [options]    Compose a Score, perform it, verify the result
-  architect compose "<goal>" [opts]   Compose and print the Score without performing it
+  architect                           Start a coding session in this folder (like Claude Code)
+  architect "<task>"                  Start a session with a first task, e.g. architect "fix the failing test"
+  architect run "<goal>" [options]    Plan the task, carry it out, verify the result
+  architect compose "<goal>" [opts]   Plan and print the plan without carrying it out
   architect recover <runId>           Resume a failed or handed-off run
-  architect encore <runId> -i k=v ... Rerun a Score with new inputs
+  architect encore <runId> -i k=v ... Rerun a plan with new inputs
   architect runs                      List recent runs
   architect show <runId>              Print a run as JSON
-  architect serve [--port 7337]       Start the API, triggers, schedules and the Podium
+  architect serve [--port 7337]       Start the API, triggers, schedules and the app
   architect models                    Show the automatic model routing table and check each model
   architect mcp                       MCP server (stdio) for Claude Code, Cursor and other agents;
                                       talks to \`serve\` at ARCHITECT_URL. Approvals stay with people.
+  architect openclaw [-w <workspace>] [--server <url>]
+                                      Make Architect the coding agent of your OpenClaw assistant: installs
+                                      the "architect" skill and MCP server. See docs/openclaw.md.
   architect scan [dir] [--only ids] [--install-hooks]
                                       Safety checks with the scanners installed here (osv-scanner,
                                       git-secrets, SkillSpector, garak). See docs/safety-scanning.md.
@@ -47,12 +53,12 @@ Usage
                                       Score code-writing ability on HumanEval-format tasks, running
                                       the model's code only inside the sandbox. See docs/evals.md.
 
-Saved Scores (reusable workflows)
-  architect save <runId> <name>       Save a run's Score to the library
-  architect scores                    List saved Scores
-  architect play <name> -i k=v ...    Perform a saved Score with inputs
-  architect export <name>             Print a Marketplace package (JSON) for a saved Score
-  architect import <file.json>        Install a Score package
+Saved plans (reusable workflows)
+  architect save <runId> <name>       Save a run's plan to the library
+  architect scores                    List saved plans
+  architect play <name> -i k=v ...    Run a saved plan with inputs
+  architect export <name>             Print a Marketplace package (JSON) for a saved plan
+  architect import <file.json>        Install a plan package
 
 Autopilot schedules (run by \`serve\`)
   architect schedule add <name> --score <saved> (--every <min> | --daily HH:MM) [-i k=v] [--budget usd]
@@ -62,9 +68,10 @@ Autopilot schedules (run by \`serve\`)
 Options
   -a, --autonomy <level>     rehearsal | accompaniment (default) | autopilot
   -u, --url <url>            Start URL for the browser
-  -i, --input k=v            Score input (repeatable)
+  -i, --input k=v            Plan input (repeatable)
   -p, --permit <perm>        Limit permissions (repeatable): ${PERMISSIONS.join(", ")}
-  -w, --workspace <dir>      Folder Architect may build in (default: .architect/workspace)
+  -w, --workspace <dir>      Folder Architect works in (session: this folder; run/serve: .architect/workspace)
+  -m, --mode <mode>          Session mode: ask (default) | plan | auto | rehearse
       --headed               Show the browser window
       --state <file>         Playwright storage state to reuse a session you signed in to yourself
       --allow-host <host>    Restrict the browser to these hosts (repeatable)
@@ -90,7 +97,7 @@ function printEvent(ev: RunEvent) {
   switch (ev.type) {
     case "run.composed": {
       const score = d.score as Run["score"];
-      console.log(`\n${C.bold}Score${C.off} ${score.summary}`);
+      console.log(`\n${C.bold}Plan${C.off} ${score.summary}`);
       score.steps.forEach((s, i) => console.log(`  ${i + 1}. ${s.title}${s.checkpoint ? `${C.yellow} [checkpoint]${C.off}` : ""}`));
       console.log(`${C.dim}  permissions: ${score.permissions.join(", ")}${C.off}`);
       console.log(`${C.dim}  done when: ${score.successCriteria.join(" · ")}${C.off}`);
@@ -117,6 +124,17 @@ function printEvent(ev: RunEvent) {
       console.log(`${C.dim}  ${mark} ${d.tool} ${input.length > 100 ? `${input.slice(0, 100)}…` : input}${C.off}`);
       break;
     }
+    case "evidence": {
+      // File edits come with a diff: show it, trimmed, like a coding agent does.
+      if (d.kind !== "file" || !/^(edited|created|rewrote) /.test(String(d.label)) || !d.content) break;
+      console.log(`${C.bold}  ${d.label}${C.off}`);
+      const lines = String(d.content).split("\n").filter((l) => !/^(---|\+\+\+) /.test(l));
+      for (const l of lines.slice(0, 40)) {
+        console.log(`    ${l.startsWith("+") ? C.green : l.startsWith("-") ? C.red : C.dim}${l}${C.off}`);
+      }
+      if (lines.length > 40) console.log(`${C.dim}    … ${lines.length - 40} more lines (/diff)${C.off}`);
+      break;
+    }
     case "architect.note":
       console.log(`${C.dim}  ${String(d.text).split("\n")[0]?.slice(0, 160)}${C.off}`);
       break;
@@ -131,6 +149,8 @@ function printEvent(ev: RunEvent) {
       break;
   }
 }
+
+const COMMANDS = new Set(["openclaw", "run", "compose", "recover", "encore", "runs", "show", "serve", "models", "mcp", "scan", "eval", "save", "scores", "play", "export", "import", "schedule"]);
 
 function cliApprovals(): ApprovalHandler {
   return async (req) => {
@@ -176,6 +196,8 @@ async function main() {
       samples: { type: "string" },
       completions: { type: "string" },
       help: { type: "boolean", short: "h" },
+      mode: { type: "string", short: "m" },
+      server: { type: "string" },
     },
   });
   const [command, ...rest] = positionals;
@@ -183,8 +205,15 @@ async function main() {
   if (values.geo || values["no-geo"]) {
     const dataDir = path.resolve(values.data ?? process.env.ARCHITECT_DATA_DIR ?? ".architect");
     await writeGeoSettings(path.join(dataDir, "settings.json"), values.geo === true);
+    if (!command) { console.log(`Geo routing ${values.geo ? "on" : "off"}.`); return; }
   }
-  if (!command || values.help) {
+  if (values.help) {
+    console.log(HELP);
+    return;
+  }
+  // No command, or a task in words: an interactive coding session in this folder.
+  const session = !command || !COMMANDS.has(command);
+  if (session && !process.stdin.isTTY) {
     console.log(HELP);
     return;
   }
@@ -193,6 +222,28 @@ async function main() {
     const { createMcpServer } = await import("./mcp.js");
     const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
     await createMcpServer().connect(new StdioServerTransport());
+    return;
+  }
+  if (command === "openclaw") {
+    const { installOpenClaw, DEFAULT_ARCHITECT_URL } = await import("./openclaw-skill.js");
+    const { fileURLToPath } = await import("node:url");
+    const url = values.server ?? process.env.ARCHITECT_URL ?? DEFAULT_ARCHITECT_URL;
+    const r = await installOpenClaw({
+      workspace: values.workspace,
+      cli: fileURLToPath(import.meta.url),
+      url,
+      token: process.env.ARCHITECT_API_TOKEN || undefined,
+    });
+    console.log(`${C.green}✓${C.off} Skill installed: ${r.skill}`);
+    if (r.mcp.status === "added") console.log(`${C.green}✓${C.off} MCP server "architect" added to OpenClaw (Architect server: ${url})`);
+    else {
+      console.log(`${C.yellow}!${C.off} ${r.mcp.status === "no-openclaw" ? "The openclaw CLI was not found." : `openclaw mcp add failed${r.mcp.detail ? `: ${r.mcp.detail}` : "."} Stop the OpenClaw Gateway first, then retry.`}`);
+      console.log(`  Register the MCP server yourself with:
+  ${r.mcp.command}`);
+    }
+    console.log(`
+Next: start Architect on the project, e.g. ${C.bold}architect serve --workspace <project folder>${C.off}, then restart the OpenClaw Gateway`);
+    console.log(`and ask your assistant for coding work ("fix the failing test"). Check with: openclaw skills check · openclaw mcp doctor architect --probe`);
     return;
   }
 
@@ -256,9 +307,16 @@ async function main() {
   const browserInstrument =
     browserBackend === "playwright-mcp" ? await PlaywrightMcpInstrument.start(browserOpts) : undefined;
 
+  const sessionMode = (values.mode ?? "ask") as ModeKey;
+  if (session && !(sessionMode in MODES)) throw new Error(`--mode must be one of ${Object.keys(MODES).join(", ")}`);
+  const folder = path.resolve(values.workspace ?? ".");
+  if (session) await ignoreDataDir(path.resolve(values.data ?? ".architect"));
+
   const architect = createArchitect({
     dataDir: values.data,
-    workspace: values.workspace,
+    // A session works in the project folder itself, like Claude Code; run/serve keep their own workspace.
+    workspace: session ? folder : values.workspace,
+    ...(session ? { supervisor: false as const } : {}),
     browser: browserOpts,
     browserInstrument,
     approvalHandler: command === "serve" ? undefined : cliApprovals(),
@@ -280,6 +338,15 @@ async function main() {
     else console.log(`\n${C.dim}run ${run.id} · ${run.status}${run.error ? ` · ${run.error}` : ""} · ${path.join(architect.store.runDir(run.id))}${C.off}`);
     process.exitCode = run.status === "succeeded" || run.status === "rehearsed" ? 0 : 1;
   };
+
+  if (session) {
+    try {
+      await chat({ architect, folder, initial: positionals.join(" ").trim() || undefined, mode: sessionMode, budgetUsd });
+    } finally {
+      await architect.dispose();
+    }
+    return;
+  }
 
   switch (command) {
     case "run": {
@@ -389,7 +456,7 @@ async function main() {
       const triggers = await TriggerRouter.fromFile(path.resolve("architect.triggers.json"));
       createArchitectServer({ architect, token, triggers, library, schedules }).listen(port, () => {
         new Scheduler(architect, library, schedules).start();
-        console.log(`:\\ARCHITECT\\ listening on http://localhost:${port}  (Podium at /)`);
+        console.log(`:\\ARCHITECT\\ listening on http://localhost:${port}  (app at /)`);
         if (!token) console.log(`${C.yellow}ARCHITECT_API_TOKEN is not set: the API is open to anyone who can reach this port.${C.off}`);
       });
       return;

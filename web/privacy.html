@@ -17,8 +17,12 @@
   code { font:14px ui-monospace,monospace; background:#f5f5f5; padding:1px 4px; border-radius:4px; }
   a { color:#000; }
 </style>
-</head>
+<link rel="stylesheet" href="/i18n/i18n.css" />
+<script type="module" src="/i18n/start.js"></script>
+
 <body>
+<style id="cid-style">.cid-fixed{position:fixed;top:12px;right:12px;z-index:1000;background:#fff;color:#111820;padding:4px}</style></head>
+<body><div class="cid-fixed" data-cumulus-bar></div>
 <main>
   <p class="wordmark">:\ARCHITECT\<sup class="tm">™</sup></p>
   <h1>Chrome extension privacy policy</h1>
@@ -39,7 +43,7 @@
     <li>Your API token, in Chrome's local extension storage, until you clear it in Options or remove the extension.</li>
     <li>The unsent draft goal, in session storage, which Chrome clears when the browser closes.</li>
   </ul>
-  <p><strong>Copy from open Podium tab</strong> in Options reads the token that the :\ARCHITECT\ Podium saved in an open <code>rchtch.app</code> tab, only when you press that button.</p>
+  <p><strong>Copy from open Architect tab</strong> in Options reads the token that :\ARCHITECT\ saved in an open <code>rchtch.app</code> tab, only when you press that button.</p>
 
   <h2>What it does not do</h2>
   <p>No analytics, no advertising, no tracking, no browsing history, no remote code. We do not sell your data or share it with anyone other than the :\ARCHITECT\ server you send it to. Data handling follows the Chrome Web Store User Data Policy, including its Limited Use requirements.</p>
@@ -47,5 +51,7 @@
   <h2>Contact</h2>
   <p><a href="mailto:info@theinfinitumcorporation.ai">info@theinfinitumcorporation.ai</a></p>
 </main>
+<!-- Cumulus://ID account bar: copy of https://id.cumuluscloud.app/id/bar.js -->
+<script src="/cumulus-bar.js" data-client="architect" defer></script>
 </body>
 </html>

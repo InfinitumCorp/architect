@@ -1,8 +1,10 @@
 /**
  * :\ARCHITECT\ on Cloudflare Workers.
  *
- *   /               the Podium (static assets, see wrangler.jsonc)
+ *   /               the web app (static assets, see wrangler.jsonc)
  *   /healthz        liveness
+ *   /free/v1/...    the free open-weight model (no key; see src/free.ts)
+ *   /api/labyrinth  relay to the central Labyrinth service (see LABYRINTH.md)
  *   /v1/...         the API, handled by one Durable Object ("Conductor") that owns the
  *                   Architect instance, so approvals and live runs behave as in `architect serve`
  *
@@ -13,18 +15,26 @@
 import { DurableObject } from "cloudflare:workers";
 import { launch, type BrowserWorker } from "@cloudflare/playwright";
 import type { Browser } from "playwright";
-import { Architect } from "./architect.js";
+import { Architect, type PerformOptions } from "./architect.js";
 import { brainFromEnv, hasExplicitModelConfig } from "./brains/config.js";
 import { OpenAICompatBrain } from "./brains/openai.js";
 import { DEFAULT_WORKERS_AI_MODEL, WORKERS_AI_BASE_URL, workersAiFetch, type AiBinding } from "./brains/workersai.js";
+import { budgetedAI } from "./brains/ai-budget.mjs";
 import { DurableRunStore } from "./stores/durable.js";
 import { conjureRoutesFromEnv } from "./conjure/conjure.mjs";
+import { openClawRoutesFromEnv } from "./openclaw/openclaw.mjs";
+import { searchRoutesFromEnv } from "./search/search.mjs";
 import { BrowserInstrument } from "./instruments/browser.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { HttpInstrument } from "./instruments/http.js";
+import { GitHubInstrument } from "./instruments/github.js";
 import postgres from "postgres";
 import { postgresCaller, SupabaseRunStore, type UnsafeSql } from "./stores/supabase.js";
+import { publicDownload, uploadDownload, type DownloadBucket } from "./downloads.js";
+import { freeModel, type RateLimiter } from "./free.js";
+import { proxyLabyrinthRequest, useLabyrinthServiceBinding } from "./labyrinth/proxy.js";
 import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
+import { checkAccess, cidIssuer, cidOwners, createCidVerifier, presentedToken, type CidVerifier } from "./cid.js";
 import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type RunEvent } from "./types.js";
 
 const AUTONOMY: Autonomy[] = ["rehearsal", "accompaniment", "autopilot"];
@@ -35,13 +45,33 @@ export interface Env {
   BROWSER: BrowserWorker;
   /** Workers AI: the model when no ANTHROPIC_API_KEY / OMNIROUTE_URL / ARCHITECT_OPENAI_* is set. */
   AI?: AiBinding;
+  /** The account-wide Workers AI ledger (conjure-llm's Budget): keeps Workers AI inside its free daily allowance. */
+  AI_BUDGET?: DurableObjectNamespace;
   /** Workers AI model id (default DEFAULT_WORKERS_AI_MODEL). */
   ARCHITECT_WORKERS_AI_MODEL?: string;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   /** Hyperdrive to the Supabase pooler as the architect_worker login (see supabase/migrations). */
   HYPERDRIVE?: Hyperdrive;
+  /** Machine token for scripts and MCP. People sign in with Cumulus ID instead (src/cid.ts). */
   ARCHITECT_API_TOKEN?: string;
+  /** Who may use the hosted server: Cumulus IDs, usernames, handles or emails, comma separated. */
+  ARCHITECT_CID_OWNERS?: string;
+  /** Cumulus://ID issuer (default https://id.cumuluscloud.app/realms/cumulus); a mirror can go here. */
+  CID_ISSUER?: string;
+  /** Cloud coding: a fine-grained GitHub token (contents + pull requests) and the owner/name repos it may change. */
+  GITHUB_TOKEN?: string;
+  ARCHITECT_GITHUB_REPOS?: string;
+  /** R2 bucket architect-downloads: Architect Desktop builds served at /download. */
+  DOWNLOADS?: DownloadBucket;
+  /** Per-address limit on the free model at /free/v1 (src/free.ts). */
+  FREE_RATE?: RateLimiter;
+  /** The central Labyrinth service (Nexus /api/labyrinth). Unset: /api/labyrinth answers 503. */
+  LBRNTH_ENDPOINT?: string;
+  /** Service binding to lbrnth-host-us (US Labyrinth): relay calls to lbrnth-us.cumuluscloud.app stay inside Cloudflare. */
+  LBRNTH_US?: Fetcher;
+  /** "off" turns the free model at /free/v1 off. */
+  ARCHITECT_FREE?: string;
   [key: string]: unknown;
 }
 
@@ -57,9 +87,7 @@ class HttpError extends Error {
   }
 }
 
-async function authorized(req: Request, token: string): Promise<boolean> {
-  const url = new URL(req.url);
-  const given = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ?? url.searchParams.get("token") ?? "";
+async function sameToken(given: string, token: string): Promise<boolean> {
   const enc = new TextEncoder();
   const [a, b] = await Promise.all([
     crypto.subtle.digest("SHA-256", enc.encode(given)),
@@ -69,17 +97,50 @@ async function authorized(req: Request, token: string): Promise<boolean> {
   return (crypto.subtle as unknown as { timingSafeEqual(a: ArrayBuffer, b: ArrayBuffer): boolean }).timingSafeEqual(a, b);
 }
 
+// One verifier per isolate, so its short cache is shared across requests.
+let verifier: { issuer: string; verify: CidVerifier } | undefined;
+const cidVerifier = (env: Env): CidVerifier => {
+  const issuer = cidIssuer(env);
+  if (verifier?.issuer !== issuer) verifier = { issuer, verify: createCidVerifier({ issuer }) };
+  return verifier.verify;
+};
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === "/healthz") return json(200, { ok: true, at: new Date().toISOString() });
+    const download = await publicDownload(req, env.DOWNLOADS);
+    if (download) return download;
+    // The free open-weight model that Architect Desktop and local servers use out of the box.
+    const free = await freeModel(req, env);
+    if (free) return free;
+    // Labyrinth: explicit, user-chosen saves to the person's private repository, authenticated
+    // by their own Cumulus ID bearer (never the product API token). Same relay as `architect serve`.
+    if (url.pathname === "/api/labyrinth") {
+      useLabyrinthServiceBinding("lbrnth-us.cumuluscloud.app", env.LBRNTH_US);
+      return proxyLabyrinthRequest(req, env.LBRNTH_ENDPOINT, "architect");
+    }
     if (url.pathname === "/v1" || url.pathname.startsWith("/v1/")) {
-      // The hosted edition never runs open: no token configured means no API.
-      if (!env.ARCHITECT_API_TOKEN) return json(503, { error: "The server has no ARCHITECT_API_TOKEN secret yet." });
-      if (!(await authorized(req, env.ARCHITECT_API_TOKEN))) return json(401, { error: "missing or invalid bearer token" });
+      // People: a Cumulus ID listed in ARCHITECT_CID_OWNERS. Machines: ARCHITECT_API_TOKEN.
+      // The hosted edition never runs open: neither configured means no API.
+      const access = await checkAccess(presentedToken(req.headers.get("authorization"), url), {
+        apiToken: env.ARCHITECT_API_TOKEN,
+        owners: cidOwners(env.ARCHITECT_CID_OWNERS),
+        verify: cidVerifier(env),
+        tokenMatches: sameToken,
+      });
+      if (!access.ok) return json(access.status, { error: access.error });
+      const upload = await uploadDownload(req, env.DOWNLOADS);
+      if (upload) return upload;
       // @conjure: POST /v1/conjure { text } starts a live Conjure forecast; GET /v1/conjure/<ticket> follows it.
       const forecast = await conjureRoutesFromEnv(env as unknown as Record<string, string | undefined>, { prefix: "/v1/conjure", source: "architect" })(req, { user: "operator" });
       if (forecast) return forecast;
+      // @scalvs / @scalus: POST /v1/openclaw { text } hands the task to the SCALVS agent on OpenClaw (off until configured).
+      const claw = await openClawRoutesFromEnv(env as unknown as Record<string, string | undefined>, { prefix: "/v1/openclaw", product: "architect" })(req, { user: "operator" });
+      if (claw) return claw;
+      // @search: POST /v1/search { text | query } searches the web and answers with cited sources (off until configured).
+      const found = await searchRoutesFromEnv(env as unknown as Record<string, string | undefined>, { prefix: "/v1/search" })(req, { user: "operator" });
+      if (found) return found;
       return env.CONDUCTOR.get(env.CONDUCTOR.idFromName("main")).fetch(req);
     }
     return env.ASSETS.fetch(req);
@@ -103,7 +164,7 @@ export class Conductor extends DurableObject<Env> {
         : new OpenAICompatBrain({
             baseUrl: WORKERS_AI_BASE_URL,
             model: this.env.ARCHITECT_WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL,
-            fetch: workersAiFetch(this.env.AI),
+            fetch: workersAiFetch(budgetedAI(this.env.AI, this.env.AI_BUDGET)),
             maxTokens: 8_000,
           });
     // Storage: Supabase over Hyperdrive as the limited architect_worker login; else with the
@@ -124,6 +185,9 @@ export class Conductor extends DurableObject<Env> {
         new BrowserInstrument({ launch: async () => (await launch(this.env.BROWSER)) as unknown as Browser }),
         new HttpInstrument(),
         new EcosystemInstrument(),
+        ...(this.env.GITHUB_TOKEN
+          ? [new GitHubInstrument({ token: this.env.GITHUB_TOKEN, repos: (this.env.ARCHITECT_GITHUB_REPOS ?? "").split(",").map((r) => r.trim()).filter(Boolean) })]
+          : []),
       ],
     });
     return this.architect;
@@ -153,6 +217,8 @@ export class Conductor extends DurableObject<Env> {
         return parsed as Record<string, unknown>;
       };
 
+      if (resource === "models" && req.method === "GET") return json(200, { ...a.models(), files: false, shell: false, labyrinth: Boolean(this.env.LBRNTH_ENDPOINT) });
+
       if (resource === "runs" && !id) {
         if (req.method === "GET") return json(200, await a.store.list(Number(url.searchParams.get("limit") ?? 50)));
         if (req.method === "POST") {
@@ -165,7 +231,7 @@ export class Conductor extends DurableObject<Env> {
           const review = (REVIEW_POLICIES.includes(b.review as ReviewPolicy) ? b.review : parsed.review) as ReviewPolicy | undefined;
           const hostsIn = (b.hosts ?? {}) as Record<string, unknown>;
           const hosts = { allow: hostList(hostsIn.allow), block: hostList(hostsIn.block) };
-          const run = await a.start(goal, {
+          const startOpts = {
             autonomy,
             inputs: stringMap(b.inputs),
             startUrl: b.startUrl ? String(b.startUrl) : undefined,
@@ -174,6 +240,16 @@ export class Conductor extends DurableObject<Env> {
             review,
             hosts: hosts.allow || hosts.block ? hosts : undefined,
             knowledge: b.knowledge !== false,
+            model: typeof b.model === "string" && b.model ? b.model.slice(0, 200) : undefined,
+            images: b.images as PerformOptions["images"],
+          };
+          // A follow-up continues an earlier run in the same session, carrying its outcome as context.
+          const run = await (typeof b.followUp === "string" && b.followUp
+            ? a.followUp(b.followUp, goal, startOpts)
+            : a.start(goal, startOpts)
+          ).catch((err: unknown) => {
+            if (err instanceof Error && /unknown model|image|images must/.test(err.message)) throw new HttpError(400, err.message);
+            throw err;
           });
           if (!b.composeOnly && !a.awaitingPlanReview(run)) this.background(a.perform(run));
           return json(202, run);

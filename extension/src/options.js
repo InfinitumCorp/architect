@@ -1,39 +1,34 @@
 import { ApiError, DEFAULT_BASE, createClient } from "./api.js";
+import { session, signIn, signOut, who } from "./cid.js";
 
 const $ = (id) => document.getElementById(id);
-const say = (id, text) => ($(id).textContent = text);
+const say = (text) => ($("result").textContent = text);
 
-const { token = "" } = await chrome.storage.local.get("token");
-$("token").value = token;
+async function draw() {
+  const s = await session();
+  $("signed-in").hidden = !s;
+  $("signed-out").hidden = Boolean(s);
+  $("who").textContent = s
+    ? `Signed in with Cumulus ID${who(s) ? ` as ${who(s)}` : ""}.`
+    : "Sign in with your Cumulus ID. No Cumulus ID yet? Create one here; you come straight back signed in.";
+}
 
-$("token-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  await chrome.storage.local.set({ token: $("token").value.trim() });
-  say("token-result", "Saved.");
-});
-
-$("clear").addEventListener("click", async () => {
-  $("token").value = "";
-  await chrome.storage.local.remove("token");
-  say("token-result", "Cleared.");
-});
-
-// The Podium keeps its token in localStorage["architect.token"] on rchtch.app.
-$("from-podium").addEventListener("click", async () => {
-  const [tab] = await chrome.tabs.query({ url: DEFAULT_BASE + "/*" });
-  if (!tab?.id) return say("token-result", "Open rchtch.app in a tab (signed in, token entered) and try again.");
+const start = (create) => async () => {
+  say(create ? "Opening Cumulus ID to create your account…" : "Opening Cumulus ID…");
   try {
-    const [{ result } = {}] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => { try { return localStorage.getItem("architect.token") || ""; } catch { return ""; } },
-    });
-    if (!result) return say("token-result", "That Podium tab has no saved token yet.");
-    $("token").value = result;
-    await chrome.storage.local.set({ token: result });
-    say("token-result", "Copied from the Podium and saved.");
+    await signIn({ create });
+    say("Signed in.");
   } catch (err) {
-    say("token-result", `Could not read the Podium tab: ${err.message}`);
+    say(err.message || String(err));
   }
+  draw();
+};
+$("signin").addEventListener("click", start(false));
+$("create").addEventListener("click", start(true));
+$("signout").addEventListener("click", async () => {
+  await signOut();
+  say("Signed out.");
+  draw();
 });
 
 const { geoRouting = false } = await chrome.storage.local.get("geoRouting");
@@ -73,12 +68,14 @@ $("geo-form").addEventListener("submit", async (e) => {
 });
 
 $("check").addEventListener("click", async () => {
-  say("check-result", "Checking…");
-  const { token = "" } = await chrome.storage.local.get("token");
+  say("Checking…");
+  const s = await session();
   try {
-    await createClient({ base: DEFAULT_BASE, token }).runs(1);
-    say("check-result", "Connected: signed in and the token works.");
+    await createClient({ base: DEFAULT_BASE, token: s?.token || "" }).runs(1);
+    say("Connected.");
   } catch (err) {
-    say("check-result", err instanceof ApiError ? err.message : String(err));
+    say(err instanceof ApiError ? err.message : String(err));
   }
 });
+
+draw();

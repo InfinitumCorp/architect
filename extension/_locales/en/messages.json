@@ -1,0 +1,8 @@
+{
+  "name": { "message": ":\\ARCHITECT\\™" },
+  "short_name": { "message": "ARCHITECT" },
+  "description": { "message": "Give :\\ARCHITECT\\ a goal from any page: send the selection or the current page, follow the run and answer approvals." },
+  "action_title": { "message": ":\\ARCHITECT\\" },
+  "menu_selection": { "message": "Send selection to :\\ARCHITECT\\" },
+  "menu_page": { "message": "Send this page to :\\ARCHITECT\\" }
+}

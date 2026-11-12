@@ -7,15 +7,16 @@ A Manifest V3 extension that gives quick access to :\ARCHITECT\ at https://rchtc
 
 ## Sign-in
 
-rchtch.app is behind Cloudflare Access, and its API also needs the server's `ARCHITECT_API_TOKEN`.
+Sign in with Cumulus ID, in **Options** or straight from the panel: **Sign in with Cumulus ID** or **Create a Cumulus ID** opens the Cumulus ID page (`chrome.identity.launchWebAuthFlow`, OAuth 2.0 code + PKCE) and comes back signed in. The session stays in `chrome.storage.local` in this profile and is sent as the API's Bearer. Nothing is pasted; the extension ships no keys.
 
-1. Sign in at https://rchtch.app in the same Chrome profile. The extension sends that session cookie with its requests (`host_permissions: https://rchtch.app/*`). When the session is missing or expired, the panel shows **Sign in at rchtch.app**.
-2. In **Options**, paste the API token, or press **Copy from open Podium tab** to reuse the token the Podium already saved. The token stays in `chrome.storage.local` in this profile. The extension ships no keys.
+Cumulus ID must accept this extension's return address, `https://<extension-id>.chromiumapp.org/cid`, for the `architect` client.
+
+If rchtch.app is also behind Cloudflare Access, the panel shows **Sign in at rchtch.app** when that session is missing.
 
 ## Develop
 
 ```bash
-npm run extension:icons   # render podium/icon.svg to extension/icons (Playwright Chromium)
+npm run extension:icons   # render web/icon.svg to extension/icons (Playwright Chromium)
 npx vitest run test/extension.test.ts
 npm run extension:zip     # checks the manifest, writes dist/architect-extension-<version>.zip
 ```
@@ -30,7 +31,8 @@ Upload `dist/architect-extension-<version>.zip`. Bump `version` in `manifest.jso
 | --- | --- |
 | `sidePanel` | The main UI. |
 | `contextMenus` | Send the selection or page. |
-| `storage` | The API token (local) and the pending draft (session). |
+| `storage` | The Cumulus ID session (local) and the pending draft (session). |
 | `activeTab` | Read the current tab's address for "This tab". |
-| `scripting` | Only for "Copy from open Podium tab", which reads the Podium's saved token on rchtch.app. |
-| host `https://rchtch.app/*` | Call the :\ARCHITECT\ API with the Access session. |
+| `identity` | Sign in with Cumulus ID (`launchWebAuthFlow`). |
+| host `https://rchtch.app/*` | Call the :\ARCHITECT\ API. |
+| host `https://id.cumuluscloud.app/*` | Trade the sign-in code for a Cumulus ID session. |

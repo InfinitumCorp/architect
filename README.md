@@ -2,7 +2,7 @@
 
 **Intent in. Outcome out.** :\ARCHITECT\ is Infinitum's AI execution engine. Describe an outcome; Architect writes the plan, operates the interfaces (a real browser, your project folder, APIs and other Infinitum products), and proves the result is done before it says so.
 
-It is also the **action layer for the Infinitum ecosystem**: when Spectre spots a renewal risk, METATRON¹⁰⁰ flags an event or [HRVST] captures a fault, a signal starts a Score and Architect turns it into finished work — with a person's approval at every step that matters.
+It is also the **action layer for the Infinitum ecosystem**: when Spectre spots a renewal risk, METATRON¹⁰⁰ flags an event or [HRVST] captures a fault, a signal starts a plan and Architect turns it into finished work — with a person's approval at every step that matters.
 
 > You set the direction. Architect carries it through.
 
@@ -10,7 +10,7 @@ It is also the **action layer for the Infinitum ecosystem**: when Spectre spots 
 
 | | | |
 |---|---|---|
-| **01 Compose** | Write the **Score** | An executable plan: steps, permissions, checkpoints and a definition of success |
+| **01 Compose** | Write the **plan** | An executable plan: steps, permissions, checkpoints and a definition of success |
 | **02 Connect** | Choose the **Instruments** | `browser` (Playwright/Chromium), `workspace` (files + shell), `http`, `ecosystem` (Infinitum products) |
 | **03 Perform** | Run the **Performance** | An Observe → Think → Act loop on Claude. Every action is recorded with its risk, outcome and evidence |
 | **04 Verify** | **Prove it worked** | An independent verifier with read-only tools checks every success criterion against live state and evidence |
@@ -21,39 +21,39 @@ It is also the **action layer for the Infinitum ecosystem**: when Spectre spots 
 |---|---|---|---|
 | **Rehearsal** | run | drafted, not run | drafted, not run |
 | **Accompaniment** (default) | run | run | pause for approval |
-| **Autopilot** | run | run | pause, unless the Score holds `standing.irreversible` |
+| **Autopilot** | run | run | pause, unless the plan holds `standing.irreversible` |
 
-The gate (`src/policy.ts`) is pure and deterministic. A tool whose permission the Score was not granted is blocked at every level.
+The gate (`src/policy.ts`) is pure and deterministic. A tool whose permission the plan was not granted is blocked at every level.
 
 ### Encore · Recover · Handoff
 
-- **Encore** — rerun a Score with new inputs (`{{name}}` placeholders in step instructions).
+- **Encore** — rerun a plan with new inputs (`{{name}}` placeholders in step instructions).
 - **Recover** — resume a failed or handed-off run; completed steps are not repeated and the performer sees what the last attempt did.
 - **Handoff** — when Architect needs a person (sign-in, CAPTCHA, payment details, a judgment call) it writes `handoff/HANDOFF.md`, the browser session state and a last screenshot, then stops.
 
 ### Estimates and spending limits
 
-Every Score shows a cost estimate before it runs, and every run tracks tokens and dollars as it goes (CLI, Podium, `run.usage`). Give a limit with `--budget 5` (or `budgetUsd` in the API): when it is reached, Architect hands off instead of continuing, and `recover --budget 10` resumes with a higher limit.
+Every plan shows a cost estimate before it runs, and every run tracks tokens and dollars as it goes (CLI, app, `run.usage`). Give a limit with `--budget 5` (or `budgetUsd` in the API): when it is reached, Architect hands off instead of continuing, and `recover --budget 10` resumes with a higher limit.
 
-### Saved Scores, the Marketplace and Autopilot schedules
+### Saved plans, the Marketplace and Autopilot schedules
 
 ```bash
-architect save run_ab12cd34 supplier-quote          # keep a Score that worked
+architect save run_ab12cd34 supplier-quote          # keep a plan that worked
 architect play supplier-quote -i supplier="Globex"  # rerun it with new inputs
 architect export supplier-quote > quote.json         # Marketplace package (SHA-256 digest)
 architect import quote.json                          # install one; tampered packages are rejected
 architect schedule add weekly-quotes --score supplier-quote --daily 09:00 -i supplier=Acme --budget 3
 ```
 
-A Score installed from someone else is untrusted: when it is played, its permissions are re-clamped to your account's ceiling and its instruments to the ones you have. Schedules run on Autopilot inside `architect serve` and never overlap themselves.
+A plan installed from someone else is untrusted: when it is played, its permissions are re-clamped to your account's ceiling and its instruments to the ones you have. Schedules run on Autopilot inside `architect serve` and never overlap themselves.
 
 ### Safe by design
 
-- Permissions belong to the Score and the account (`permissionCeiling`). The model proposes; the ceiling disposes. Nothing read during a run can expand them.
+- Permissions belong to the plan and the account (`permissionCeiling`). The model proposes; the ceiling disposes. Nothing read during a run can expand them.
 - Every tool output reaches the model wrapped as `<tool_output trust="untrusted">`, and the prompts treat it as data, never instructions.
 - Architect never types into password or payment-card fields, never creates accounts and never solves CAPTCHAs — those become a Handoff.
 - Workspace paths are confined to the workspace folder; browser hosts can be allow-listed (`--allow-host`).
-- Verified outcomes are attested on **Firmament Network** when it is connected (SHA-256 digest of Score, verdict and evidence).
+- Verified outcomes are attested on **Firmament Network** when it is connected (SHA-256 digest of plan, verdict and evidence).
 
 ## Quick start
 
@@ -71,14 +71,14 @@ node dist/cli.js run "Find the three cheapest 27-inch 4K monitors on example-sho
 # Accompaniment: runs routine steps, asks before anything irreversible
 node dist/cli.js run "Add a /healthz endpoint to this project, run the tests, and fix anything that fails" -w ../my-app
 
-# Rerun a Score with new inputs
+# Rerun a plan with new inputs
 node dist/cli.js encore run_ab12cd34 -i supplier="Acme Corp"
 
 # Resume after a failure or handoff
 node dist/cli.js recover run_ab12cd34
 
-# API + Podium (live view, approvals, evidence)
-ARCHITECT_API_TOKEN=change-me node dist/cli.js serve      # http://localhost:7337/?token=change-me
+# API + app (live view, approvals, evidence)
+ARCHITECT_CID_OWNERS=you@example.com node dist/cli.js serve   # http://localhost:7337, sign in with Cumulus ID
 ```
 
 ## Folding Architect into every Infinitum product
@@ -95,7 +95,7 @@ const run = await architect.run({ goal: "Compare these suppliers, prepare the or
 for await (const ev of architect.events(run.id)) console.log(ev.type, ev.data);
 ```
 
-**2. Signal it (triggers).** A product posts a signal; a matching rule starts a Score.
+**2. Signal it (triggers).** A product posts a signal; a matching rule starts a plan.
 
 ```ts
 await architect.signal("spectre", "renewal_risk", { account: "Acme", owner: "dana@acme.example", reason: "usage down 40%" });
@@ -136,15 +136,15 @@ Configure with `ARCHITECT_PRODUCT_<KEY>_URL` / `ARCHITECT_PRODUCT_<KEY>_TOKEN` f
 | Firmament Network | verified-outcome attestation (`attest` action) |
 | VEIL</> | Architect in the browser sidebar via the SDK |
 | #THRONE | local / on-prem runs: point `Brain` at a local model, run `serve` on the box |
-| CONJURE | pre-flight rehearsal of a Score's stakeholder reactions (planned) |
+| CONJURE | pre-flight rehearsal of a plan's stakeholder reactions (planned) |
 
 `:\ARCHITECT\ MIL` (ODIN° Decide layer) is a separate product on accredited infrastructure and is **not** built from this repository.
 
 ## Web app and Android app
 
-**Web app (Podium).** `architect serve` serves the Podium at http://localhost:7337. It is an installable web app: in Chrome or Edge choose *Install app*, or on a phone *Add to Home screen*. The page shell works offline, and runs always go to the live API.
+**Web app.** `architect serve` serves the app at http://localhost:7337. It is an installable web app: in Chrome or Edge choose *Install app*, or on a phone *Add to Home screen*. The page shell works offline, and runs always go to the live API.
 
-**Android app.** `com.infinitum.architect` is a native shell around the Podium. It shows a connect screen for the server address and token, and the token stays on the phone. Build it without Gradle (you need the Android SDK build-tools and a JDK):
+**Android app.** `com.infinitum.architect` is a native shell around the web app. It shows a connect screen for the server address and token, and the token stays on the phone. Build it without Gradle (you need the Android SDK build-tools and a JDK):
 
 ```bash
 bash android/build.sh          # -> android/build/architect.apk (debug-signed)
@@ -164,14 +164,14 @@ To reach the server over USB, run `adb reverse tcp:7337 tcp:7337` and use http:/
 | `GET` | `/v1/approvals` | decisions waiting for a person |
 | `POST` | `/v1/approvals/:id` | `{ approved, note?, by? }` |
 | `POST` | `/v1/signals/:product` | `{ type, payload }` ecosystem trigger |
-| `GET` / `POST` / `DELETE` | `/v1/scores[/:name]` | saved Scores (`POST { runId, name }` saves) |
+| `GET` / `POST` / `DELETE` | `/v1/scores[/:name]` | saved plans (`POST { runId, name }` saves) |
 | `POST` | `/v1/scores/:name/play` | `{ inputs?, autonomy?, budgetUsd? }` |
 | `POST` | `/v1/scores/import` | install a Marketplace package |
 | `GET` / `POST` / `DELETE` | `/v1/schedules[/:name]` | Autopilot schedules |
 
 `POST /v1/runs`, `/recover` and `/encore` also accept `budgetUsd`.
 
-All `/v1` routes require `Authorization: Bearer $ARCHITECT_API_TOKEN` when the token is set (set it whenever the server is reachable by others).
+People sign in with Cumulus://ID (OIDC issuer `https://id.cumuluscloud.app/realms/cumulus`, public client `architect`, PKCE S256; "Create a Cumulus://ID" sends `prompt=create`). The web app (the Cumulus://ID button), the Android and desktop apps and the Chrome extension send that session as `Authorization: Bearer <access token>`. The server verifies it against the issuer's JWKS (ES256, `typ: at+jwt`, `iss`, `aud: architect`, `exp`), confirms the session at the issuer's `userinfo`, keys the person by `sub` (the cid), and admits the cids, usernames, handles or emails in `ARCHITECT_CID_OWNERS`. The extension, the desktop app and the Android app use the OIDC endpoints with a nonce and verify the ID token against the JWKS (`iss`, `aud`, `exp`, `nonce`) before keeping a session (on Android, `android/src/com/infinitum/architect/CidIdToken.java` with `java.security`; its JVM tests run with `bash android/test.sh`, no Android SDK needed); the web button uses the issuer's `/api/id/*` compatibility routes. Sign-out revokes the token at the issuer. `ARCHITECT_API_TOKEN` is for machines (scripts, MCP); nobody types it. With neither set, a local `architect serve` stays open; the hosted Worker refuses `/v1`.
 
 ## MCP server (Claude Code, Cursor, other agents)
 
@@ -181,7 +181,11 @@ All `/v1` routes require `Authorization: Bearer $ARCHITECT_API_TOKEN` when the t
 claude mcp add architect -- node /path/to/architect/dist/cli.js mcp
 ```
 
-Tools: `architect_run` (with `wait`), `architect_get_run`, `architect_list_runs`, `architect_pending_approvals`, `architect_recover`, `architect_cancel`. There is deliberately no approve tool: a calling agent can start and watch runs, but risky actions still wait for a person in the Podium or CLI.
+Tools: `architect_run` (with `wait`, `follow_up` to continue an earlier run, and `model`), `architect_get_run`, `architect_list_runs`, `architect_pending_approvals`, `architect_recover`, `architect_cancel`. There is deliberately no approve tool: a calling agent can start and watch runs, but risky actions still wait for a person in the Architect app or CLI.
+
+### OpenClaw
+
+`architect openclaw` makes Architect the coding agent of your [OpenClaw](https://docs.openclaw.ai) assistant, so you can ask for coding work from Telegram, WhatsApp, Discord or any other OpenClaw channel. It installs an `architect` skill and registers this MCP server with `openclaw mcp add`. See [docs/openclaw.md](docs/openclaw.md).
 
 ## Library
 
@@ -207,7 +211,9 @@ Bring your own `Instrument` (any object with `tools` and `execute`) or your own 
 | `ARCHITECT_FALLBACKS` | on | server-side refusal fallback; set `off` on Bedrock / Vertex / Foundry |
 | `ARCHITECT_DATA_DIR` | `.architect` | runs, events, evidence |
 | `ARCHITECT_WORKSPACE` | `.architect/workspace` | the folder Architect may build in |
-| `ARCHITECT_API_TOKEN` | — | bearer token for `serve` |
+| `ARCHITECT_CID_OWNERS` | — | Cumulus IDs (or usernames, handles, emails) who may use `/v1` |
+| `CID_ISSUER` | `https://id.cumuluscloud.app/realms/cumulus` | Cumulus://ID issuer, e.g. a mirror |
+| `ARCHITECT_API_TOKEN` | — | machine bearer token for `serve` (scripts, MCP) |
 | `ARCHITECT_BRAIN` | automatic | `anthropic` forces one Claude model; `auto` requires routed models |
 | `OMNIROUTE_URL` | — | route through OmniRoute, e.g. `http://localhost:20128/v1` (see below) |
 
@@ -217,7 +223,7 @@ Architect can run on open-source and gateway models instead of, or alongside, Cl
 
 | Call | Tier | Why |
 |---|---|---|
-| Composing a Score | `strong` | the plan decides everything that follows |
+| Planning a task | `strong` | the plan decides everything that follows |
 | Ordinary step turns | `act` tier (default `balanced`) | most clicks and reads are routine |
 | A step whose tool calls keep failing | one tier up | escalate instead of looping |
 | Verification | `strong` | the verdict must be trustworthy |
@@ -236,6 +242,14 @@ OMNIROUTE_STRONG_MODEL=...                   # optional: a strong model for plan
 Architect uses open-weight models only by default. Claude is used only if `architect.models.json` names it or `ARCHITECT_BRAIN=anthropic` is set. `ARCHITECT_OPENAI_BASE_URL` plus `ARCHITECT_OPENAI_MODEL` does the same for any other OpenAI-compatible endpoint, such as Ollama, LM Studio, vLLM, OpenRouter or LiteLLM.
 
 **Full control** comes from a `architect.models.json` file (copy `architect.models.example.json`). It lists models with a `tier`, an optional `price` in USD per million tokens, a `vision` flag for models that can read screenshots, and `apiKeyEnv`, the *name* of the env var that holds the key. Keys themselves are rejected in this file. You can also override the routing `policy`.
+
+Google Gemini on the AI Studio free tier (a plain key, not Vertex AI) is an OpenAI-compatible entry like any other. Add it to the file and set `GEMINI_API_KEY`:
+
+```json
+{ "provider": "openai", "id": "gemini/flash-lite", "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai", "model": "gemini-3.5-flash-lite", "tier": "fast", "apiKeyEnv": "GEMINI_API_KEY" }
+```
+
+When the free tier answers HTTP 429, the router falls back to the next model in that tier.
 
 ```bash
 architect models     # routing table, and whether each model is reachable
@@ -269,19 +283,20 @@ src/
   brains/openai.ts    any OpenAI-compatible model (OmniRoute, Ollama, vLLM, OpenRouter …)
   brains/router.ts    automatic model selection: tiers, escalation, failover, cooldowns
   brains/config.ts    architect.models.json and OMNIROUTE_URL / ARCHITECT_OPENAI_* shortcuts
-  mcp.ts              MCP server for Claude Code, Cursor and other agents
+  mcp.ts              MCP server for Claude Code, Cursor, OpenClaw and other agents
+  openclaw-skill.ts   `architect openclaw`: the OpenClaw skill and MCP registration
   architect.ts        Compose → Perform → Verify, Encore / Recover / Handoff, approvals
   prompts.ts          system prompts and safety rules
   instruments/        browser (Playwright), workspace, http, ecosystem
-  triggers.ts         ecosystem signal → Score rules
-  server.ts           HTTP API + SSE + Podium
+  triggers.ts         ecosystem signal → plan rules
+  server.ts           HTTP API + SSE + the web app
   sdk.ts              client for other products
   adapter.ts          action-contract handler for products Architect plays
   usage.ts            token pricing, estimates, spending limits
-  library.ts          saved Scores and Marketplace packages
+  library.ts          saved plans and Marketplace packages
   schedules.ts        Autopilot schedules
   cli.ts              `architect`
-podium/index.html     the Podium
+web/index.html     the web app
 test/                 gate, architect end-to-end, real Chromium, API + SDK, budgets, library, schedules, ecosystem + Firmament
 examples/             spectre-adapter.ts
 ```

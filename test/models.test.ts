@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Brain, TurnRequest } from "../src/brain.js";
-import { brainFromEnv, hasExplicitModelConfig, loadModelsFile, modelsFromEnv } from "../src/brains/config.js";
+import { brainFromEnv, candidatesFrom, hasExplicitModelConfig, loadModelsFile, modelsFromEnv } from "../src/brains/config.js";
 import { OpenAICompatBrain, toOpenAIMessages } from "../src/brains/openai.js";
 import { RouterBrain, trailingErrors } from "../src/brains/router.js";
 import { Architect } from "../src/architect.js";
@@ -216,7 +216,13 @@ describe("model configuration", () => {
     const cfg = modelsFromEnv({ OMNIROUTE_URL: "http://localhost:20128/v1", OMNIROUTE_FAST_MODEL: "qwen3:8b", ANTHROPIC_API_KEY: "x", CLOUDFLARE_ACCOUNT_ID: "acct", CLOUDFLARE_AI_TOKEN: "t" });
     expect(cfg.models.map((m) => `${m.tier}:${m.model}`)).toEqual(["balanced:auto", "fast:qwen3:8b", "strong:@cf/openai/gpt-oss-120b", "fast:@cf/openai/gpt-oss-20b"]);
     expect(cfg.models.every((m) => m.provider === "openai")).toBe(true);
-    expect(modelsFromEnv({}).models.map((m) => [m.provider === "openai" && m.baseUrl, m.model])).toEqual([["http://localhost:20128/v1", "auto"]]);
+    // Nothing configured: OmniRoute if it runs locally, else the built-in free model (no key).
+    expect(modelsFromEnv({}).models.map((m) => [m.provider === "openai" && m.baseUrl, m.model])).toEqual([
+      ["http://localhost:20128/v1", "auto"],
+      ["https://rchtch.app/free/v1", "@cf/zai-org/glm-4.7-flash"],
+    ]);
+    expect(modelsFromEnv({ ARCHITECT_FREE: "off" }).models).toHaveLength(1);
+    expect(modelsFromEnv({ ARCHITECT_FREE_URL: "http://localhost:8787/free/v1" }).models[1]).toMatchObject({ baseUrl: "http://localhost:8787/free/v1" });
     const b = brainFromEnv({ OMNIROUTE_URL: "http://localhost:20128/v1" }, dir);
     expect(b).toBeInstanceOf(RouterBrain);
     expect((b as RouterBrain).candidates).toHaveLength(1);
@@ -230,8 +236,23 @@ describe("model configuration", () => {
 
   it("loads the example file", () => {
     const cfg = loadModelsFile(path.resolve("architect.models.example.json"));
-    expect(cfg.models).toHaveLength(3);
+    expect(cfg.models.map((m) => m.model)).toEqual([
+      "qwen3:8b", "qwen3:32b", "deepseek-v3.2", "kimi-k3", "glm4", "auto", "claude-opus-5-5",
+    ]);
     expect(cfg.policy?.act).toBe("fast");
+  });
+
+  it("takes Gemini (AI Studio) as an ordinary OpenAI-compatible entry, key from the env", async () => {
+    const file = path.join(dir, "gemini.models.json");
+    const entry = { provider: "openai", id: "gemini/flash-lite", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.5-flash-lite", tier: "fast", apiKeyEnv: "GEMINI_API_KEY" };
+    await writeFile(file, JSON.stringify({ models: [entry] }));
+    const [c] = candidatesFrom(loadModelsFile(file), { GEMINI_API_KEY: "test-key" });
+    expect(c).toMatchObject({ id: "gemini/flash-lite", tier: "fast" });
+    expect(c!.brain).toBeInstanceOf(OpenAICompatBrain);
+    expect((c!.brain as OpenAICompatBrain).baseUrl).toBe(entry.baseUrl);
+    expect((c!.brain as unknown as { opts: { apiKey?: string } }).opts.apiKey).toBe("test-key");
+    // Not added from the env alone: Gemini is used only when the models file names it.
+    expect(modelsFromEnv({ GEMINI_API_KEY: "test-key" }).models.some((m) => m.model.startsWith("gemini"))).toBe(false);
   });
 
   it("defaults to OmniRoute's open models when nothing is configured; Claude is opt-in only", () => {

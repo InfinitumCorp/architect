@@ -5,30 +5,48 @@
   "name": "architect",
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
+  // Global users run on US servers (Ashburn, Virginia); Russia is served by the ru.* copies on Yandex Cloud.
+  "placement": { "region": "gcp:us-east4" },
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   // Production domain (Cloudflare zone rchtch.app); Wrangler creates the DNS record and certificate.
   "routes": [{ "pattern": "rchtch.app", "custom_domain": true }],
   "preview_urls": true,
   "assets": {
-    "directory": "podium",
+    "directory": "web",
     "binding": "ASSETS",
-    "run_worker_first": ["/v1/*", "/v1", "/healthz"],
+    "run_worker_first": ["/v1/*", "/v1", "/healthz", "/download", "/download/*", "/free/*", "/api/labyrinth"],
     "html_handling": "drop-trailing-slash"
   },
   "browser": { "binding": "BROWSER", "remote": true },
   // Workers AI: the model when no other model is configured (no API key needed).
   "ai": { "binding": "AI", "remote": true },
+  // The free model at /free/v1 (src/free.ts): at most 20 requests a minute per address.
+  "ratelimits": [{ "name": "FREE_RATE", "namespace_id": "4317", "simple": { "limit": 20, "period": 60 } }],
+  // Architect Desktop builds, served publicly at /download (src/downloads.ts).
+  "r2_buckets": [{ "binding": "DOWNLOADS", "bucket_name": "architect-downloads" }],
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "537874bc5c0a494b870ddc39bd008cb4" }],
-  "durable_objects": { "bindings": [{ "name": "CONDUCTOR", "class_name": "Conductor" }] },
+  // AI_BUDGET: the account-wide free Workers AI ledger, owned by the conjure-llm Worker.
+  // US Labyrinth (Worker lbrnth-host-us), reached Worker-to-Worker so Cloudflare Access on its hostname never applies.
+  "services": [{ "binding": "LBRNTH_US", "service": "lbrnth-host-us" }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "CONDUCTOR", "class_name": "Conductor" },
+      { "name": "AI_BUDGET", "class_name": "Budget", "script_name": "conjure-llm" }
+    ]
+  },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Conductor"] }],
   // The Worker reuses the Node build of the browser instrument; this swaps in Browser Rendering.
   "alias": { "playwright": "@cloudflare/playwright" },
   "vars": {
     // Shared "Infinitum Corp" Supabase project (public URL, not a secret).
-    "SUPABASE_URL": "https://ivqiskeziohbbtkcvlun.supabase.co"
+    "SUPABASE_URL": "https://ivqiskeziohbbtkcvlun.supabase.co",
+    // @search and /v1/search on VEIL Search, Infinitum's own engine (no key).
+    "VEIL_SEARCH_URL": "https://infinitumveil.app/api/search"
   },
   "observability": { "enabled": true }
-  // Secrets (wrangler secret put): ARCHITECT_API_TOKEN, SUPABASE_SERVICE_ROLE_KEY,
+  // People sign in with Cumulus ID: set ARCHITECT_CID_OWNERS (who may use /v1) as a var or secret;
+  // CID_ISSUER overrides https://id.cumuluscloud.app/realms/cumulus (e.g. a mirror).
+  // Secrets (wrangler secret put): ARCHITECT_API_TOKEN (machines only), SUPABASE_SERVICE_ROLE_KEY,
   // and a model: ANTHROPIC_API_KEY or OMNIROUTE_URL / ARCHITECT_OPENAI_* settings.
 }

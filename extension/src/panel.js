@@ -1,4 +1,5 @@
 import { ApiError, DEFAULT_BASE, FINAL, createClient, planWaiting, runLabel } from "./api.js";
+import { session, signIn as cidSignIn } from "./cid.js";
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, ...children) => {
@@ -11,7 +12,7 @@ let client = createClient();
 let timer = 0;
 
 async function loadClient() {
-  const { token = "" } = await chrome.storage.local.get("token");
+  const token = (await session())?.token || "";
   client = createClient({ base: DEFAULT_BASE, token });
   return token;
 }
@@ -29,7 +30,18 @@ function showNotice(err) {
     box.append(el("p", {}, el("button", { className: "btn primary", type: "button", textContent: "Sign in at rchtch.app", onclick: signIn })));
     box.append(el("p", { className: "small muted", textContent: "After signing in, come back and press Refresh." }));
   } else if (err.kind === "token") {
-    box.append(el("p", {}, el("button", { className: "btn primary", type: "button", textContent: "Open Options", onclick: () => chrome.runtime.openOptionsPage() })));
+    const go = (create) => async () => {
+      try {
+        await cidSignIn({ create });
+        await loadClient();
+        await refresh();
+      } catch (e) {
+        showNotice(new ApiError("http", e.message || String(e)));
+      }
+    };
+    box.append(el("p", { className: "row" },
+      el("button", { className: "btn primary", type: "button", textContent: "Sign in with Cumulus ID", onclick: go(false) }),
+      el("button", { className: "btn", type: "button", textContent: "Create a Cumulus ID", onclick: go(true) })));
   }
 }
 
@@ -65,7 +77,7 @@ function renderRuns(runs) {
   list.replaceChildren();
   if (!runs.length) return list.append(el("li", { className: "empty", textContent: "No runs yet." }));
   for (const run of runs) {
-    const open = el("a", { href: `${DEFAULT_BASE}/`, title: `Run ${run.id}: open the Podium`, target: "_blank", rel: "noopener", textContent: runLabel(run) });
+    const open = el("a", { href: `${DEFAULT_BASE}/`, title: `Run ${run.id}: open in Architect`, target: "_blank", rel: "noopener", textContent: runLabel(run) });
     const meta = el("div", { className: "row small" },
       el("span", { className: `status ${planWaiting(run) ? "awaiting_approval" : run.status}`, textContent: planWaiting(run) ? "plan review" : run.status.replace(/_/g, " ") }),
       el("span", { className: "muted", textContent: new Date(run.updatedAt || run.createdAt).toLocaleString() }));
@@ -115,14 +127,35 @@ function applyDraft(draft) {
   chrome.storage.session.remove("draft");
 }
 
+// Modes, as in the web app: Shift+Tab in the message box cycles them.
+const MODES = {
+  ask: { autonomy: "accompaniment", review: "agent_decides" },
+  plan: { autonomy: "accompaniment", review: "request_review" },
+  auto: { autonomy: "autopilot", review: "always_proceed" },
+  rehearse: { autonomy: "rehearsal", review: "always_proceed" },
+};
+chrome.storage.local.get("mode").then(({ mode }) => { if (MODES[mode]) $("mode").value = mode; });
+$("mode").addEventListener("change", () => chrome.storage.local.set({ mode: $("mode").value }));
+$("goal").addEventListener("keydown", (e) => {
+  if (e.key === "Tab" && e.shiftKey) {
+    e.preventDefault();
+    const keys = Object.keys(MODES);
+    $("mode").value = keys[(keys.indexOf($("mode").value) + 1) % keys.length];
+    $("mode").dispatchEvent(new Event("change"));
+  } else if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    $("new-run").requestSubmit();
+  }
+});
+
 $("new-run").addEventListener("submit", (e) => {
   e.preventDefault();
   const button = $("start");
   button.disabled = true;
   guard(async () => {
     const run = await client.start({
-      goal: $("goal").value, startUrl: $("start-url").value, autonomy: $("autonomy").value,
-      review: $("review").value, sameSite: $("same-site").checked,
+      goal: $("goal").value, startUrl: $("start-url").value, ...MODES[$("mode").value],
+      sameSite: $("same-site").checked,
     });
     $("goal").value = "";
     $("start-url").value = "";
@@ -138,7 +171,7 @@ $("refresh").addEventListener("click", () => refresh());
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "session" && changes.draft?.newValue) applyDraft(changes.draft.newValue);
-  if (area === "local" && changes.token) loadClient().then(refresh);
+  if (area === "local" && changes.cid) loadClient().then(refresh);
 });
 
 (async () => {

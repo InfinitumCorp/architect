@@ -6,37 +6,27 @@
   <title>:\ARCHITECT\ Options</title>
   <link rel="stylesheet" href="shell.css" />
   <style>.app-main { max-width: 560px; }</style>
+  <link rel="stylesheet" href="i18n/i18n.css" />
+  <script type="module" src="i18n/start.js"></script>
 </head>
 <body>
   <header class="app-bar">
     <span class="app-wordmark">:\ARCHITECT\<sup class="tm">™</sup></span>
-    <nav class="app-actions"><a href="https://rchtch.app/" target="_blank" rel="noopener">Podium</a></nav>
+    <nav class="app-actions"><a href="https://rchtch.app/" target="_blank" rel="noopener">Open Architect</a></nav>
   </header>
   <main class="app-main">
     <section class="section">
-      <h2 class="label">1. Sign in</h2>
-      <p>:\ARCHITECT\ at rchtch.app is behind Cloudflare Access. Sign in there once in this browser; the extension reuses that session.</p>
-      <div class="row">
-        <a class="btn" href="https://rchtch.app/" target="_blank" rel="noopener">Open rchtch.app</a>
-        <button class="btn" type="button" id="check">Check connection</button>
+      <h2 class="label">Sign in</h2>
+      <p id="who">Sign in with your Cumulus ID. No Cumulus ID yet? Create one here; you come straight back signed in.</p>
+      <div class="row" id="signed-out">
+        <button class="btn primary" type="button" id="signin">Sign in with Cumulus ID</button>
+        <button class="btn" type="button" id="create">Create a Cumulus ID</button>
       </div>
-      <p class="small muted" id="check-result" aria-live="polite"></p>
-    </section>
-    <section class="section">
-      <h2 class="label">2. API token</h2>
-      <p>The API also needs the server's token (the same one the Podium asks for). It is stored only in this browser profile.</p>
-      <form id="token-form">
-        <div class="field">
-          <label class="label" for="token">API token</label>
-          <input class="input" id="token" type="password" autocomplete="off" />
-        </div>
-        <div class="row">
-          <button class="btn primary" type="submit">Save</button>
-          <button class="btn" type="button" id="from-podium" title="Read the token the Podium saved in an open rchtch.app tab">Copy from open Podium tab</button>
-          <button class="btn" type="button" id="clear">Clear</button>
-        </div>
-      </form>
-      <p class="small muted" id="token-result" aria-live="polite"></p>
+      <div class="row" id="signed-in" hidden>
+        <button class="btn" type="button" id="check">Check connection</button>
+        <button class="btn" type="button" id="signout">Sign out</button>
+      </div>
+      <p class="small muted" id="result" aria-live="polite"></p>
     </section>
     <section class="section">
       <h2 class="label">3. Geo routing</h2>
