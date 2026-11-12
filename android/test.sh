@@ -18,9 +18,11 @@ fetch() { # path sha256
 fetch junit/junit/4.13.2/junit-4.13.2.jar 8e495b634469d64fb8acfa3495a065cbacc8a0fff55ce1e31007be4c16dc57d3
 fetch org/hamcrest/hamcrest-core/1.3/hamcrest-core-1.3.jar 66fdef91e9739348df7a096aa384a5685f4e875584cce89386a7a47251c4d8e9
 fetch org/json/json/20250517/json-20250517.jar 3ea61b2a06e31edf1c91134fe9106b0ebb16628be169f3db75bc7a2b06b45796
-CP="$LIB/junit-4.13.2.jar:$LIB/hamcrest-core-1.3.jar:$LIB/json-20250517.jar"
+# Java on Windows (Git Bash, MSYS, Cygwin) separates classpath entries with ; not :.
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) S=";" ;; *) S=":" ;; esac
+CP="$LIB/junit-4.13.2.jar$S$LIB/hamcrest-core-1.3.jar$S$LIB/json-20250517.jar"
 rm -rf "$OUT" && mkdir -p "$OUT"
 # Only the classes with no Android imports; MainActivity needs android.jar (build.sh).
 javac -encoding UTF-8 -Xlint:-options --release 11 -classpath "$CP" -d "$OUT" \
   src/com/infinitum/architect/CidIdToken.java $(find test -name '*.java')
-java -cp "$OUT:$CP" org.junit.runner.JUnitCore $(cd test && find . -name '*Test.java' | sed 's|^\./||; s|\.java$||; s|/|.|g')
+java -cp "$OUT$S$CP" org.junit.runner.JUnitCore $(cd test && find . -name '*Test.java' | sed 's|^\./||; s|\.java$||; s|/|.|g')
