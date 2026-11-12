@@ -24,10 +24,11 @@ lifecycle-common.jar $GOOGLE/androidx/lifecycle/lifecycle-common-jvm/2.8.7/lifec
 startup-runtime.aar $GOOGLE/androidx/startup/startup-runtime/1.1.1/startup-runtime-1.1.1.aar e0a6329a371262fe4c450372b70fdaf33b769ef6917094723787cfce896b1dd3
 arch-core-common.jar $GOOGLE/androidx/arch/core/core-common/2.2.0/core-common-2.2.0.jar 65308a06b1c00ee186cb9e19321383f043b993813f1522c47f4a3e3303bdba41
 arch-core-runtime.aar $GOOGLE/androidx/arch/core/core-runtime/2.2.0/core-runtime-2.2.0.aar a1be5e0caa2b07623862af6ae21b3ab0718123245184d0e30dea81b53f990a47
+tracing.aar $GOOGLE/androidx/tracing/tracing/1.0.0/tracing-1.0.0.aar 07b8b6139665b884a162eccf97891ca50f7f56831233bf25168ae04f7b568612
 "
 
 D=.deps
-STAMP="$D/stamp-1-amplitude-1.37.1"
+STAMP="$D/stamp-2-amplitude-1.37.1"
 [ -f "$STAMP" ] && exit 0
 mkdir -p "$D/dl" && find "$D" -mindepth 1 -maxdepth 1 ! -name dl -exec rm -rf {} + && mkdir -p "$D/jars"
 
