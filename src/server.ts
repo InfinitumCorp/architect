@@ -49,7 +49,7 @@ export interface ServerOptions {
   token?: string;
   /** Cumulus IDs (or usernames, handles, emails) who may use /v1 when signed in. Default: ARCHITECT_CID_OWNERS. */
   cidOwners?: string[];
-  /** Checks a Cumulus ID token. Default: the issuer in CID_ISSUER (https://id.cumuluscloud.app). */
+  /** Checks a Cumulus://ID access token. Default: the issuer in CID_ISSUER (https://id.cumuluscloud.app/realms/cumulus). */
   cidVerify?: CidVerifier;
   /** @conjure routes; defaults to CONJURE_URL + CONJURE_PRODUCT_KEY from the environment. */
   conjure?: ConjureRouteHandler;

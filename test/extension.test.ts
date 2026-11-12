@@ -86,43 +86,102 @@ describe("extension agent features", () => {
   });
 });
 
+const ISSUER = "https://id.cumuluscloud.app/realms/cumulus";
+const b64u = (v: unknown) => Buffer.from(typeof v === "string" ? v : new Uint8Array(v as ArrayBuffer)).toString("base64url");
+
+async function cidIssuerKeys() {
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const jwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k1", use: "sig", alg: "ES256" };
+  const sign = async (claims: Record<string, unknown>) => {
+    const h = b64u(JSON.stringify({ alg: "ES256", typ: "JWT", kid: "k1" }));
+    const p = b64u(JSON.stringify(claims));
+    const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, pair.privateKey, new TextEncoder().encode(`${h}.${p}`));
+    return `${h}.${p}.${b64u(sig)}`;
+  };
+  return { jwk, sign };
+}
+
+function fakeChrome(onAuth: (url: string) => string) {
+  const stored: Record<string, unknown> = {};
+  (globalThis as unknown as { chrome: unknown }).chrome = {
+    storage: {
+      local: {
+        get: async (k: string) => (k in stored ? { [k]: stored[k] } : {}),
+        set: async (o: Record<string, unknown>) => Object.assign(stored, o),
+        remove: async (k: string) => delete stored[k],
+      },
+    },
+    identity: {
+      getRedirectURL: (p: string) => `https://abc.chromiumapp.org/${p}`,
+      launchWebAuthFlow: async ({ url }: { url: string }) => onAuth(url),
+    },
+  };
+}
+
 describe("extension Cumulus ID sign-in", () => {
-  it("signs in with PKCE through chrome.identity and keeps the session", async () => {
-    const stored: Record<string, unknown> = {};
+  it("signs in with OIDC + PKCE through chrome.identity, verifies the ID token and keeps the session", async () => {
     let authUrl = "";
-    (globalThis as unknown as { chrome: unknown }).chrome = {
-      storage: {
-        local: {
-          get: async (k: string) => (k in stored ? { [k]: stored[k] } : {}),
-          set: async (o: Record<string, unknown>) => Object.assign(stored, o),
-          remove: async (k: string) => delete stored[k],
-        },
-      },
-      identity: {
-        getRedirectURL: (p: string) => `https://abc.chromiumapp.org/${p}`,
-        launchWebAuthFlow: async ({ url }: { url: string }) => {
-          authUrl = url;
-          return `https://abc.chromiumapp.org/cid?code=c0de&state=${new URL(url).searchParams.get("state")}`;
-        },
-      },
-    };
-    const { session, signIn } = await import("../extension/src/cid.js");
-    let body: Record<string, string> = {};
-    const s = await signIn({
-      create: true,
-      fetchImpl: async (_u: URL, init: RequestInit) => {
-        body = JSON.parse(String(init.body));
-        return jsonRes(200, { access_token: "cid-tok", expires_in: 900, profile: { cid: "C1", email: "a@b.co" } });
-      },
+    fakeChrome((url) => {
+      authUrl = url;
+      return `https://abc.chromiumapp.org/cid?code=c0de&state=${new URL(url).searchParams.get("state")}`;
     });
+    const { jwk, sign } = await cidIssuerKeys();
+    const { session, signIn, signOut } = await import("../extension/src/cid.js");
+    let body = new URLSearchParams();
+    const calls: string[] = [];
+    const fetchImpl = async (u: URL, init?: RequestInit) => {
+      calls.push(String(u));
+      if (String(u).endsWith("/certs")) return jsonRes(200, { keys: [jwk] });
+      if (String(u).endsWith("/revoke")) return jsonRes(200, {});
+      body = new URLSearchParams(String(init!.body));
+      const nonce = new URL(authUrl).searchParams.get("nonce");
+      const now = Math.floor(Date.now() / 1000);
+      const idToken = await sign({ iss: ISSUER, aud: "architect", sub: "cid_7c1e", exp: now + 300, iat: now, nonce, email: "a@cumuluscloud.app", preferred_username: "ada" });
+      return jsonRes(200, { access_token: "cid-tok", id_token: idToken, expires_in: 900 });
+    };
+    const s = await signIn({ create: true, fetchImpl });
     const q = new URL(authUrl).searchParams;
-    expect(authUrl.startsWith("https://id.cumuluscloud.app/api/id/authorize?")).toBe(true);
+    expect(authUrl.startsWith(`${ISSUER}/protocol/openid-connect/auth?`)).toBe(true);
     expect(q.get("client_id")).toBe("architect");
     expect(q.get("prompt")).toBe("create");
     expect(q.get("code_challenge_method")).toBe("S256");
-    expect(body).toMatchObject({ code: "c0de", client_id: "architect", redirect_uri: "https://abc.chromiumapp.org/cid" });
-    expect(body.code_verifier.length).toBeGreaterThan(40);
+    expect(q.get("scope")).toBe("openid profile email");
+    expect(q.get("nonce")!.length).toBeGreaterThan(10);
+    expect(calls[0]).toBe(`${ISSUER}/protocol/openid-connect/token`);
+    expect(Object.fromEntries(body)).toMatchObject({ grant_type: "authorization_code", code: "c0de", client_id: "architect", redirect_uri: "https://abc.chromiumapp.org/cid" });
+    expect(body.get("code_verifier")!.length).toBeGreaterThan(40);
     expect(s.token).toBe("cid-tok");
-    expect((await session())?.profile).toEqual({ cid: "C1", email: "a@b.co" });
+    expect((await session())?.profile).toEqual({ cid: "cid_7c1e", username: "ada", email: "a@cumuluscloud.app", name: undefined });
+    await signOut({ fetchImpl });
+    expect(calls.at(-1)).toBe(`${ISSUER}/protocol/openid-connect/revoke`);
+    expect(await session()).toBeNull();
+  });
+
+  it("refuses an ID token with the wrong nonce, audience, issuer or key", async () => {
+    const { jwk, sign } = await cidIssuerKeys();
+    const other = await cidIssuerKeys();
+    const now = Math.floor(Date.now() / 1000);
+    const good = { iss: ISSUER, aud: "architect", sub: "cid_7c1e", exp: now + 300, iat: now };
+    for (const [claims, signer] of [
+      [{ ...good, nonce: "someone-elses" }, sign],
+      [{ ...good, aud: "scalvs" }, sign],
+      [{ ...good, iss: "https://cognito-idp.us-east-1.amazonaws.com/x" }, sign],
+      [{ ...good, exp: now - 3600 }, sign],
+      [good, other.sign],
+    ] as const) {
+      let authUrl = "";
+      fakeChrome((url) => {
+        authUrl = url;
+        return `https://abc.chromiumapp.org/cid?code=c0de&state=${new URL(url).searchParams.get("state")}`;
+      });
+      const { session, signIn } = await import("../extension/src/cid.js");
+      const fetchImpl = async (u: URL) => {
+        if (String(u).endsWith("/certs")) return jsonRes(200, { keys: [jwk] });
+        const nonce = "nonce" in claims ? claims.nonce : new URL(authUrl).searchParams.get("nonce");
+        return jsonRes(200, { access_token: "cid-tok", id_token: await signer({ ...claims, nonce }), expires_in: 900 });
+      };
+      await expect(signIn({ fetchImpl })).rejects.toThrow();
+      expect(await session()).toBeNull();
+    }
   });
 });

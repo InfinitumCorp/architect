@@ -2,9 +2,10 @@
 // Runs the Architect server locally (Electron's own Node, no install needed) on a project folder
 // you choose, protected by a fresh random token each launch, and shows the Podium in a window.
 // Model keys live in the settings folder's .env (Settings > Open settings folder); never in the app.
-// People sign in with Cumulus ID (id.cumuluscloud.app) in their browser: the app sends them to
-// Cumulus ID with PKCE, rchtch.app/cid-return.html hands the one-time code back over architect://,
-// and the app trades it for a session here. The local server's token is a machine secret the app
+// People sign in with Cumulus://ID in their browser: the app sends them to the OIDC issuer
+// (https://id.cumuluscloud.app/realms/cumulus) with PKCE S256 and a nonce, rchtch.app/cid-return.html
+// hands the one-time code back over architect://, and the app trades it for tokens here and verifies
+// the ID token against the issuer's JWKS (ES256, iss, aud, exp, nonce) before keeping the session. The local server's token is a machine secret the app
 // adds to its own requests; nobody types or sees it.
 const { app, BrowserWindow, Menu, dialog, safeStorage, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
@@ -28,16 +29,17 @@ let win = null;
 let server = null;
 let current = null; // { port, token, project }
 
-// ---- Cumulus ID ----
+// ---- Cumulus://ID ----
 const CID_CLIENT = "architect";
 const cidIssuer = () => {
   const v = process.env.CID_ISSUER || readPrefs().cidIssuer || "";
-  return (/^https:\/\//.test(v) ? v : "https://id.cumuluscloud.app").replace(/\/+$/, "");
+  return (/^https:\/\//.test(v) ? v : "https://id.cumuluscloud.app/realms/cumulus").replace(/\/+$/, "");
 };
+const cidOidc = () => `${cidIssuer()}/protocol/openid-connect`;
 const CID_RETURN = "https://rchtch.app/cid-return.html?to=desktop";
 const cidFile = () => path.join(userDir(), "cumulus-id.bin");
 const b64url = (buf) => Buffer.from(buf).toString("base64url");
-let pending = null; // { verifier, state } while the browser is out signing in
+let pending = null; // { verifier, state, nonce } while the browser is out signing in
 
 function readCid() {
   try {
@@ -55,24 +57,51 @@ function writeCid(s) {
   fs.writeFileSync(cidFile(), safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(text) : text, { mode: 0o600 });
 }
 
+/** Verify the ID token: ES256 against the issuer's JWKS, then iss, aud, exp and nonce. */
+async function verifyCidIdToken(idToken, nonce) {
+  const parts = String(idToken || "").split(".");
+  if (parts.length !== 3) throw new Error("Cumulus ID sent no ID token");
+  const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+  const claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+  if (header.alg !== "ES256" || String(header.typ || "JWT").toLowerCase() === "at+jwt") throw new Error("Cumulus ID sent an unexpected token");
+  const r = await fetch(`${cidOidc()}/certs`, { headers: { accept: "application/json" } });
+  const { keys = [] } = await r.json().catch(() => ({}));
+  const jwk = keys.find((k) => k && k.kty === "EC" && k.crv === "P-256" && (!header.kid || k.kid === header.kid));
+  if (!jwk) throw new Error("Cumulus ID's signing key was not found");
+  const subtle = crypto.webcrypto.subtle;
+  const key = await subtle.importKey("jwk", { kty: "EC", crv: "P-256", x: jwk.x, y: jwk.y }, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+  const ok = await subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, Buffer.from(parts[2], "base64url"), Buffer.from(`${parts[0]}.${parts[1]}`));
+  const aud = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+  const now = Math.floor(Date.now() / 1000);
+  if (!ok || claims.iss !== cidIssuer() || !aud.includes(CID_CLIENT) || (aud.length > 1 && claims.azp !== CID_CLIENT) ||
+    typeof claims.exp !== "number" || claims.exp + 60 <= now || claims.nonce !== nonce || typeof claims.sub !== "string" || !claims.sub) {
+    throw new Error("That sign-in couldn't be verified");
+  }
+  return claims;
+}
+
 function startCidSignIn(create) {
   const verifier = b64url(crypto.randomBytes(48));
   const state = b64url(crypto.randomBytes(16));
-  pending = { verifier, state };
-  const u = new URL("/api/id/authorize", cidIssuer());
+  const nonce = b64url(crypto.randomBytes(16));
+  pending = { verifier, state, nonce };
+  const u = new URL(`${cidOidc()}/auth`);
   u.search = new URLSearchParams({
+    response_type: "code",
     client_id: CID_CLIENT,
     redirect_uri: CID_RETURN,
+    scope: "openid profile email",
     code_challenge: b64url(crypto.createHash("sha256").update(verifier).digest()),
     code_challenge_method: "S256",
     state,
+    nonce,
     ...(create ? { prompt: "create" } : {}),
   }).toString();
   shell.openExternal(u.toString());
   showSignIn("Finish in your browser. :\\ARCHITECT\\ continues here once you're signed in.");
 }
 
-/** architect://cid?code&state from the return page: trade the code for a session. */
+/** architect://cid?code&state from the return page: trade the code for tokens and verify them. */
 async function finishCidSignIn(link) {
   let u;
   try {
@@ -89,14 +118,16 @@ async function finishCidSignIn(link) {
   pending = null;
   if (!was || !code || state !== was.state) return showSignIn(u.searchParams.get("error") || "That sign-in didn't match. Please try again.");
   try {
-    const r = await fetch(new URL("/api/id/token", cidIssuer()), {
+    const r = await fetch(`${cidOidc()}/token`, {
       method: "POST",
-      headers: { "content-type": "application/json", accept: "application/json" },
-      body: JSON.stringify({ code, code_verifier: was.verifier, client_id: CID_CLIENT, redirect_uri: CID_RETURN }),
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({ grant_type: "authorization_code", code, code_verifier: was.verifier, client_id: CID_CLIENT, redirect_uri: CID_RETURN }).toString(),
     });
     const d = await r.json().catch(() => ({}));
-    if (!r.ok || !d.access_token) throw new Error(d.error || `Cumulus ID answered ${r.status}`);
-    writeCid({ token: d.access_token, profile: d.profile || null, until: Date.now() + Number(d.expires_in || 3600) * 1000 });
+    if (!r.ok || !d.access_token) throw new Error(d.error_description || d.error || `Cumulus ID answered ${r.status}`);
+    const claims = await verifyCidIdToken(d.id_token, was.nonce);
+    const profile = { cid: claims.sub, username: claims.preferred_username || claims.username, email: claims.email, name: claims.name };
+    writeCid({ token: d.access_token, profile, until: Date.now() + Number(d.expires_in || 3600) * 1000 });
     const prefs = readPrefs();
     if (prefs.project && fs.existsSync(prefs.project)) await openPodium(prefs.project);
     else {
@@ -119,7 +150,14 @@ function showSignIn(note) {
 function signOut() {
   const s = readCid();
   writeCid(null);
-  if (s) fetch(new URL("/api/id/signout", cidIssuer()), { method: "POST", headers: { authorization: `Bearer ${s.token}` } }).catch(() => {});
+  // Revoke at Cumulus://ID so this app session leaves the person's session list.
+  if (s) {
+    fetch(`${cidOidc()}/revoke`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token: s.token, client_id: CID_CLIENT }).toString(),
+    }).catch(() => {});
+  }
   showSignIn("Signed out.");
 }
 
