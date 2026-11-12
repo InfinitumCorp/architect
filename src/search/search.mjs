@@ -463,6 +463,26 @@ export function braveEngine({ apiKey, fetch: fetchImpl, timeoutMs = 8_000 }) {
   };
 }
 
+/**
+ * VEIL Search (infinitumveil.app/api/search): Infinitum's own engine. VEILBot's index first,
+ * blended with the web APIs VEIL holds keys for, plus Hacker News, Stack Overflow and Wikipedia,
+ * so it always answers and needs no key here. The query goes in the POST body, never a URL.
+ */
+export function veilEngine({ url = "https://infinitumveil.app/api/search", fetch: fetchImpl, timeoutMs = 10_000 } = {}) {
+  const doFetch = fetchImpl ?? globalThis.fetch;
+  return {
+    name: "veil",
+    async search(query, { signal } = {}) {
+      const res = await timed(doFetch, url, { method: "POST", headers: { "content-type": "application/json", accept: "application/json" }, body: JSON.stringify({ q: query }) }, timeoutMs, signal);
+      if (!res.ok) throw new SearchError(`VEIL Search returned ${res.status}`, 502);
+      const body = await res.json();
+      return (Array.isArray(body?.results) ? body.results : [])
+        .filter((r) => r && typeof r.url === "string" && /^https?:\/\//.test(r.url))
+        .map((r) => ({ title: clean(r.title ?? r.url), url: r.url, snippet: clean(r.snippet ?? r.description ?? "") }));
+    },
+  };
+}
+
 /* ---------------- answer model ---------------- */
 
 /** An OpenAI-compatible chat/completions caller: (messages, { signal }) => text. */
@@ -677,9 +697,15 @@ export async function sendWebResponse(res, response) {
   res.end(Buffer.from(await response.arrayBuffer()));
 }
 
-/** Search engines from the environment, in order: SearXNG, Yandex, Brave. */
+/** Search engines from the environment, in order: VEIL (VEIL_SEARCH_URL), SearXNG, Yandex, Brave. */
 export function enginesFromEnv(env = globalThis.process?.env ?? {}, { fetch } = {}) {
   const engines = [];
+  if (env.VEIL_SEARCH_URL) {
+    const u = new URL(env.VEIL_SEARCH_URL);
+    const local = ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
+    if (u.protocol !== "https:" && !(local && u.protocol === "http:")) throw new Error("VEIL_SEARCH_URL must use https");
+    engines.push(veilEngine({ url: env.VEIL_SEARCH_URL, fetch }));
+  }
   if (env.SEARXNG_URL) {
     const u = new URL(env.SEARXNG_URL);
     const local = ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);

@@ -42,3 +42,19 @@ describe("@search", () => {
     expect(await (await fetch(`${base}/v1/search`, { method: "POST", headers: H, body: JSON.stringify({ text: "deploy it" }) })).json()).toEqual({ mention: false });
   });
 });
+
+describe("VEIL engine", () => {
+  it("POSTs the query and keeps only http(s) results; VEIL_SEARCH_URL turns it on", async () => {
+    const { veilEngine, enginesFromEnv } = await import("../src/search/search.mjs");
+    let sent: { url: string; body: string } | undefined;
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      sent = { url, body: String(init.body) };
+      return Response.json({ results: [{ title: "<b>Docs</b>", url: "https://docs.example/a", snippet: "x &amp; y" }, { title: "bad", url: "javascript:1" }] });
+    }) as unknown as typeof fetch;
+    const veil = veilEngine({ url: "https://veil.test/api/search", fetch: fetchImpl });
+    expect(await veil.search("q1")).toEqual([{ title: "Docs", url: "https://docs.example/a", snippet: "x & y" }]);
+    expect(sent).toEqual({ url: "https://veil.test/api/search", body: JSON.stringify({ q: "q1" }) });
+    expect(enginesFromEnv({ VEIL_SEARCH_URL: "https://infinitumveil.app/api/search" }).map((e: { name: string }) => e.name)).toEqual(["veil"]);
+    expect(() => enginesFromEnv({ VEIL_SEARCH_URL: "http://infinitumveil.app/api/search" })).toThrow(/https/);
+  });
+});

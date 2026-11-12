@@ -62,6 +62,7 @@ export declare function toWebRequest(req: unknown, base?: string): Promise<Reque
 export declare function sendWebResponse(res: unknown, response: Response): Promise<void>;
 
 type Env = Record<string, string | undefined>;
+export declare function veilEngine(options?: { url?: string; fetch?: typeof fetch; timeoutMs?: number }): SearchEngine;
 export declare function enginesFromEnv(env?: Env, options?: { fetch?: typeof fetch }): SearchEngine[];
 export declare function chatFromEnv(env?: Env, options?: { fetch?: typeof fetch }): Chat | null;
 export declare function searchFromEnv(env?: Env, options?: { fetch?: typeof fetch; chat?: Chat | null }): Search | null;
