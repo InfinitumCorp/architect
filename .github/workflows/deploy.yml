@@ -1,0 +1,29 @@
+# Deploy the Worker to rchtch.app. Manual only: Actions > Deploy > Run workflow.
+# Needs the repo secret CLOUDFLARE_API_TOKEN (Cloudflare token with "Edit Cloudflare Workers").
+name: Deploy
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+# One deploy at a time; a second run waits instead of cutting a deploy off halfway.
+concurrency:
+  group: deploy-rchtch
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # Same wrangler.jsonc as a local deploy: worker "architect", custom domain rchtch.app.
+      - run: npx wrangler deploy --config wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 1a9f2df27b4a1f9e3de82eab367434e4
