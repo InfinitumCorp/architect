@@ -32,7 +32,7 @@ import postgres from "postgres";
 import { postgresCaller, SupabaseRunStore, type UnsafeSql } from "./stores/supabase.js";
 import { publicDownload, uploadDownload, type DownloadBucket } from "./downloads.js";
 import { freeModel, type RateLimiter } from "./free.js";
-import { proxyLabyrinthRequest } from "./labyrinth/proxy.js";
+import { proxyLabyrinthRequest, useLabyrinthServiceBinding } from "./labyrinth/proxy.js";
 import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
 import { checkAccess, cidIssuer, cidOwners, createCidVerifier, presentedToken, type CidVerifier } from "./cid.js";
 import { PERMISSIONS, type Autonomy, type Permission, type ReviewPolicy, type RunEvent } from "./types.js";
@@ -68,6 +68,8 @@ export interface Env {
   FREE_RATE?: RateLimiter;
   /** The central Labyrinth service (Nexus /api/labyrinth). Unset: /api/labyrinth answers 503. */
   LBRNTH_ENDPOINT?: string;
+  /** Service binding to lbrnth-host-us (US Labyrinth): relay calls to lbrnth-us.cumuluscloud.app stay inside Cloudflare. */
+  LBRNTH_US?: Fetcher;
   /** "off" turns the free model at /free/v1 off. */
   ARCHITECT_FREE?: string;
   [key: string]: unknown;
@@ -114,7 +116,10 @@ export default {
     if (free) return free;
     // Labyrinth: explicit, user-chosen saves to the person's private repository, authenticated
     // by their own Cumulus ID bearer (never the product API token). Same relay as `architect serve`.
-    if (url.pathname === "/api/labyrinth") return proxyLabyrinthRequest(req, env.LBRNTH_ENDPOINT, "architect");
+    if (url.pathname === "/api/labyrinth") {
+      useLabyrinthServiceBinding("lbrnth-us.cumuluscloud.app", env.LBRNTH_US);
+      return proxyLabyrinthRequest(req, env.LBRNTH_ENDPOINT, "architect");
+    }
     if (url.pathname === "/v1" || url.pathname.startsWith("/v1/")) {
       // People: a Cumulus ID listed in ARCHITECT_CID_OWNERS. Machines: ARCHITECT_API_TOKEN.
       // The hosted edition never runs open: neither configured means no API.

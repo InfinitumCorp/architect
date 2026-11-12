@@ -27,6 +27,8 @@
   "r2_buckets": [{ "binding": "DOWNLOADS", "bucket_name": "architect-downloads" }],
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "537874bc5c0a494b870ddc39bd008cb4" }],
   // AI_BUDGET: the account-wide free Workers AI ledger, owned by the conjure-llm Worker.
+  // US Labyrinth (Worker lbrnth-host-us), reached Worker-to-Worker so Cloudflare Access on its hostname never applies.
+  "services": [{ "binding": "LBRNTH_US", "service": "lbrnth-host-us" }],
   "durable_objects": {
     "bindings": [
       { "name": "CONDUCTOR", "class_name": "Conductor" },
