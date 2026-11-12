@@ -42,7 +42,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 
 /**
- * :\ARCHITECT\ for Android. A native shell around the Podium (https://rchtch.app, or your own
+ * :\ARCHITECT\ for Android. A native shell around the web app (https://rchtch.app, or your own
  * `architect serve`).
  *
  * People sign in with Cumulus://ID, never with a pasted token: the app opens the OpenID Connect
@@ -52,7 +52,7 @@ import java.security.SecureRandom;
  * architect://cid. The code is useless without the verifier, which never leaves the app. The ID
  * token is verified on the device ({@link CidIdToken}: ES256 against the JWKS, iss, aud, exp,
  * nonce) before the session is kept, and the person is keyed by its sub. The session then rides
- * into the Podium once, in the URL fragment. Sign-out revokes the token at the issuer.
+ * into the web app once, in the URL fragment. Sign-out revokes the token at the issuer.
  */
 public class MainActivity extends Activity {
     private static final int BG = Color.WHITE;
@@ -110,7 +110,7 @@ public class MainActivity extends Activity {
     }
 
     private void start() {
-        if (signedIn()) openPodium(server());
+        if (signedIn()) openWebApp(server());
         else showSignIn(null);
     }
 
@@ -230,7 +230,7 @@ public class MainActivity extends Activity {
             box.addView(n);
         }
 
-        // Where the Podium lives: rchtch.app, or your own `architect serve`. Not a credential.
+        // Where the web app lives: rchtch.app, or your own `architect serve`. Not a credential.
         TextView serverLabel = label("Architect server", DIM, 13, false);
         serverLabel.setPadding(0, dp(36), 0, 0);
         box.addView(serverLabel);
@@ -363,7 +363,7 @@ public class MainActivity extends Activity {
                     .putString("cid_profile", profile.toString())
                     .putLong("cid_until", until)
                     .apply();
-                runOnUiThread(() -> openPodium(server()));
+                runOnUiThread(() -> openWebApp(server()));
             } catch (Exception e) {
                 runOnUiThread(() -> showSignIn("Sign-in failed: " + e.getMessage()));
             }
@@ -415,7 +415,7 @@ public class MainActivity extends Activity {
         showSignIn(note);
     }
 
-    private void openPodium(final String server) {
+    private void openWebApp(final String server) {
         if (!signedIn()) {
             showSignIn(null);
             return;
@@ -429,14 +429,14 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMediaPlaybackRequiresUserGesture(true);
-        // Tells the Podium it runs inside this app, so it accepts the session handed over below.
+        // Tells the web app it runs inside this app, so it accepts the session handed over below.
         s.setUserAgentString(s.getUserAgentString() + " ArchitectShell/android");
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
                 String url = u.toString();
-                // The Podium's own Cumulus ID buttons: sign in, out or create natively instead.
+                // The web app's own Cumulus ID buttons: sign in, out or create natively instead.
                 if (isCidHost(u)) {
                     String path = u.getPath() == null ? "" : u.getPath();
                     if (path.equals("/api/id/authorize") || path.endsWith("/protocol/openid-connect/auth")) {
@@ -475,7 +475,7 @@ public class MainActivity extends Activity {
         web.loadUrl(server + "/" + (handoff.isEmpty() ? "" : "#cid_handoff=" + handoff));
     }
 
-    /** The Cumulus://ID host or the configured mirror (the Podium's button points at the former). */
+    /** The Cumulus://ID host or the configured mirror (the web app's button points at the former). */
     private boolean isCidHost(Uri u) {
         String host = u.getHost();
         return "https".equals(u.getScheme()) && host != null

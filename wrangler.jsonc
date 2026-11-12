@@ -5,13 +5,15 @@
   "name": "architect",
   "main": "src/worker.ts",
   "compatibility_date": "2026-10-01",
+  // Global users run on US servers (Ashburn, Virginia); Russia is served by the ru.* copies on Yandex Cloud.
+  "placement": { "region": "gcp:us-east4" },
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   // Production domain (Cloudflare zone rchtch.app); Wrangler creates the DNS record and certificate.
   "routes": [{ "pattern": "rchtch.app", "custom_domain": true }],
   "preview_urls": true,
   "assets": {
-    "directory": "podium",
+    "directory": "web",
     "binding": "ASSETS",
     "run_worker_first": ["/v1/*", "/v1", "/healthz", "/download", "/download/*", "/free/*", "/api/labyrinth"],
     "html_handling": "drop-trailing-slash"

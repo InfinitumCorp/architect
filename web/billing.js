@@ -1,6 +1,6 @@
 // @ts-nocheck (plain browser module)
 // :\ARCHITECT\ plans and payments through the Infinitum revenue API (Stripe Checkout and the
-// Stripe customer portal). Podium never sees card details or Stripe keys: it keeps this
+// Stripe customer portal). The web app never sees card details or Stripe keys: it keeps this
 // browser's billing-org API key, which only manages that org's own subscription.
 //
 //   <architect-plan></architect-plan>   (styles live in index.html, no inline styles here)
@@ -8,7 +8,7 @@
 export const REVENUE_URL = "https://infinitum-revenue.infinitumcorp.workers.dev";
 const STORE_KEY = "architect.billing.v1";
 
-/** Podium plans. Prices are the revenue catalog's (ARCHITECT is "cndctr" there). */
+/** :\ARCHITECT\ plans. Prices are the revenue catalog's (ARCHITECT is "cndctr" there). */
 export const PLANS = {
   free: { label: "Free", revenue: "cndctr_free", price: "$0", detail: "50 execution credits a month" },
   pro: { label: "Pro", revenue: "cndctr_pro", price: "$39 / month · 14-day trial", detail: "500 credits, 20 verified outcomes, Autopilot" },
@@ -42,7 +42,7 @@ async function call(fetchFn, method, path, { key, body } = {}) {
 
 export const validEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email ?? "").trim());
 
-/** Podium plan from revenue entitlements. An unpaid subscription falls back to Free. */
+/** Plan from revenue entitlements. An unpaid subscription falls back to Free. */
 export function planFromEntitlements(ent) {
   const p = ent?.products?.find((x) => x.product === "cndctr");
   if (!p || (p.plan !== "cndctr_free" && !PAID.has(p.status))) return "free";

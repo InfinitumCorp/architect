@@ -127,7 +127,7 @@ function applyDraft(draft) {
   chrome.storage.session.remove("draft");
 }
 
-// Modes, as in the Podium: Shift+Tab in the message box cycles them.
+// Modes, as in the web app: Shift+Tab in the message box cycles them.
 const MODES = {
   ask: { autonomy: "accompaniment", review: "agent_decides" },
   plan: { autonomy: "accompaniment", review: "request_review" },
