@@ -21,8 +21,8 @@
 <script type="module" src="/i18n/start.js"></script>
 
 <body>
-<style id="cid-style">.cid-slot{display:inline-flex;align-items:center;margin-left:auto}.cid-fixed{position:fixed;top:12px;right:12px;z-index:1000;background:#fff;color:#111820;padding:4px}@media (max-width:720px){.cid-slot .cid-who{display:none}}</style></head>
-<body><span class="cid-slot cid-fixed" data-cumulus-id data-label="Sign in"></span>
+<style id="cid-style">.cid-fixed{position:fixed;top:12px;right:12px;z-index:1000;background:#fff;color:#111820;padding:4px}</style></head>
+<body><div class="cid-fixed" data-cumulus-bar></div>
 <main>
   <p class="wordmark">:\ARCHITECT\<sup class="tm">™</sup></p>
   <h1>Chrome extension privacy policy</h1>
@@ -51,6 +51,7 @@
   <h2>Contact</h2>
   <p><a href="mailto:info@theinfinitumcorporation.ai">info@theinfinitumcorporation.ai</a></p>
 </main>
-<script src="https://id.cumuluscloud.app/id/button.js" data-client="architect" defer></script>
+<!-- Cumulus://ID account bar: copy of https://id.cumuluscloud.app/id/bar.js -->
+<script src="/cumulus-bar.js" data-client="architect" defer></script>
 </body>
 </html>
