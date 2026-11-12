@@ -40,7 +40,9 @@
   "alias": { "playwright": "@cloudflare/playwright" },
   "vars": {
     // Shared "Infinitum Corp" Supabase project (public URL, not a secret).
-    "SUPABASE_URL": "https://ivqiskeziohbbtkcvlun.supabase.co"
+    "SUPABASE_URL": "https://ivqiskeziohbbtkcvlun.supabase.co",
+    // @search and /v1/search on VEIL Search, Infinitum's own engine (no key).
+    "VEIL_SEARCH_URL": "https://infinitumveil.app/api/search"
   },
   "observability": { "enabled": true }
   // People sign in with Cumulus ID: set ARCHITECT_CID_OWNERS (who may use /v1) as a var or secret;
