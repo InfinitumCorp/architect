@@ -14,3 +14,4 @@ android/build/
 desktop/app/
 desktop/podium/
 *.upload.json
+android/.deps/

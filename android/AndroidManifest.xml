@@ -6,9 +6,12 @@
 
     <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Amplitude checks connectivity before sending its queued events. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Cleartext is allowed so the app can reach an Architect server on this phone (adb reverse) or the local network. -->
     <application
+        android:name=".ArchitectApp"
         android:label="Architect"
         android:icon="@drawable/ic_launcher"
         android:roundIcon="@drawable/ic_launcher"
@@ -33,5 +36,15 @@
                 <data android:scheme="architect" android:host="cid" />
             </intent-filter>
         </activity>
+        <!-- androidx.startup, as the lifecycle-process AAR's manifest would merge it in a Gradle
+             build: lets Amplitude see when the app goes to the background and back (sessions). -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="com.infinitum.architect.androidx-startup"
+            android:exported="false">
+            <meta-data
+                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+                android:value="androidx.startup" />
+        </provider>
     </application>
 </manifest>
