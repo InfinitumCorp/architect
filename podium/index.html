@@ -53,7 +53,6 @@
   .side { border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
   .brand { display:flex; align-items:baseline; gap:8px; padding:18px 18px 14px; border-bottom:1px solid var(--ink); }
   .brand h1 { font-weight:400; font-size:26px; line-height:1; letter-spacing:-.06em; margin:0; }
-  .brand .cid-slot { margin-left:auto; font-size:13px; }
   .side-actions { display:grid; gap:10px; padding:14px 18px 10px; }
   .side-actions button { text-align:left; display:flex; justify-content:space-between; align-items:center; }
   .side-actions input { width:100%; font-size:14px; }
@@ -251,12 +250,13 @@
 </style>
 <link rel="stylesheet" href="/i18n/i18n.css" />
 <script type="module" src="/i18n/start.js"></script>
-<style id="cid-style">.cid-slot{display:inline-flex;align-items:center;margin-left:auto}.cid-fixed{position:fixed;top:12px;right:12px;z-index:1000;background:#fff;color:#111820;padding:4px}@media (max-width:720px){.cid-slot .cid-who{display:none}}</style></head>
+<!-- Cumulus://ID account bar at the right end of the conversation header; on phones the header wraps so it never overflows. -->
+<style id="cid-style">.bar .cumulus-bar{display:inline-flex;align-items:center;flex-shrink:0;max-width:100%;margin-left:auto}@media (max-width:760px){.bar{flex-wrap:wrap;row-gap:8px}}</style></head>
 <body>
 <a class="skip-link" href="#prompt">Skip to the composer</a>
 <div class="app" id="app">
   <aside class="side" aria-label="Sessions">
-    <div class="brand"><h1>:\ARCHITECT\<sup class="tm">™</sup></h1><span class="cid-slot" data-cumulus-id data-label="Sign in" data-create="false"></span></div>
+    <div class="brand"><h1>:\ARCHITECT\<sup class="tm">™</sup></h1></div>
     <div class="side-actions">
       <button type="button" id="new-session">New session <kbd>Alt N</kbd></button>
       <input id="search" type="search" placeholder="Search sessions" aria-label="Search sessions" />
@@ -280,6 +280,7 @@
       <div class="title" id="title">New session</div>
       <span class="state" id="state"></span>
       <button type="button" class="quiet" id="panel-btn" aria-controls="panel" aria-expanded="true" title="Changes, plan, evidence and log (Alt B)">Changes</button>
+      <div class="cumulus-bar" data-cumulus-bar></div>
     </div>
     <div class="scroll" id="scroll"><div class="transcript" id="transcript" aria-live="polite"></div></div>
     <div class="composer">
@@ -330,7 +331,7 @@
   <div>
     <h2>Sign in to :\ARCHITECT\</h2>
     <p>Use your Cumulus ID. No Cumulus ID yet? Create one here; you come straight back signed in.</p>
-    <span data-cumulus-id data-label="Sign in with Cumulus ID"></span>
+    <div data-cumulus-bar></div>
     <p class="empty" id="signin-msg" role="alert"></p>
   </div>
 </div>
@@ -360,7 +361,7 @@
   const ownText = (goal) => String(goal || "").split(FOLLOW_UP_MARK)[0].split(MENTION_MARK)[0].replace(/^(\/[a-z-]+\s+)+/i, "");
   const isLocal = /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
 
-  // ---- Sign-in: Cumulus ID (cumulus-id.js). The API takes the Cumulus ID token as its Bearer. ----
+  // ---- Sign-in: Cumulus ID (the account bar, cumulus-bar.js). The API takes the Cumulus ID token as its Bearer. ----
   // The Android and desktop apps sign in natively and hand their session over once, in the fragment.
   // Only honoured inside those apps (their user agent says so), so a link can't sign anyone in.
   (() => {
@@ -1127,7 +1128,7 @@
   } else $("cloud-link").hidden = false;
 
   (async () => {
-    // cumulus-id.js (deferred) has run by DOMContentLoaded, so the first requests carry the session.
+    // cumulus-bar.js (deferred) has run by DOMContentLoaded, so the first requests carry the session.
     if (document.readyState === "loading") await new Promise((r) => addEventListener("DOMContentLoaded", r, { once: true }));
     drawComposer(); drawPanel();
     loadCaps();
@@ -1143,6 +1144,7 @@
   setInterval(refresh, 5000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 </script>
-<script src="/cumulus-id.js" data-client="architect" data-issuer="https://id.cumuluscloud.app" defer></script>
+<!-- Cumulus://ID account bar: copy of https://id.cumuluscloud.app/id/bar.js -->
+<script src="/cumulus-bar.js" data-client="architect" data-issuer="https://id.cumuluscloud.app" defer></script>
 </body>
 </html>
