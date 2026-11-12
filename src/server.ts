@@ -29,6 +29,8 @@ const WEB_ASSETS: Record<string, { file: string; type: string }> = {
   "/firm-suite.css": { file: "firm-suite.css", type: "text/css; charset=utf-8" },
   "/billing.js": { file: "billing.js", type: "text/javascript; charset=utf-8" },
   "/cumulus-bar.js": { file: "cumulus-bar.js", type: "text/javascript; charset=utf-8" },
+  "/amplitude.vendor.js": { file: "amplitude.vendor.js", type: "text/javascript; charset=utf-8" },
+  "/amplitude-boot.js": { file: "amplitude-boot.js", type: "text/javascript; charset=utf-8" },
   "/privacy.html": { file: "privacy.html", type: "text/html; charset=utf-8" },
   "/cid-return.html": { file: "cid-return.html", type: "text/html; charset=utf-8" },
   // Interface language (@infinitum/i18n): runtime and build-time catalogs, no model calls.
