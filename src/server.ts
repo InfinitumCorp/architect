@@ -189,6 +189,7 @@ export function createArchitectServer(opts: ServerOptions): Server {
           files: Boolean(project),
           shell: Boolean(project) && loopback(req),
           labyrinth: Boolean(opts.lbrnthEndpoint ?? process.env.LBRNTH_ENDPOINT),
+          revenueUrl: process.env.REVENUE_URL || undefined,
         });
       }
       if (resource === "files" && req.method === "GET") {
