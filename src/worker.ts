@@ -70,6 +70,8 @@ export interface Env {
   LBRNTH_ENDPOINT?: string;
   /** Service binding to lbrnth-host-us (US Labyrinth): relay calls to lbrnth-us.cumuluscloud.app stay inside Cloudflare. */
   LBRNTH_US?: Fetcher;
+  /** Central billing Worker (infinitum-revenue) the plan card talks to; default https://infinitum-revenue.infinitumcorp.workers.dev. */
+  REVENUE_URL?: string;
   /** "off" turns the free model at /free/v1 off. */
   ARCHITECT_FREE?: string;
   [key: string]: unknown;
@@ -217,7 +219,7 @@ export class Conductor extends DurableObject<Env> {
         return parsed as Record<string, unknown>;
       };
 
-      if (resource === "models" && req.method === "GET") return json(200, { ...a.models(), files: false, shell: false, labyrinth: Boolean(this.env.LBRNTH_ENDPOINT) });
+      if (resource === "models" && req.method === "GET") return json(200, { ...a.models(), files: false, shell: false, labyrinth: Boolean(this.env.LBRNTH_ENDPOINT), revenueUrl: this.env.REVENUE_URL || undefined });
 
       if (resource === "runs" && !id) {
         if (req.method === "GET") return json(200, await a.store.list(Number(url.searchParams.get("limit") ?? 50)));
