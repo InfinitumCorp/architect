@@ -128,6 +128,8 @@ function permissions(v: unknown): Permission[] | undefined {
  *   GET  /v1/approvals                  decisions waiting for a person
  *   POST /v1/approvals/:id              decide                 { approved, note?, by? }
  *   POST /v1/signals/:product           ecosystem trigger      { type, payload }
+ *   GET  /v1/settings                   geo routing preference { geoRouting, effective }
+ *   PUT  /v1/settings                   save the preference    { geoRouting }
  *   GET  /v1/openclaw                   is @scalvs connected   { connected, agent }
  *   POST /v1/openclaw                   @scalvs <task>         { text } -> { mention, text, agent }
  *   GET  /v1/search                     is web search connected { connected, engines, answers }
@@ -377,6 +379,18 @@ export function createArchitectServer(opts: ServerOptions): Server {
           });
           if (!ok) throw new HttpError(404, "no pending approval with that id");
           return json(res, 200, { ok: true });
+        }
+      }
+
+      if (resource === "settings" && !id) {
+        if (req.method === "GET") {
+          return json(res, 200, { geoRouting: architect.geoRouting, effective: architect.geoRoutingEffective });
+        }
+        if (req.method === "PUT") {
+          const b = await body(req);
+          if (typeof b.geoRouting !== "boolean") throw new HttpError(400, "geoRouting must be true or false");
+          await architect.setGeoRouting(b.geoRouting);
+          return json(res, 200, { geoRouting: architect.geoRouting, effective: architect.geoRoutingEffective });
         }
       }
 

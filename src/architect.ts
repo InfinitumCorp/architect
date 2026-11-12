@@ -5,8 +5,9 @@ import type { Brain, ContentBlockParam, MessageParam, ToolDef, ToolResultBlockPa
 import { commentsMessage, followUpGoal, hostRefusal, knowledgePrompt, planReview, relatedKnowledge, validTarget } from "./agentic.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { ToolInputError, validateInput, type Instrument, type ToolContext, type ToolSpec } from "./instruments/types.js";
+import { GeoHook } from "./geo/hook.js";
 import { RouterBrain } from "./brains/router.js";
-import { gate, newId, now, truncate } from "./policy.js";
+import { annotateDecision, gate, newId, now, truncate } from "./policy.js";
 import { composePrompt, composeSystem, interpolate, performSystem, verifySystem } from "./prompts.js";
 import { RunStore, type RunStoreLike } from "./store.js";
 import { addUsage, emptyUsage, estimateCost, type TurnUsage } from "./usage.js";
@@ -174,6 +175,7 @@ export class Architect extends EventEmitter {
   private active = new Set<string>();
   /** The in-memory run of each performing run, so comments reach the performer straight away. */
   private live = new Map<string, Run>();
+  private geo: GeoHook;
 
   constructor(private opts: ArchitectOptions) {
     super();
@@ -181,9 +183,25 @@ export class Architect extends EventEmitter {
     this.instruments = opts.instruments;
     this.store = opts.store ?? new RunStore(path.resolve(opts.dataDir ?? ".architect"));
     this.ceiling = opts.permissionCeiling ?? PERMISSIONS.filter((p) => p !== "standing.irreversible");
+    const settingsFile = path.isAbsolute(this.store.root) ? path.join(this.store.root, "settings.json") : undefined;
+    this.geo = new GeoHook({ settingsFile });
     for (const instrument of opts.instruments) {
       for (const spec of instrument.tools) this.toolIndex.set(spec.name, { instrument, spec });
     }
+  }
+
+  /** Saved geo-routing preference. False when the switch has never been turned on. */
+  get geoRouting(): boolean {
+    return this.geo.savedRouting;
+  }
+
+  /** Effective switch: INFINITUM_GEO_ENABLED overrides the saved preference. Default off. */
+  get geoRoutingEffective(): boolean {
+    return this.geo.enabled();
+  }
+
+  setGeoRouting(on: boolean): Promise<void> {
+    return this.geo.setRouting(on);
   }
 
   get pendingApprovals(): ApprovalRequest[] {
@@ -629,6 +647,8 @@ ${knowledgePrompt(known)}`;
     allowed: Set<string>,
   ): Promise<ToolResultBlockParam> {
     const entry = this.toolIndex.get(name);
+    const geoNote = this.geo.noteFor(rawInput);
+    if (geoNote) void this.emitEvent(run.id, "architect.note", { stepId, text: geoNote });
     const record = (risk: Risk, outcome: ActionRecord["outcome"], output: string, approval?: ActionRecord["approval"]) => {
       const action: ActionRecord = {
         id: newId("act"),
@@ -641,6 +661,7 @@ ${knowledgePrompt(known)}`;
         output: truncate(output, 2_000),
         approval,
         at: now(),
+        ...(geoNote ? { geo: geoNote } : {}),
       };
       run.actions.push(action);
       void this.emitEvent(run.id, "action", { ...action });
@@ -672,7 +693,10 @@ ${knowledgePrompt(known)}`;
       return errorResult(`Blocked: ${refused}. Do not try to reach it another way.`);
     }
     const risk = typeof entry.spec.risk === "function" ? await entry.spec.risk(input) : entry.spec.risk;
-    const decision = gate({ autonomy: run.autonomy, risk, required: entry.spec.permission, granted: run.score.permissions });
+    const decision = annotateDecision(
+      gate({ autonomy: run.autonomy, risk, required: entry.spec.permission, granted: run.score.permissions }),
+      geoNote,
+    );
 
     let approval: ActionRecord["approval"];
     if (decision.kind === "block") {
