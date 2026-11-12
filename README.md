@@ -288,7 +288,7 @@ src/
   library.ts          saved plans and Marketplace packages
   schedules.ts        Autopilot schedules
   cli.ts              `architect`
-podium/index.html     the web app
+web/index.html     the web app
 test/                 gate, architect end-to-end, real Chromium, API + SDK, budgets, library, schedules, ecosystem + Firmament
 examples/             spectre-adapter.ts
 ```

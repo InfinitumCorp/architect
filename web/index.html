@@ -796,7 +796,7 @@
     try {
       if (r && (LIVE.includes(r.status) || planWaiting(r))) {
         // Mid-run (or plan waiting): a steering comment the agent reads before its next move.
-        await api(`/v1/runs/${r.id}/comments`, { method: "POST", body: JSON.stringify({ target: "score", text, by: "podium" }) });
+        await api(`/v1/runs/${r.id}/comments`, { method: "POST", body: JSON.stringify({ target: "score", text, by: "web" }) });
       } else {
         const allow = hostsOf($("allow-hosts").value), block = hostsOf($("block-hosts").value), budget = Number($("budget").value);
         const run = await api("/v1/runs", { method: "POST", body: JSON.stringify({
@@ -1067,7 +1067,7 @@
       note = prompt.value.trim() || window.prompt("What should Architect do differently? (optional)") || undefined;
       prompt.value = ""; grow();
     }
-    await api(`/v1/approvals/${id}`, { method: "POST", body: JSON.stringify({ approved, note, by: "podium" }) });
+    await api(`/v1/approvals/${id}`, { method: "POST", body: JSON.stringify({ approved, note, by: "web" }) });
     drawSession(false);
   }
   async function act(kind, runId) {
