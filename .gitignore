@@ -16,3 +16,5 @@ data/geo/
 desktop/app/
 desktop/web/
 *.upload.json
+android/.gradle/
+android/local.properties

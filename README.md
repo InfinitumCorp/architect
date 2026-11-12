@@ -144,12 +144,16 @@ Configure with `ARCHITECT_PRODUCT_<KEY>_URL` / `ARCHITECT_PRODUCT_<KEY>_TOKEN` f
 
 **Web app.** `architect serve` serves the app at http://localhost:7337. It is an installable web app: in Chrome or Edge choose *Install app*, or on a phone *Add to Home screen*. The page shell works offline, and runs always go to the live API.
 
-**Android app.** `com.infinitum.architect` is a native shell around the web app. It shows a connect screen for the server address and token, and the token stays on the phone. Build it without Gradle (you need the Android SDK build-tools and a JDK):
+**Android app.** `com.infinitum.architect` is a native shell around the web app. People sign in with Cumulus://ID (or create one in the same flow) and can point it at another server address. It is a Gradle project in `android/` (you need the Android SDK and JDK 17+; the wrapper downloads Gradle):
 
 ```bash
-bash android/build.sh          # -> android/build/architect.apk (debug-signed)
-adb install -r android/build/architect.apk
+cd android
+./gradlew assembleDebug         # -> build/outputs/apk/debug/architect-debug.apk
+./gradlew testDebugUnitTest     # JVM tests for the ID token check
+adb install -r build/outputs/apk/debug/architect-debug.apk
 ```
+
+The app counts screen views and sessions with the official Amplitude Android SDK (`ArchitectApp.java`): no autocapture of taps or text, no session replay, no IP address, location or advertising IDs, US region.
 
 To reach the server over USB, run `adb reverse tcp:7337 tcp:7337` and use http://localhost:7337. If port 7337 is already taken on the phone, map another one, for example `adb reverse tcp:7338 tcp:7337` and http://localhost:7338. Over Wi-Fi, use http://<computer-ip>:7337 and run `architect serve` with a token. Screenshots are in [android/screenshots](android/screenshots).
 
@@ -171,7 +175,7 @@ To reach the server over USB, run `adb reverse tcp:7337 tcp:7337` and use http:/
 
 `POST /v1/runs`, `/recover` and `/encore` also accept `budgetUsd`.
 
-People sign in with Cumulus://ID (OIDC issuer `https://id.cumuluscloud.app/realms/cumulus`, public client `architect`, PKCE S256; "Create a Cumulus://ID" sends `prompt=create`). The web app (the Cumulus://ID button), the Android and desktop apps and the Chrome extension send that session as `Authorization: Bearer <access token>`. The server verifies it against the issuer's JWKS (ES256, `typ: at+jwt`, `iss`, `aud: architect`, `exp`), confirms the session at the issuer's `userinfo`, keys the person by `sub` (the cid), and admits the cids, usernames, handles or emails in `ARCHITECT_CID_OWNERS`. The extension, the desktop app and the Android app use the OIDC endpoints with a nonce and verify the ID token against the JWKS (`iss`, `aud`, `exp`, `nonce`) before keeping a session (on Android, `android/src/com/infinitum/architect/CidIdToken.java` with `java.security`; its JVM tests run with `bash android/test.sh`, no Android SDK needed); the web button uses the issuer's `/api/id/*` compatibility routes. Sign-out revokes the token at the issuer. `ARCHITECT_API_TOKEN` is for machines (scripts, MCP); nobody types it. With neither set, a local `architect serve` stays open; the hosted Worker refuses `/v1`.
+People sign in with Cumulus://ID (OIDC issuer `https://id.cumuluscloud.app/realms/cumulus`, public client `architect`, PKCE S256; "Create a Cumulus://ID" sends `prompt=create`). The web app (the Cumulus://ID button), the Android and desktop apps and the Chrome extension send that session as `Authorization: Bearer <access token>`. The server verifies it against the issuer's JWKS (ES256, `typ: at+jwt`, `iss`, `aud: architect`, `exp`), confirms the session at the issuer's `userinfo`, keys the person by `sub` (the cid), and admits the cids, usernames, handles or emails in `ARCHITECT_CID_OWNERS`. The extension, the desktop app and the Android app use the OIDC endpoints with a nonce and verify the ID token against the JWKS (`iss`, `aud`, `exp`, `nonce`) before keeping a session (on Android, `android/src/com/infinitum/architect/CidIdToken.java` with `java.security`; its JVM tests run with `cd android && ./gradlew testDebugUnitTest`); the web button uses the issuer's `/api/id/*` compatibility routes. Sign-out revokes the token at the issuer. `ARCHITECT_API_TOKEN` is for machines (scripts, MCP); nobody types it. With neither set, a local `architect serve` stays open; the hosted Worker refuses `/v1`.
 
 ## MCP server (Claude Code, Cursor, other agents)
 
