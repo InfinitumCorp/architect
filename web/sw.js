@@ -1,5 +1,5 @@
 // Web app service worker: keeps the app shell available offline. API calls (/v1) and downloads always go to the network.
-const SHELL = "architect-web-v18";
+const SHELL = "architect-web-v19";
 const FILES = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/firm-suite.js", "/firm-suite.css", "/cumulus-bar.js", "/i18n/i18n.js", "/i18n/i18n.css", "/i18n/start.js", "/i18n/catalogs.js"];
 
 self.addEventListener("install", (e) => {

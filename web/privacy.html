@@ -12,6 +12,7 @@
   .wordmark { font:600 18px ui-monospace,monospace; letter-spacing:.04em; margin:0 0 40px; }
   .wordmark sup { font-size:.55em; }
   h1 { font-size:28px; font-weight:600; margin:0 0 4px; }
+  h2.part { font-size:22px; border-top:2px solid #000; margin-top:48px; }
   h2 { font-size:18px; font-weight:600; margin:36px 0 8px; padding-top:24px; border-top:1px solid #e4e4e4; }
   .dim { color:#6e6e6e; margin:0; }
   code { font:14px ui-monospace,monospace; background:#f5f5f5; padding:1px 4px; border-radius:4px; }
@@ -19,14 +20,33 @@
 </style>
 <link rel="stylesheet" href="/i18n/i18n.css" />
 <script type="module" src="/i18n/start.js"></script>
-
-<body>
-<style id="cid-style">.cid-fixed{position:fixed;top:12px;right:12px;z-index:1000;background:#fff;color:#111820;padding:4px}</style></head>
+<style id="cid-style">.cid-fixed{position:fixed;top:12px;right:12px;z-index:1000;background:#fff;color:#111820;padding:4px}</style>
+</head>
 <body><div class="cid-fixed" data-cumulus-bar></div>
 <main>
   <p class="wordmark">:\ARCHITECT\<sup class="tm">™</sup></p>
-  <h1>Chrome extension privacy policy</h1>
-  <p class="dim">The Infinitum Corporation. Last updated 8 November 2026.</p>
+  <h1>Privacy policy</h1>
+  <p class="dim">The Infinitum Corporation. Last updated 12 November 2026.</p>
+  <p>This page covers the :\ARCHITECT\ web app at <code>rchtch.app</code> and the :\ARCHITECT\ Chrome extension.</p>
+
+  <h2 class="part" id="web-app">The web app</h2>
+
+  <h2>Signing in</h2>
+  <p>You sign in with Cumulus ID at <code>id.cumuluscloud.app</code>. The web app keeps the sign-in token in this tab's session storage, which the browser clears when the tab closes, and sends it with each request so the server knows it is you.</p>
+
+  <h2>What you send</h2>
+  <p>The tasks you type, the images and files you attach, your comments, approvals and run options go to the :\ARCHITECT\ server, which runs them with an AI model and keeps a record of each run (the plan, the steps, the results and the cost) so you can open it again. <code>@search</code> questions go to VEIL Search, Infinitum's own search engine.</p>
+
+  <h2>Plans and payments</h2>
+  <p>If you choose a paid plan, your billing email goes to the Infinitum billing service and card details go straight to Stripe Checkout. The web app never sees your card. This browser keeps your billing account key and plan in local storage.</p>
+
+  <h2>Analytics</h2>
+  <p>We use Amplitude to count page views and sessions, so we know how many people use the app. It does not record what you type, your clicks on forms, your screen or your IP address, and it sends nothing to advertisers. Amplitude stores a random device ID in this browser.</p>
+
+  <h2>What we do not do</h2>
+  <p>No advertising, no session recording, no selling or renting your data.</p>
+
+  <h2 class="part" id="extension">The Chrome extension</h2>
 
   <h2>What the extension sends</h2>
   <p>The extension talks only to the :\ARCHITECT\ server at <code>rchtch.app</code>, and only when you act in its side panel:</p>
