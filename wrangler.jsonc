@@ -13,7 +13,7 @@
   "routes": [{ "pattern": "rchtch.app", "custom_domain": true }],
   "preview_urls": true,
   "assets": {
-    "directory": "podium",
+    "directory": "web",
     "binding": "ASSETS",
     "run_worker_first": ["/v1/*", "/v1", "/healthz", "/download", "/download/*", "/free/*", "/api/labyrinth"],
     "html_handling": "drop-trailing-slash"

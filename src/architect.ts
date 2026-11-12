@@ -39,7 +39,7 @@ export interface ArchitectOptions {
   store?: RunStoreLike;
   /** Upper bound on what any Score may be granted. Defaults to everything except standing.irreversible. */
   permissionCeiling?: Permission[];
-  /** Decides approvals interactively (CLI). Without one, approvals wait for `decide()` (server / Podium). */
+  /** Decides approvals interactively (CLI). Without one, approvals wait for `decide()` (server / web app). */
   approvalHandler?: ApprovalHandler;
   approvalTimeoutMs?: number;
   maxTurnsPerStep?: number;
@@ -161,7 +161,7 @@ class BudgetExceeded extends Error {}
 
 /**
  * :\ARCHITECT\ — Compose a Score, Perform it with Instruments, Verify the outcome.
- * Emits "event" with every RunEvent; the same events are persisted for the Podium.
+ * Emits "event" with every RunEvent; the same events are persisted for the web app.
  */
 export class Architect extends EventEmitter {
   readonly store: RunStoreLike;
@@ -930,7 +930,7 @@ ${knowledgePrompt(known)}`;
     return decision;
   }
 
-  /** Resolve a pending approval (from the Podium, the API or another product). */
+  /** Resolve a pending approval (from the web app, the API or another product). */
   decide(approvalId: string, decision: ApprovalDecision): boolean {
     const p = this.pending.get(approvalId);
     if (!p) return false;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-// @ts-ignore plain browser module served from podium/
-import { REVENUE_URL, openPortal, planFromEntitlements, readReturn, startUpgrade, syncPlan } from "../podium/billing.js";
+// @ts-ignore plain browser module served from web/
+import { REVENUE_URL, openPortal, planFromEntitlements, readReturn, startUpgrade, syncPlan } from "../web/billing.js";
 
 function fakeRevenue(routes: Record<string, [number, unknown]>) {
   const calls: { path: string; auth?: string; body?: any }[] = [];
@@ -13,7 +13,7 @@ function fakeRevenue(routes: Record<string, [number, unknown]>) {
   return { calls, fetch };
 }
 
-describe("Podium billing", () => {
+describe("web app billing", () => {
   it("creates a billing org once and opens Checkout back to rchtch.app", async () => {
     const api = fakeRevenue({
       "/v1/signup": [201, { orgId: "org_1", apiKey: "ik_1" }],

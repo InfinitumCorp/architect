@@ -19,7 +19,7 @@ import { searchRoutesFromEnv, type SearchRoutes } from "./search/search.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-const PODIUM_ASSETS: Record<string, { file: string; type: string }> = {
+const WEB_ASSETS: Record<string, { file: string; type: string }> = {
   "/manifest.webmanifest": { file: "manifest.webmanifest", type: "application/manifest+json" },
   "/sw.js": { file: "sw.js", type: "text/javascript; charset=utf-8" },
   "/icon.svg": { file: "icon.svg", type: "image/svg+xml" },
@@ -108,7 +108,7 @@ function permissions(v: unknown): Permission[] | undefined {
 }
 
 /**
- * The Architect HTTP API and the Podium (the one-screen view of goal, plan, live actions,
+ * The Architect HTTP API and the web app (the one-screen view of goal, plan, live actions,
  * decisions waiting for you and the evidence behind every result).
  *
  *   POST /v1/runs                       start a run            { goal, autonomy?, inputs?, startUrl?, permissions?, composeOnly? }
@@ -161,16 +161,16 @@ export function createArchitectServer(opts: ServerOptions): Server {
     const parts = url.pathname.split("/").filter(Boolean);
     try {
       if (url.pathname === "/api/labyrinth") return await serveNodeLabyrinthProxy(req, res, opts.lbrnthEndpoint ?? process.env.LBRNTH_ENDPOINT, "architect");
-      if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/podium")) {
+      if (req.method === "GET" && url.pathname === "/") {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        res.end(await readFile(path.join(here, "..", "podium", "index.html"), "utf8"));
+        res.end(await readFile(path.join(here, "..", "web", "index.html"), "utf8"));
         return;
       }
       // Installable web app: manifest, service worker and icons (public, no secrets).
-      const asset = req.method === "GET" ? PODIUM_ASSETS[url.pathname] : undefined;
+      const asset = req.method === "GET" ? WEB_ASSETS[url.pathname] : undefined;
       if (asset) {
         res.writeHead(200, { "content-type": asset.type, "cache-control": "no-cache" });
-        res.end(await readFile(path.join(here, "..", "podium", asset.file)));
+        res.end(await readFile(path.join(here, "..", "web", asset.file)));
         return;
       }
       if (url.pathname === "/healthz") return json(res, 200, { ok: true, at: now() });

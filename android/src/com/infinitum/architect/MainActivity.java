@@ -42,14 +42,14 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 
 /**
- * :\ARCHITECT\ for Android. A native shell around the Podium (https://rchtch.app, or your own
+ * :\ARCHITECT\ for Android. A native shell around the web app (https://rchtch.app, or your own
  * `architect serve`).
  *
  * People sign in with Cumulus ID (id.cumuluscloud.app), never with a pasted token: the app opens
  * Cumulus ID in a Custom Tab (OAuth 2.0 code + PKCE S256), the sign-in page also offers "Create a
  * Cumulus ID", and https://rchtch.app/cid-return.html hands the one-time code back over
  * architect://cid. The code is useless without the verifier, which never leaves the app. The
- * session then rides into the Podium once, in the URL fragment.
+ * session then rides into the web app once, in the URL fragment.
  */
 public class MainActivity extends Activity {
     private static final int BG = Color.WHITE;
@@ -102,7 +102,7 @@ public class MainActivity extends Activity {
     }
 
     private void start() {
-        if (signedIn()) openPodium(server());
+        if (signedIn()) openWebApp(server());
         else showSignIn(null);
     }
 
@@ -197,7 +197,7 @@ public class MainActivity extends Activity {
             box.addView(n);
         }
 
-        // Where the Podium lives: rchtch.app, or your own `architect serve`. Not a credential.
+        // Where the web app lives: rchtch.app, or your own `architect serve`. Not a credential.
         TextView serverLabel = label("Architect server", DIM, 13, false);
         serverLabel.setPadding(0, dp(36), 0, 0);
         box.addView(serverLabel);
@@ -310,7 +310,7 @@ public class MainActivity extends Activity {
                     .putString("cid_profile", profile == null ? "{}" : profile.toString())
                     .putLong("cid_until", until)
                     .apply();
-                runOnUiThread(() -> openPodium(server()));
+                runOnUiThread(() -> openWebApp(server()));
             } catch (Exception e) {
                 runOnUiThread(() -> showSignIn("Sign-in failed: " + e.getMessage()));
             }
@@ -345,7 +345,7 @@ public class MainActivity extends Activity {
         showSignIn(note);
     }
 
-    private void openPodium(final String server) {
+    private void openWebApp(final String server) {
         if (!signedIn()) {
             showSignIn(null);
             return;
@@ -359,7 +359,7 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setMediaPlaybackRequiresUserGesture(true);
-        // Tells the Podium it runs inside this app, so it accepts the session handed over below.
+        // Tells the web app it runs inside this app, so it accepts the session handed over below.
         s.setUserAgentString(s.getUserAgentString() + " ArchitectShell/android");
         final String issuer = issuer();
         web.setWebViewClient(new WebViewClient() {
@@ -367,7 +367,7 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 Uri u = req.getUrl();
                 String url = u.toString();
-                // The Podium's own Cumulus ID buttons: sign in, out or create natively instead.
+                // The web app's own Cumulus ID buttons: sign in, out or create natively instead.
                 if (url.startsWith(issuer + "/api/id/authorize")) {
                     startSignIn("create".equals(u.getQueryParameter("prompt")));
                     return true;

@@ -1,5 +1,5 @@
-// Podium service worker: keeps the app shell available offline. API calls (/v1) and downloads always go to the network.
-const SHELL = "architect-podium-v15";
+// Web app service worker: keeps the app shell available offline. API calls (/v1) and downloads always go to the network.
+const SHELL = "architect-web-v15";
 const FILES = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/firm-suite.js", "/firm-suite.css", "/cumulus-id.js", "/i18n/i18n.js", "/i18n/i18n.css", "/i18n/start.js", "/i18n/catalogs.js"];
 
 self.addEventListener("install", (e) => {
@@ -15,7 +15,7 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== location.origin || url.pathname.startsWith("/v1/") || url.pathname.startsWith("/download")) return;
-  // Network first, so a new Podium shows up at once; the cache answers when the server is unreachable.
+  // Network first, so a new web app shows up at once; the cache answers when the server is unreachable.
   e.respondWith(
     fetch(e.request)
       .then((res) => {

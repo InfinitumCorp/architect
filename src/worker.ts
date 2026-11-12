@@ -1,7 +1,7 @@
 /**
  * :\ARCHITECT\ on Cloudflare Workers.
  *
- *   /               the Podium (static assets, see wrangler.jsonc)
+ *   /               the web app (static assets, see wrangler.jsonc)
  *   /healthz        liveness
  *   /free/v1/...    the free open-weight model (no key; see src/free.ts)
  *   /api/labyrinth  relay to the central Labyrinth service (see LABYRINTH.md)
