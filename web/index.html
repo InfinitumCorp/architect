@@ -833,6 +833,7 @@
     const want = store.get("architect.model", "auto");
     sel.value = opts.some((o) => o.id === want) ? want : "auto";
     $("saved-tab").hidden = !caps.labyrinth;
+    if (caps.revenueUrl) document.querySelector("architect-plan")?.setAttribute("revenue-url", caps.revenueUrl);
     if (!caps.labyrinth && panelTab === "saved") panelTab = "changes";
     drawPanel();
     drawComposer(); if (thread.length) drawTranscript(false);
