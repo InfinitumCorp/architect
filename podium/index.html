@@ -789,6 +789,7 @@
     // @conjure wins when a message has both, the same order as +SPCTR's Ask.
     if (CONJURE.test(text)) { prompt.value = ""; grow(); askConjure(text); return; }
     if (SCALVS.test(text)) { prompt.value = ""; grow(); askScalvs(text); return; }
+    if (SEARCH.test(text)) { prompt.value = ""; grow(); askSearch(text); return; }
     const btn = $("send-btn"); btn.disabled = true;
     const r = latest();
     try {
@@ -881,6 +882,19 @@
   // ---- @conjure <question>: a live Conjure™ forecast, followed until the report is in ----
   const SCALVS = /(^|[^\w@＠./])[@＠]scal(?:vs|us)(?![\w-]|\.[a-z])/i;
   const CONJURE = /(^|[^\w@＠./])[@＠]conjure(?![\w-]|\.[a-z])/i;
+  // ---- @search <question>: Infinitum Search reads the web and answers with numbered sources ----
+  const SEARCH = /(^|[^\w@＠./])[@＠]search(?![\w-]|\.[a-z])/i;
+  async function askSearch(text) {
+    const x = { session: session || "", command: text, pending: true, claw: true, label: "Search" };
+    shellLog.push(x); drawTranscript(true);
+    try {
+      const d = await api("/v1/search", { method: "POST", body: JSON.stringify({ text }) });
+      if (!d.mention) throw new Error("Write a question after @search.");
+      const sources = (d.sources || []).map((s) => `[${s.n}] ${s.title}\n    ${s.url}`).join("\n");
+      x.output = `${d.answer || "No written answer: here are the sources."}${sources ? `\n\nSources\n${sources}` : ""}`;
+    } catch (err) { x.error = err.message; }
+    x.pending = false; drawTranscript(true);
+  }
   async function askScalvs(text) {
     const x = { session: session || "", command: text, pending: true, claw: true, label: "SCALVS" };
     shellLog.push(x); drawTranscript(true);
