@@ -4,9 +4,11 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
 <meta name="theme-color" content="#ffffff" />
+<meta name="description" content="Architect is a coding agent: describe a task in plain words and it plans the work, edits the code or drives the browser, checks the result and shows you every change." />
 <meta name="mobile-web-app-capable" content="yes" />
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://infinitum-revenue.infinitumcorp.workers.dev" crossorigin />
 <link rel="stylesheet" href="/firm-suite.css" />
 <script type="module" src="/firm-suite.js"></script>
 <script type="module" src="/billing.js"></script>
@@ -385,7 +387,14 @@
   // EventSource and <img> can't send headers.
   const withToken = (u) => { const t = cidToken(); return t ? u + (u.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(t) : u; };
   const signInNeeded = () => !$("signin-sheet").hidden;
+  // The hosted server refuses /v1 without a session: ask for sign-in instead of sending a request that 401s.
+  const hosted = /(^|\.)rchtch\.app$|\.workers\.dev$/.test(location.hostname);
   async function api(p, opts = {}) {
+    if (hosted && !cidToken()) {
+      $("signin-msg").textContent = "";
+      $("signin-sheet").hidden = false;
+      throw new Error("Sign in with Cumulus ID.");
+    }
     const r = await fetch(p, { ...opts, headers: { "content-type": "application/json", ...authHeaders() } });
     const d = await r.json().catch(() => ({}));
     if (r.status === 401 || r.status === 403) {
