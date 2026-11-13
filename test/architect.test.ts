@@ -124,6 +124,21 @@ describe("Architect end to end", () => {
     expect(existsSync(path.join(ws.root, "x.txt"))).toBe(false);
   });
 
+  it("lets a plan that writes or runs commands read the workspace too", async () => {
+    const brain = new ScriptedBrain(draft({ permissions: ["workspace.write", "shell"] }), [
+      (req) => {
+        expect(req.tools.map((t) => t.name)).toEqual(expect.arrayContaining(["workspace_read", "workspace_glob", "workspace_write"]));
+        return [toolUse("workspace_write", { path: "hello.txt", content: "hi" })];
+      },
+      () => [toolUse("workspace_read", { path: "hello.txt" })],
+      () => [toolUse("step_complete", { summary: "wrote and read hello.txt" })],
+    ]);
+    const architect = new Architect({ brain, instruments: [ws], dataDir: path.join(dir, "data") });
+    const run = await architect.run("Write and check", { autonomy: "autopilot" });
+    expect(run.score.permissions).toEqual(["workspace.read", "workspace.write", "shell"]);
+    expect(run.actions.map((a) => a.outcome)).toEqual(["executed", "executed"]);
+  });
+
   it("recovers a failed run without repeating completed steps, and hands off when asked", async () => {
     const twoSteps = draft({
       steps: [
