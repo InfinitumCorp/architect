@@ -32,6 +32,11 @@ export interface RouterPolicy {
   longContextChars: number;
   /** How long a failed model sits out. */
   cooldownMs: number;
+  /**
+   * When every model fails and at least one failure looks transient (network, timeout, 429, 5xx),
+   * wait this long and try every model again, once per entry. [] turns retries off.
+   */
+  retryDelaysMs: number[];
 }
 
 export const DEFAULT_POLICY: RouterPolicy = {
@@ -41,6 +46,7 @@ export const DEFAULT_POLICY: RouterPolicy = {
   escalateAfterErrors: 2,
   longContextChars: 120_000,
   cooldownMs: 60_000,
+  retryDelaysMs: [2_000, 6_000],
 };
 
 export interface RouteDecision {
@@ -56,6 +62,8 @@ export class RouterBrain implements Brain {
   /** A model the person picked for this run: tried first whenever it is healthy. */
   private pin?: string;
   private now: () => number;
+  /** Waits between retry rounds; tests replace it. */
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms));
   /** Called on every routed call; Architect can log it. */
   onRoute?: (d: RouteDecision & { used: string; failures: Array<{ id: string; error: string }> }) => void;
 
@@ -121,19 +129,28 @@ export class RouterBrain implements Brain {
   }
 
   private async route<T extends { model?: string }>(task: Task, tier: Tier, call: (b: Brain) => Promise<T>): Promise<T> {
-    const order = this.order(tier);
     const failures: Array<{ id: string; error: string }> = [];
-    for (const c of order) {
-      try {
-        const out = await call(c.brain);
-        this.down.delete(c.id);
-        this.onRoute?.({ task, tier, order: order.map((o) => o.id), used: c.id, failures });
-        return { ...out, model: out.model ?? c.brain.model };
-      } catch (err) {
-        if (isFatal(err)) throw err;
-        failures.push({ id: c.id, error: err instanceof Error ? err.message : String(err) });
-        this.down.set(c.id, this.now() + this.policy.cooldownMs);
+    const delays = this.policy.retryDelaysMs ?? [];
+    for (let round = 0; ; round++) {
+      const order = this.order(tier);
+      const roundFailures: string[] = [];
+      for (const c of order) {
+        try {
+          const out = await call(c.brain);
+          this.down.delete(c.id);
+          this.onRoute?.({ task, tier, order: order.map((o) => o.id), used: c.id, failures });
+          return { ...out, model: out.model ?? c.brain.model };
+        } catch (err) {
+          if (isFatal(err)) throw err;
+          const error = err instanceof Error ? err.message : String(err);
+          failures.push({ id: c.id, error });
+          roundFailures.push(error);
+          this.down.set(c.id, this.now() + this.policy.cooldownMs);
+        }
       }
+      // A dropped connection or a busy provider often clears in seconds: wait and go round again.
+      if (round >= delays.length || !roundFailures.some(isTransient)) break;
+      await this.sleep(delays[round]!);
     }
     throw new Error(`every model failed for this ${task} call: ${failures.map((f) => `${f.id} (${f.error})`).join("; ")}`);
   }
@@ -155,6 +172,11 @@ function up(t: Tier): Tier {
 /** Errors no other model would fix (the user cancelled). */
 function isFatal(err: unknown) {
   return err instanceof Error && (err.name === "AbortError" || /cancelled/i.test(err.message));
+}
+
+/** Failures that may clear on their own: the network, a timeout, rate limits, a busy or failing server. */
+export function isTransient(message: string): boolean {
+  return /fetch failed|network|socket hang up|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EPIPE|timed? ?out|rate.?limit|overloaded|temporarily|unavailable|\b(408|425|429|500|502|503|504|520|521|522|523|524|529)\b/i.test(message);
 }
 
 /** Count the failing tool results at the end of the conversation. */

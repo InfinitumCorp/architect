@@ -245,21 +245,29 @@ export class WorkspaceInstrument implements Instrument {
         const file = await this.resolve(String(input.path), root);
         await mkdir(path.dirname(file), { recursive: true });
         const previous = await readFile(file, "utf8").catch(() => "");
-        await writeFile(file, String(input.content), "utf8");
+        // Models write \n; keep a file's CRLF line endings (Windows checkouts) so only real changes show.
+        const content = usesCrlf(previous) ? toCrlf(String(input.content)) : String(input.content);
+        await writeFile(file, content, "utf8");
         const relw = path.relative(root, file).replace(/\\/g, "/");
-        ctx.addEvidence({ kind: "file", label: `${previous ? "rewrote" : "created"} ${relw}`, content: truncate(lineDiff(previous, String(input.content), relw), 6_000) });
-        return { text: `Wrote ${path.relative(root, file)} (${String(input.content).length} chars).` };
+        ctx.addEvidence({ kind: "file", label: `${previous ? "rewrote" : "created"} ${relw}`, content: truncate(lineDiff(previous, content, relw), 6_000) });
+        return { text: `Wrote ${path.relative(root, file)} (${content.length} chars).` };
       }
       case "workspace_edit": {
         const file = await this.resolve(String(input.path), root);
         const rel = path.relative(root, file).replace(/\\/g, "/");
         const before = await readFile(file, "utf8").catch(() => undefined);
         if (before === undefined) return { text: `${rel} does not exist; create it with workspace_write.`, isError: true };
-        const oldS = String(input.old_string);
-        const newS = String(input.new_string);
+        let oldS = String(input.old_string);
+        let newS = String(input.new_string);
         if (!oldS) return { text: "old_string is empty; use workspace_write to create or replace a whole file.", isError: true };
         if (oldS === newS) return { text: "old_string and new_string are the same; nothing to change.", isError: true };
-        const count = before.split(oldS).length - 1;
+        let count = before.split(oldS).length - 1;
+        // Models write \n; a Windows checkout has CRLF. Match and replace in the file's own line endings.
+        if (count === 0 && usesCrlf(before) && oldS.includes("\n")) {
+          oldS = toCrlf(oldS);
+          newS = toCrlf(newS);
+          count = before.split(oldS).length - 1;
+        }
         if (count === 0) return { text: `old_string was not found in ${rel}. Read the file and copy the text exactly, including indentation.`, isError: true };
         if (count > 1 && !input.replace_all) return { text: `old_string matches ${count} places in ${rel}. Add surrounding lines to make it unique, or set replace_all.`, isError: true };
         const after = input.replace_all ? before.split(oldS).join(newS) : before.replace(oldS, () => newS);
@@ -375,4 +383,15 @@ export class WorkspaceInstrument implements Instrument {
   async dispose() {
     // The shared sandbox lives for the process; a sandbox passed in is the caller's to dispose.
   }
+}
+
+/** True when a file's line endings are CRLF (more \r\n than bare \n). */
+export function usesCrlf(text: string): boolean {
+  const crlf = text.split("\r\n").length - 1;
+  return crlf > 0 && crlf >= text.split("\n").length - 1 - crlf;
+}
+
+/** Text with every line ending as CRLF. */
+export function toCrlf(text: string): string {
+  return text.replace(/\r?\n/g, "\r\n");
 }

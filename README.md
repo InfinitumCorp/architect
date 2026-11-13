@@ -253,7 +253,7 @@ Google Gemini on the AI Studio free tier (a plain key, not Vertex AI) is an Open
 { "provider": "openai", "id": "gemini/flash-lite", "baseUrl": "https://generativelanguage.googleapis.com/v1beta/openai", "model": "gemini-3.5-flash-lite", "tier": "fast", "apiKeyEnv": "GEMINI_API_KEY" }
 ```
 
-When the free tier answers HTTP 429, the router falls back to the next model in that tier.
+When the free tier answers HTTP 429, the router falls back to the next model in that tier. If every model fails and at least one failure looks temporary (a dropped connection, a timeout, HTTP 429 or 5xx), the router waits and tries them all again, after 2 s and then 6 s, before the step fails; set `"retryDelaysMs": []` under `policy` in the models file to turn that off.
 
 ```bash
 architect models     # routing table, and whether each model is reachable

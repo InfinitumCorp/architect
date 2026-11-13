@@ -63,6 +63,7 @@ export const ModelsFileSchema = z
         escalateAfterErrors: z.number().int().positive(),
         longContextChars: z.number().int().positive(),
         cooldownMs: z.number().int().nonnegative(),
+        retryDelaysMs: z.array(z.number().int().nonnegative().max(60_000)).max(5),
       })
       .partial()
       .optional(),

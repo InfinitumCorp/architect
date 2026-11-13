@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Brain, TurnRequest } from "../src/brain.js";
 import { brainFromEnv, candidatesFrom, hasExplicitModelConfig, loadModelsFile, modelsFromEnv } from "../src/brains/config.js";
 import { OpenAICompatBrain, toOpenAIMessages } from "../src/brains/openai.js";
-import { RouterBrain, trailingErrors } from "../src/brains/router.js";
+import { RouterBrain, isTransient, trailingErrors } from "../src/brains/router.js";
 import { Architect } from "../src/architect.js";
 import { WorkspaceInstrument } from "../src/instruments/workspace.js";
 
@@ -179,7 +179,43 @@ describe("automatic model router", () => {
 
   it("reports every failure when all models are down", async () => {
     const r = new RouterBrain([{ id: "x", tier: "fast", brain: brain("x") }]);
+    r.sleep = async () => {};
     await expect(r.turn(req())).rejects.toThrow(/every model failed.*x \(/);
+  });
+
+  it("goes round again after a transient failure of every model", async () => {
+    const r = new RouterBrain([{ id: "x", tier: "fast", brain: brain("x") }], { act: "fast" });
+    const waits: number[] = [];
+    r.sleep = async (ms) => void waits.push(ms);
+    replies.x = [{ status: 503, body: { error: { message: "overloaded" } } }, chat({ content: "back" })];
+    const out = await r.turn(req());
+    expect(out.model).toBe("x");
+    expect(waits).toEqual([2000]);
+    expect(seen.map((s) => s.model)).toEqual(["x", "x"]);
+  });
+
+  it("gives up after the configured retry rounds", async () => {
+    const r = new RouterBrain([{ id: "x", tier: "fast", brain: brain("x") }], { act: "fast", retryDelaysMs: [5, 10] });
+    const waits: number[] = [];
+    r.sleep = async (ms) => void waits.push(ms);
+    await expect(r.turn(req())).rejects.toThrow(/every model failed/);
+    expect(waits).toEqual([5, 10]);
+    expect(seen).toHaveLength(3);
+  });
+
+  it("does not retry an error that will not clear on its own", async () => {
+    const r = new RouterBrain([{ id: "x", tier: "fast", brain: brain("x") }], { act: "fast" });
+    const waits: number[] = [];
+    r.sleep = async (ms) => void waits.push(ms);
+    replies.x = [{ status: 401, body: { error: { message: "invalid api key" } } }];
+    await expect(r.turn(req())).rejects.toThrow(/every model failed/);
+    expect(waits).toEqual([]);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("tells transient failures from permanent ones", () => {
+    for (const m of ["fetch failed", "write ECONNRESET", "429 Too Many Requests", "HTTP 503: overloaded", "request timed out", "connect ETIMEDOUT 1.2.3.4:443"]) expect(isTransient(m), m).toBe(true);
+    for (const m of ["401 invalid api key", "400 bad request: model not found", "unknown model \"x\"", "HTTP 4290 bytes"]) expect(isTransient(m), m).toBe(false);
   });
 });
 
