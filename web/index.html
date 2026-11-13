@@ -545,7 +545,13 @@
       const s = r.score.steps.find((x) => x.id === id);
       if (s) parts.push(`<div class="line step ${esc(st(id).status)}"><span class="mark">&#9679;</span><span class="body">${esc(s.title)}</span></div>`);
     };
+    // A finished step's closing note usually restates its summary: show the summary alone.
+    const closing = new Set();
+    const lastOf = new Map();
+    items.forEach((it) => { const id = it.kind === "action" ? it.a.stepId : it.stepId; if (id) lastOf.set(id, it); });
+    for (const [id, it] of lastOf) if (it.kind === "note" && st(id).summary && st(id).status !== "running") closing.add(it);
     for (const it of items) {
+      if (closing.has(it)) { stepHead(it.stepId); continue; }
       if (it.kind === "action") {
         stepHead(it.a.stepId);
         const a = it.a, bad = !OK.includes(String(a.outcome));
@@ -817,8 +823,11 @@
       if (r && (LIVE.includes(r.status) || planWaiting(r))) {
         // Mid-run (or plan waiting): a steering comment the agent reads before its next move.
         await api(`/v1/runs/${r.id}/comments`, { method: "POST", body: JSON.stringify({ target: "score", text, by: "web" }) });
+        prompt.value = ""; grow();
       } else {
+        // The message moves into the transcript at once; the box is free while the plan is made.
         pendingSend = text; drawTranscript(true);
+        prompt.value = ""; grow();
         const allow = hostsOf($("allow-hosts").value), block = hostsOf($("block-hosts").value), budget = Number($("budget").value);
         const run = await api("/v1/runs", { method: "POST", body: JSON.stringify({
           goal: text, autonomy: mode.autonomy, review: mode.review,
@@ -834,9 +843,13 @@
         if (!session) session = run.id;
         setHash(); drawSessions();
       }
-      prompt.value = ""; grow(); toggleOpts(false);
+      toggleOpts(false);
       await drawSession(true);
-    } catch (err) { $("form-error").textContent = err.message; $("form-error").hidden = false; }
+    } catch (err) {
+      // Give the text back unless something new was typed meanwhile.
+      if (!prompt.value.trim()) { prompt.value = text; grow(); }
+      $("form-error").textContent = err.message; $("form-error").hidden = false;
+    }
     finally { btn.disabled = false; if (pendingSend) { pendingSend = ""; drawTranscript(false); } }
   };
 

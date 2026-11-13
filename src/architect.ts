@@ -29,6 +29,7 @@ import {
   type ScoreStep,
   type Signal,
   type Verdict,
+  withImplied,
 } from "./types.js";
 
 export interface ArchitectOptions {
@@ -170,6 +171,10 @@ export class Architect extends EventEmitter {
   private instruments: Instrument[];
   private toolIndex = new Map<string, { instrument: Instrument; spec: ToolSpec }>();
   private ceiling: Permission[];
+  /** What a run may use: its plan's permissions and the ones they imply, within the ceiling. */
+  private granted(run: Run): Permission[] {
+    return withImplied(run.score.permissions).filter((p) => this.ceiling.includes(p));
+  }
   private pending = new Map<string, { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void }>();
   private cancelled = new Set<string>();
   private active = new Set<string>();
@@ -268,7 +273,7 @@ ${knowledgePrompt(known)}`;
       summary: draft.summary,
       inputs: opts.inputs ?? {},
       // The model proposes; the account's ceiling disposes.
-      permissions: draft.permissions.filter((p) => ceiling.includes(p)),
+      permissions: withImplied(draft.permissions).filter((p) => ceiling.includes(p)),
       startUrl: opts.startUrl ?? draft.startUrl ?? undefined,
       steps: draft.steps.map((s, i) => ({
         id: `s${i + 1}`,
@@ -542,7 +547,7 @@ ${knowledgePrompt(known)}`;
     const specs = instruments
       .flatMap((i) => i.tools)
       .filter((t) => (readOnly ? t.risk === "read" : true))
-      .filter((t) => run.score.permissions.includes(t.permission));
+      .filter((t) => this.granted(run).includes(t.permission));
     const tools: ToolDef[] = [
       ...specs.map((s) => ({ name: s.name, description: s.description, input_schema: s.input_schema }) as ToolDef),
       ...controls.map((c) => CONTROL_TOOLS[c]!.def),
@@ -694,7 +699,7 @@ ${knowledgePrompt(known)}`;
     }
     const risk = typeof entry.spec.risk === "function" ? await entry.spec.risk(input) : entry.spec.risk;
     const decision = annotateDecision(
-      gate({ autonomy: run.autonomy, risk, required: entry.spec.permission, granted: run.score.permissions }),
+      gate({ autonomy: run.autonomy, risk, required: entry.spec.permission, granted: this.granted(run) }),
       geoNote,
     );
 
@@ -849,7 +854,7 @@ ${knowledgePrompt(known)}`;
       ...base,
       id: newId("score"),
       inputs: { ...base.inputs, ...(opts.inputs ?? {}) },
-      permissions: base.permissions.filter((p) => this.ceiling.includes(p)),
+      permissions: withImplied(base.permissions).filter((p) => this.ceiling.includes(p)),
       steps: base.steps.map((s) => ({ ...s, instruments: s.instruments.filter((n) => known.has(n)) })),
       createdAt: now(),
     };
