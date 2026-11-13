@@ -266,7 +266,8 @@ export function createArchitectServer(opts: ServerOptions): Server {
           res.end(md);
           return;
         }
-        if (req.method === "GET" && action === "events") return streamEvents(req, res, architect, id);
+        // Awaited so an unknown run is a 404 here, not an unhandled rejection that stops the server.
+        if (req.method === "GET" && action === "events") return await streamEvents(req, res, architect, id);
         if (req.method === "GET" && action === "evidence" && file) {
           if (!/^[\w.-]+\.png$/.test(file)) throw new HttpError(400, "bad evidence name");
           res.writeHead(200, { "content-type": "image/png" });

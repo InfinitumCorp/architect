@@ -603,14 +603,23 @@
       <div class="starters">${starters.map(([t, p, d]) => `<button type="button" data-starter="${esc(p)}"><b>${esc(t)}</b><span>${esc(d)}</span></button>`).join("")}</div></div>`;
   }
 
+  // The message being sent while the server plans it (a new run can take a while to plan).
+  let pendingSend = "";
+  let lastTranscript = "";
   function drawTranscript(jump) {
     const sc = $("scroll");
     const atBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80;
+    const shells = shellLog.filter((x) => x.session === (session || "")).map(shellBlock).join("");
+    const pending = pendingSend ? `<div class="msg-user">${esc(pendingSend)}<span class="meta">planning…</span></div>` : "";
+    const html = (thread.length ? thread.map((r, i) => runBlock(r, i === thread.length - 1)).join("") : shells || pending ? "" : welcome()) + shells + pending;
+    // The refresh loop redraws every few seconds: leave the DOM alone when nothing changed, so a
+    // selection, a hover or a half-made click survives.
+    if (html === lastTranscript) { if (jump) sc.scrollTop = sc.scrollHeight; return; }
+    lastTranscript = html;
     const openWalks = new Set([...document.querySelectorAll(".walk:not([hidden])")].map((d) => d.id));
     const key = (d) => d.querySelector(".name").textContent + "|" + d.querySelector(".arg").textContent;
     const openTools = new Set([...document.querySelectorAll("details.tool[open]")].map(key));
-    const shells = shellLog.filter((x) => x.session === (session || "")).map(shellBlock).join("");
-    $("transcript").innerHTML = (thread.length ? thread.map((r, i) => runBlock(r, i === thread.length - 1)).join("") : shells ? "" : welcome()) + shells;
+    $("transcript").innerHTML = html;
     document.querySelectorAll("details.tool").forEach((d) => { if (openTools.has(key(d))) d.open = true; });
     openWalks.forEach((id) => { const d = $(id); if (d) { d.hidden = false; d.open = true; loadWalk(d); } });
     document.querySelectorAll("[data-starter]").forEach((b) => (b.onclick = () => { prompt.value = b.dataset.starter; grow(); prompt.focus(); }));
@@ -809,6 +818,7 @@
         // Mid-run (or plan waiting): a steering comment the agent reads before its next move.
         await api(`/v1/runs/${r.id}/comments`, { method: "POST", body: JSON.stringify({ target: "score", text, by: "web" }) });
       } else {
+        pendingSend = text; drawTranscript(true);
         const allow = hostsOf($("allow-hosts").value), block = hostsOf($("block-hosts").value), budget = Number($("budget").value);
         const run = await api("/v1/runs", { method: "POST", body: JSON.stringify({
           goal: text, autonomy: mode.autonomy, review: mode.review,
@@ -827,7 +837,7 @@
       prompt.value = ""; grow(); toggleOpts(false);
       await drawSession(true);
     } catch (err) { $("form-error").textContent = err.message; $("form-error").hidden = false; }
-    finally { btn.disabled = false; }
+    finally { btn.disabled = false; if (pendingSend) { pendingSend = ""; drawTranscript(false); } }
   };
 
   function formError(msg) { $("form-error").textContent = msg; $("form-error").hidden = false; }
