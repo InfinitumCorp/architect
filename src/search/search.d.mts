@@ -43,6 +43,7 @@ export declare function escapeRobotsPattern(value: string): string;
 export declare function createCrawler(options?: { fetch?: typeof fetch; timeoutMs?: number; robots?: boolean; userAgent?: string }): (url: string, options?: { signal?: AbortSignal }) => Promise<CrawledPage | null>;
 export declare function searxngEngine(options: { url: string; fetch?: typeof fetch; timeoutMs?: number }): SearchEngine;
 export declare function yandexEngine(options: { apiKey: string; folderId: string; fetch?: typeof fetch; timeoutMs?: number }): SearchEngine;
+export declare function exaEngine(options: { apiKey: string; url?: string; numResults?: number; fetch?: typeof fetch; timeoutMs?: number }): SearchEngine;
 export declare function braveEngine(options: { apiKey: string; fetch?: typeof fetch; timeoutMs?: number }): SearchEngine;
 export declare function parseYandexXml(xml: string): SearchResult[];
 export declare function openAiChat(options: { baseUrl: string; apiKey?: string; model?: string; fetch?: typeof fetch; timeoutMs?: number }): Chat;

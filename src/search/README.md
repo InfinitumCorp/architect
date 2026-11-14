@@ -30,6 +30,7 @@ To write answers with the product's own `@infinitum/ai` router, pass `chat: (mes
 | --- | --- |
 | `VEIL_SEARCH_URL` | Infinitum's own engine: `https://infinitumveil.app/api/search`. VEILBot's index first, blended with the web APIs VEIL holds keys for, Hacker News, Stack Overflow and Wikipedia. Needs no key here. |
 | `SEARXNG_URL` | Self-hosted SearXNG with `json` in `search.formats`. Host it on the Yandex VM for Russia. |
+| `EXA_API_KEY` | [Exa](https://exa.ai) web search (Infinitum has $1,000 startup credits, valid to 2027-11-13). The query goes to Exa in a POST body. On whenever the key is set; `EXA_SEARCH=off` turns it off. |
 | `YANDEX_SEARCH_API_KEY`, `YANDEX_FOLDER_ID` | Yandex Search API v2. The service account needs `search-api.webSearch.user`. Works in Russia. |
 | `BRAVE_SEARCH_API_KEY` | Brave Search API. |
 | `AI_BASE_URL` (+ `AI_API_KEY`, `AI_MODEL`) or `OMNIROUTE_BASE_URL` / `OMNIROUTE_API_KEY` | The open-weight model that writes the answers. `SEARCH_MODEL` overrides the model. Set `SEARCH_ANSWERS=off` to return sources only. |

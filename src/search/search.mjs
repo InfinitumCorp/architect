@@ -13,6 +13,7 @@
 //
 // Search engines (any subset, tried in this order; the next one is used if one fails):
 //   SEARXNG_URL                                  self-hosted SearXNG (works in Russia when hosted there)
+//   EXA_API_KEY                                  Exa neural web search (startup credits; EXA_SEARCH=off disables)
 //   YANDEX_SEARCH_API_KEY + YANDEX_FOLDER_ID     Yandex Search API v2 (works in Russia)
 //   BRAVE_SEARCH_API_KEY                         Brave Search API
 // Answer model (open-weight, OpenAI-compatible chat/completions):
@@ -24,7 +25,7 @@
 
 export const SEARCH_CLIENT_VERSION = "1.0.0";
 export const SEARCH_USER_AGENT = "InfinitumSearch/1.0 (+https://infinitumcorporation.ai/search-bot)";
-export const SEARCH_NOT_CONNECTED = "Search isn't connected. Set SEARXNG_URL, YANDEX_SEARCH_API_KEY and YANDEX_FOLDER_ID, or BRAVE_SEARCH_API_KEY.";
+export const SEARCH_NOT_CONNECTED = "Search isn't connected. Set SEARXNG_URL, EXA_API_KEY, YANDEX_SEARCH_API_KEY and YANDEX_FOLDER_ID, or BRAVE_SEARCH_API_KEY.";
 export const SEARCH_NEEDS_QUERY = "Type what to look up after @search, for example: @search best open-weight models for Russian.";
 
 const MAX_QUERY = 400;
@@ -447,6 +448,34 @@ export function yandexEngine({ apiKey, folderId, fetch: fetchImpl, timeoutMs = 8
   };
 }
 
+/**
+ * Exa (exa.ai) web search: POST /search with an x-api-key header. Asks for short highlights
+ * so the snippet is useful even before a page is crawled. The query goes in the POST body.
+ */
+export function exaEngine({ apiKey, url = "https://api.exa.ai/search", numResults = 10, fetch: fetchImpl, timeoutMs = 8_000 }) {
+  const doFetch = fetchImpl ?? globalThis.fetch;
+  return {
+    name: "exa",
+    async search(query, { signal } = {}) {
+      const res = await timed(doFetch, url, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json", "x-api-key": apiKey },
+        body: JSON.stringify({ query, type: "auto", numResults, contents: { highlights: { numSentences: 2 } } }),
+      }, timeoutMs, signal);
+      if (res.status === 401 || res.status === 403) throw new SearchError("Exa refused the API key.", 502);
+      if (!res.ok) throw new SearchError(`Exa returned ${res.status}`, 502);
+      const body = await res.json();
+      return (Array.isArray(body?.results) ? body.results : [])
+        .filter((r) => r && typeof r.url === "string" && /^https?:\/\//.test(r.url))
+        .map((r) => ({
+          title: clean(r.title ?? r.url),
+          url: r.url,
+          snippet: clean((Array.isArray(r.highlights) && r.highlights.length ? r.highlights.join(" ") : r.text ?? r.summary ?? "").slice(0, 600)),
+        }));
+    },
+  };
+}
+
 /** Brave Search API. */
 export function braveEngine({ apiKey, fetch: fetchImpl, timeoutMs = 8_000 }) {
   const doFetch = fetchImpl ?? globalThis.fetch;
@@ -697,7 +726,7 @@ export async function sendWebResponse(res, response) {
   res.end(Buffer.from(await response.arrayBuffer()));
 }
 
-/** Search engines from the environment, in order: VEIL (VEIL_SEARCH_URL), SearXNG, Yandex, Brave. */
+/** Search engines from the environment, in order: VEIL (VEIL_SEARCH_URL), SearXNG, Exa, Yandex, Brave. */
 export function enginesFromEnv(env = globalThis.process?.env ?? {}, { fetch } = {}) {
   const engines = [];
   if (env.VEIL_SEARCH_URL) {
@@ -712,6 +741,7 @@ export function enginesFromEnv(env = globalThis.process?.env ?? {}, { fetch } = 
     if (u.protocol !== "https:" && !(local && u.protocol === "http:")) throw new Error("SEARXNG_URL must use https");
     engines.push(searxngEngine({ url: env.SEARXNG_URL, fetch }));
   }
+  if (env.EXA_API_KEY && env.EXA_SEARCH !== "off") engines.push(exaEngine({ apiKey: env.EXA_API_KEY, fetch }));
   if (env.YANDEX_SEARCH_API_KEY && env.YANDEX_FOLDER_ID) engines.push(yandexEngine({ apiKey: env.YANDEX_SEARCH_API_KEY, folderId: env.YANDEX_FOLDER_ID, fetch }));
   if (env.BRAVE_SEARCH_API_KEY) engines.push(braveEngine({ apiKey: env.BRAVE_SEARCH_API_KEY, fetch }));
   return engines;

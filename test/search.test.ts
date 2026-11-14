@@ -58,3 +58,21 @@ describe("VEIL engine", () => {
     expect(() => enginesFromEnv({ VEIL_SEARCH_URL: "http://infinitumveil.app/api/search" })).toThrow(/https/);
   });
 });
+
+describe("Exa engine", () => {
+  it("is on with EXA_API_KEY, after SearXNG and before Yandex/Brave; EXA_SEARCH=off removes it", async () => {
+    const { enginesFromEnv, exaEngine } = await import("../src/search/search.mjs");
+    const env = { SEARXNG_URL: "https://searx.example", EXA_API_KEY: "ek", BRAVE_SEARCH_API_KEY: "b" };
+    expect(enginesFromEnv(env).map((e: { name: string }) => e.name)).toEqual(["searxng", "exa", "brave"]);
+    expect(enginesFromEnv({ ...env, EXA_SEARCH: "off" }).map((e: { name: string }) => e.name)).toEqual(["searxng", "brave"]);
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ results: [{ title: "T", url: "https://e.example/", highlights: ["h1", "h2"] }, { url: "ftp://x" }] }));
+    }) as unknown as typeof fetch;
+    const r = await exaEngine({ apiKey: "ek", fetch: fetchImpl }).search("q");
+    expect(calls[0]!.url).toBe("https://api.exa.ai/search");
+    expect((calls[0]!.init.headers as Record<string, string>)["x-api-key"]).toBe("ek");
+    expect(r).toEqual([{ title: "T", url: "https://e.example/", snippet: "h1 h2" }]);
+  });
+});
