@@ -11,6 +11,7 @@
  * account-wide AI_BUDGET ledger, so the free model stays inside Workers AI's free daily allowance.
  */
 import { budgetedAI } from "./brains/ai-budget.mjs";
+import { langfuseFromEnv, tracedAI } from "./brains/ai-langfuse.mjs";
 import { DEFAULT_WORKERS_AI_MODEL, workersAiFetch, type AiBinding } from "./brains/workersai.js";
 
 export const FREE_PREFIX = "/free/v1";
@@ -44,6 +45,7 @@ export function freeModels(model = DEFAULT_WORKERS_AI_MODEL): string[] {
 export async function freeModel(
   req: Request,
   env: { AI?: AiBinding; AI_BUDGET?: Parameters<typeof budgetedAI>[1]; FREE_RATE?: RateLimiter; ARCHITECT_WORKERS_AI_MODEL?: string; ARCHITECT_FREE?: string },
+  ctx?: { waitUntil(p: Promise<unknown>): void },
 ): Promise<Response | undefined> {
   const url = new URL(req.url);
   if (url.pathname !== FREE_PREFIX && !url.pathname.startsWith(`${FREE_PREFIX}/`)) return undefined;
@@ -76,7 +78,9 @@ export async function freeModel(
   const model = typeof body.model === "string" && models.includes(body.model) ? body.model : models[0]!;
   const maxTokens = Math.min(Number(body.max_tokens ?? body.max_completion_tokens) || FREE_MAX_TOKENS, FREE_MAX_TOKENS);
   const { stream: _stream, max_completion_tokens: _mct, ...rest } = body;
-  const res = await workersAiFetch(budgetedAI(env.AI, env.AI_BUDGET))(`${FREE_PREFIX}/chat/completions`, {
+  const tracer = langfuseFromEnv(env as unknown as Record<string, string | undefined>, { product: "architect-free" });
+  const ai = tracedAI(budgetedAI(env.AI, env.AI_BUDGET), tracer, { waitUntil: ctx ? (p) => ctx.waitUntil(p) : undefined, name: "free.chat" });
+  const res = await workersAiFetch(ai)(`${FREE_PREFIX}/chat/completions`, {
     method: "POST",
     body: JSON.stringify({ ...rest, model, max_tokens: maxTokens }),
   });
