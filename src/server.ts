@@ -16,6 +16,7 @@ import { InputError, NotFoundError, now } from "./policy.js";
 import { conjureRoutesFromEnv, toWebRequest, sendWebResponse, type ConjureRouteHandler } from "./conjure/conjure.mjs";
 import { openClawRoutesFromEnv, type OpenClawRouteHandler } from "./openclaw/openclaw.mjs";
 import { searchRoutesFromEnv, type SearchRoutes } from "./search/search.mjs";
+import { mixpanelBoot } from "./mixpanel-boot.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -31,6 +32,7 @@ const WEB_ASSETS: Record<string, { file: string; type: string }> = {
   "/cumulus-bar.js": { file: "cumulus-bar.js", type: "text/javascript; charset=utf-8" },
   "/amplitude.vendor.js": { file: "amplitude.vendor.js", type: "text/javascript; charset=utf-8" },
   "/amplitude-boot.js": { file: "amplitude-boot.js", type: "text/javascript; charset=utf-8" },
+  "/mixpanel.vendor.js": { file: "mixpanel.vendor.js", type: "text/javascript; charset=utf-8" },
   "/privacy.html": { file: "privacy.html", type: "text/html; charset=utf-8" },
   "/cid-return.html": { file: "cid-return.html", type: "text/html; charset=utf-8" },
   // Interface language (@infinitum/i18n): runtime and build-time catalogs, no model calls.
@@ -168,6 +170,11 @@ export function createArchitectServer(opts: ServerOptions): Server {
       if (req.method === "GET" && url.pathname === "/") {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
         res.end(await readFile(path.join(here, "..", "web", "index.html"), "utf8"));
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/mixpanel-boot.js") {
+        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" });
+        res.end(mixpanelBoot(process.env));
         return;
       }
       // Installable web app: manifest, service worker and icons (public, no secrets).
