@@ -20,6 +20,7 @@ import { brainFromEnv, hasExplicitModelConfig } from "./brains/config.js";
 import { OpenAICompatBrain } from "./brains/openai.js";
 import { DEFAULT_WORKERS_AI_MODEL, WORKERS_AI_BASE_URL, workersAiFetch, type AiBinding } from "./brains/workersai.js";
 import { budgetedAI } from "./brains/ai-budget.mjs";
+import { langfuseFromEnv, tracedAI } from "./brains/ai-langfuse.mjs";
 import { DurableRunStore } from "./stores/durable.js";
 import { conjureRoutesFromEnv } from "./conjure/conjure.mjs";
 import { openClawRoutesFromEnv } from "./openclaw/openclaw.mjs";
@@ -109,7 +110,7 @@ const cidVerifier = (env: Env): CidVerifier => {
 };
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === "/healthz") return json(200, { ok: true, at: new Date().toISOString() });
     // Mixpanel boot from MIXPANEL_PROJECT_TOKEN / MIXPANEL_REGION / MIXPANEL (off until a token is set).
@@ -117,7 +118,7 @@ export default {
     const download = await publicDownload(req, env.DOWNLOADS);
     if (download) return download;
     // The free open-weight model that Architect Desktop and local servers use out of the box.
-    const free = await freeModel(req, env);
+    const free = await freeModel(req, env, ctx);
     if (free) return free;
     // Labyrinth: explicit, user-chosen saves to the person's private repository, authenticated
     // by their own Cumulus ID bearer (never the product API token). Same relay as `architect serve`.
@@ -169,7 +170,8 @@ export class Conductor extends DurableObject<Env> {
         : new OpenAICompatBrain({
             baseUrl: WORKERS_AI_BASE_URL,
             model: this.env.ARCHITECT_WORKERS_AI_MODEL || DEFAULT_WORKERS_AI_MODEL,
-            fetch: workersAiFetch(budgetedAI(this.env.AI, this.env.AI_BUDGET)),
+            // Langfuse: one span per Workers AI call (metadata only by default); off until LANGFUSE_* keys are set.
+            fetch: workersAiFetch(tracedAI(budgetedAI(this.env.AI, this.env.AI_BUDGET), langfuseFromEnv(env, { product: "architect" }), { waitUntil: (p) => this.ctx.waitUntil(p) })),
             maxTokens: 8_000,
           });
     // Storage: Supabase over Hyperdrive as the limited architect_worker login; else with the
