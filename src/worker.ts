@@ -32,6 +32,7 @@ import postgres from "postgres";
 import { postgresCaller, SupabaseRunStore, type UnsafeSql } from "./stores/supabase.js";
 import { publicDownload, uploadDownload, type DownloadBucket } from "./downloads.js";
 import { freeModel, type RateLimiter } from "./free.js";
+import { mixpanelBootResponse } from "./mixpanel-boot.js";
 import { proxyLabyrinthRequest, useLabyrinthServiceBinding } from "./labyrinth/proxy.js";
 import { hostList, parseGoal, REVIEW_POLICIES, walkthrough } from "./agentic.js";
 import { checkAccess, cidIssuer, cidOwners, createCidVerifier, presentedToken, type CidVerifier } from "./cid.js";
@@ -111,6 +112,8 @@ export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     if (url.pathname === "/healthz") return json(200, { ok: true, at: new Date().toISOString() });
+    // Mixpanel boot from MIXPANEL_PROJECT_TOKEN / MIXPANEL_REGION / MIXPANEL (off until a token is set).
+    if (url.pathname === "/mixpanel-boot.js" && req.method === "GET") return mixpanelBootResponse(env as unknown as Record<string, string | undefined>);
     const download = await publicDownload(req, env.DOWNLOADS);
     if (download) return download;
     // The free open-weight model that Architect Desktop and local servers use out of the box.
