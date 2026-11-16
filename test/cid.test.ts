@@ -16,13 +16,13 @@ const same = (a: string, b: string) => a === b;
 
 const ISSUER = "https://id.cumuluscloud.app/realms/cumulus";
 const b64u = (v: unknown) => Buffer.from(typeof v === "string" ? v : new Uint8Array(v as ArrayBuffer)).toString("base64url");
-async function keys() {
+async function keys(kid = "k1") {
   const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
-  const jwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid: "k1", use: "sig", alg: "ES256" };
+  const jwk = { ...(await crypto.subtle.exportKey("jwk", pair.publicKey)), kid, use: "sig", alg: "ES256" };
   const sign = async (over: Record<string, unknown> = {}, typ = "at+jwt") => {
     const now = Math.floor(Date.now() / 1000);
     const claims = { iss: ISSUER, aud: "architect", sub: "cid_7c1e", client_id: "architect", sid: "s1", iat: now, exp: now + 600, ...over };
-    const h = b64u(JSON.stringify({ alg: "ES256", typ, kid: "k1" }));
+    const h = b64u(JSON.stringify({ alg: "ES256", typ, kid }));
     const p = b64u(JSON.stringify(claims));
     const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, pair.privateKey, new TextEncoder().encode(`${h}.${p}`));
     return `${h}.${p}.${b64u(sig)}`;
@@ -88,6 +88,29 @@ describe("Cumulus ID access", () => {
     expect(await v("bad token with spaces")).toBeNull();
     expect(await v(OWNER)).toBeNull();
     expect(calls).toHaveLength(2);
+  });
+
+  it("accepts tokens from a new issuer key at once (the cut-over), but unknown key ids can't make it refetch every time", async () => {
+    const old = await keys("k1");
+    const next = await keys("k2");
+    let published = [old.jwk];
+    let certs = 0;
+    let t = 1_000_000;
+    const fake = (async (url: string) => {
+      if (url.endsWith("/certs")) { certs++; return new Response(JSON.stringify({ keys: published })); }
+      return new Response(JSON.stringify({ sub: "cid_7c1e", preferred_username: "william" }));
+    }) as unknown as typeof fetch;
+    const v = createCidVerifier({ fetch: fake, now: () => t });
+    expect(await v(await old.sign())).toMatchObject({ cid: "cid_7c1e" });
+    expect(certs).toBe(1);
+    published = [next.jwk]; // the issuer now signs with a new key
+    t += 31_000;
+    expect(await v(await next.sign({ sid: "s2" }))).toMatchObject({ cid: "cid_7c1e" });
+    expect(certs).toBe(2);
+    // A made-up key id right after: no second fetch inside 30 s.
+    const forged = await keys("nope");
+    expect(await v(await forged.sign({ sid: "s3" }))).toBeNull();
+    expect(certs).toBe(2);
   });
 
   it("refuses another issuer, client, type, key, expiry or subject without asking userinfo", async () => {

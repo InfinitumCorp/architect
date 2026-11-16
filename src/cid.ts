@@ -111,14 +111,26 @@ export function createCidVerifier(
   const ttl = opts.ttlMs ?? 60_000;
   const max = opts.max ?? 500;
   const cache = new Map<string, { profile: CidProfile | null; until: number }>();
-  let jwks: { keys: Jwk[]; until: number } | null = null;
-  const keys = async (): Promise<Jwk[]> => {
-    if (jwks && jwks.until > now()) return jwks.keys;
+  let jwks: { keys: Jwk[]; until: number; fetchedAt: number } | null = null;
+  // A token signed with a key this cache doesn't have yet (the issuer's key changed, e.g. at the Cumulus://ID
+  // cut-over) refetches the JWKS at once instead of failing until the cache expires; at most every 30 s, so tokens
+  // with made-up key ids can't make this hammer the issuer.
+  const keys = async (kid?: string): Promise<Jwk[]> => {
+    const unknownKid = Boolean(kid && jwks && !jwks.keys.some((k) => k.kid === kid));
+    if (jwks && jwks.until > now() && !(unknownKid && now() - jwks.fetchedAt >= 30_000)) return jwks.keys;
     const r = await doFetch(`${oidc}/certs`, { headers: { accept: "application/json" } });
     if (!r.ok) throw new Error(`Cumulus ID JWKS answered ${r.status}`);
     const body = (await r.json()) as { keys?: unknown };
-    jwks = { keys: Array.isArray(body.keys) ? (body.keys as Jwk[]) : [], until: now() + 10 * 60_000 };
+    jwks = { keys: Array.isArray(body.keys) ? (body.keys as Jwk[]) : [], until: now() + 10 * 60_000, fetchedAt: now() };
     return jwks.keys;
+  };
+  const kidOf = (token: string): string | undefined => {
+    try {
+      const kid = b64urlJson(token.split(".")[0]!).kid;
+      return typeof kid === "string" ? kid : undefined;
+    } catch {
+      return undefined;
+    }
   };
   return async (token) => {
     if (!JWT.test(token)) return null;
@@ -127,7 +139,7 @@ export function createCidVerifier(
     if (hit && hit.until > now()) return hit.profile;
     let profile: CidProfile | null = null;
     try {
-      const claims = await verifyCidJwt(token, { issuer, audience, typ: "at+jwt", keys: await keys(), now: now() });
+      const claims = await verifyCidJwt(token, { issuer, audience, typ: "at+jwt", keys: await keys(kidOf(token)), now: now() });
       if (claims) {
         const r = await doFetch(`${oidc}/userinfo`, { headers: { authorization: `Bearer ${token}`, accept: "application/json" } });
         if (r.ok) {
