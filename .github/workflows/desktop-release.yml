@@ -1,0 +1,47 @@
+# Build Architect Desktop for Windows and publish it at https://rchtch.app/download.
+# Manual only: Actions > Desktop release > Run workflow. Uses the CLOUDFLARE_API_TOKEN repo secret
+# (R2 write on this account) to put the zip in the architect-downloads bucket.
+name: Desktop release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+env:
+  ELECTRON_VERSION: 45.2.3
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    environment: production
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Download Electron and check its SHA-256
+        run: |
+          base="https://github.com/electron/electron/releases/download/v$ELECTRON_VERSION"
+          zip="electron-v$ELECTRON_VERSION-win32-x64.zip"
+          curl -fsSL --retry 4 -o "$RUNNER_TEMP/$zip" "$base/$zip"
+          curl -fsSL --retry 4 -o "$RUNNER_TEMP/SHASUMS256.txt" "$base/SHASUMS256.txt"
+          (cd "$RUNNER_TEMP" && grep " \*$zip\$" SHASUMS256.txt | sha256sum -c -)
+          echo "ELECTRON_ZIP=$RUNNER_TEMP/$zip" >> "$GITHUB_ENV"
+      - name: Build
+        run: node scripts/desktop.mjs --platform win32 --arch x64 --electron-zip "$ELECTRON_ZIP"
+      - name: Publish to rchtch.app/download
+        run: |
+          version=$(node -p "require('./desktop/package.json').version")
+          file="Architect-Desktop-$version-win32-x64.zip"
+          npx wrangler r2 object put "architect-downloads/$file" --file "dist/$file" --content-type application/zip --remote
+          echo "Published https://rchtch.app/download/$file" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 1a9f2df27b4a1f9e3de82eab367434e4

@@ -31,6 +31,20 @@ export const PERMISSIONS = [
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
+/** Permissions that come with another: what may write or run may also read. */
+const IMPLIES: Partial<Record<Permission, Permission[]>> = {
+  "workspace.write": ["workspace.read"],
+  shell: ["workspace.read"],
+  "http.write": ["http.read"],
+};
+
+/** The permissions plus the ones they imply, without duplicates, in PERMISSIONS order. */
+export function withImplied<P extends string>(permissions: readonly P[]): P[] {
+  const all = new Set<string>(permissions);
+  for (const p of permissions) for (const q of IMPLIES[p as Permission] ?? []) all.add(q);
+  return [...all].sort((a, b) => PERMISSIONS.indexOf(a as Permission) - PERMISSIONS.indexOf(b as Permission)) as P[];
+}
+
 export interface ScoreStep {
   id: string;
   title: string;
@@ -97,6 +111,8 @@ export interface ActionRecord {
   outcome: ActionOutcome;
   output: string;
   approval?: { approved: boolean; by?: string; note?: string };
+  /** Set only when geo routing is on and this action names a host. */
+  geo?: string;
   at: string;
 }
 

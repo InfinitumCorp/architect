@@ -37,8 +37,8 @@ await build({
   banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
   logLevel: "warning",
 });
-rmSync(path.join(desktop, "podium"), { recursive: true, force: true });
-cpSync(path.join(root, "podium"), path.join(desktop, "podium"), { recursive: true });
+rmSync(path.join(desktop, "web"), { recursive: true, force: true });
+cpSync(path.join(root, "web"), path.join(desktop, "web"), { recursive: true });
 
 console.log("2/4 find Electron");
 // The server uses Node 22 APIs (fs.glob); Electron 35 is the first release on Node 22.
@@ -77,7 +77,7 @@ const resources = platform === "darwin" ? path.join(out, "Electron.app", "Conten
 rmSync(path.join(resources, "default_app.asar"), { force: true });
 const appDir = path.join(resources, "app");
 mkdirSync(appDir, { recursive: true });
-for (const f of ["package.json", "main.cjs", "signin.html", "app", "podium"]) cpSync(path.join(desktop, f), path.join(appDir, f), { recursive: true });
+for (const f of ["package.json", "main.cjs", "signin.html", "app", "web"]) cpSync(path.join(desktop, f), path.join(appDir, f), { recursive: true });
 
 // The external packages and everything they depend on, from this checkout's node_modules.
 const seen = new Set();

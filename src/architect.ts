@@ -5,8 +5,9 @@ import type { Brain, ContentBlockParam, MessageParam, ToolDef, ToolResultBlockPa
 import { commentsMessage, followUpGoal, hostRefusal, knowledgePrompt, planReview, relatedKnowledge, validTarget } from "./agentic.js";
 import { EcosystemInstrument } from "./instruments/ecosystem.js";
 import { ToolInputError, validateInput, type Instrument, type ToolContext, type ToolSpec } from "./instruments/types.js";
+import { GeoHook } from "./geo/hook.js";
 import { RouterBrain } from "./brains/router.js";
-import { gate, newId, now, truncate } from "./policy.js";
+import { annotateDecision, gate, newId, now, truncate } from "./policy.js";
 import { composePrompt, composeSystem, interpolate, performSystem, verifySystem } from "./prompts.js";
 import { RunStore, type RunStoreLike } from "./store.js";
 import { addUsage, emptyUsage, estimateCost, type TurnUsage } from "./usage.js";
@@ -28,6 +29,7 @@ import {
   type ScoreStep,
   type Signal,
   type Verdict,
+  withImplied,
 } from "./types.js";
 
 export interface ArchitectOptions {
@@ -39,7 +41,7 @@ export interface ArchitectOptions {
   store?: RunStoreLike;
   /** Upper bound on what any Score may be granted. Defaults to everything except standing.irreversible. */
   permissionCeiling?: Permission[];
-  /** Decides approvals interactively (CLI). Without one, approvals wait for `decide()` (server / Podium). */
+  /** Decides approvals interactively (CLI). Without one, approvals wait for `decide()` (server / web app). */
   approvalHandler?: ApprovalHandler;
   approvalTimeoutMs?: number;
   maxTurnsPerStep?: number;
@@ -161,7 +163,7 @@ class BudgetExceeded extends Error {}
 
 /**
  * :\ARCHITECT\ — Compose a Score, Perform it with Instruments, Verify the outcome.
- * Emits "event" with every RunEvent; the same events are persisted for the Podium.
+ * Emits "event" with every RunEvent; the same events are persisted for the web app.
  */
 export class Architect extends EventEmitter {
   readonly store: RunStoreLike;
@@ -169,11 +171,16 @@ export class Architect extends EventEmitter {
   private instruments: Instrument[];
   private toolIndex = new Map<string, { instrument: Instrument; spec: ToolSpec }>();
   private ceiling: Permission[];
+  /** What a run may use: its plan's permissions and the ones they imply, within the ceiling. */
+  private granted(run: Run): Permission[] {
+    return withImplied(run.score.permissions).filter((p) => this.ceiling.includes(p));
+  }
   private pending = new Map<string, { req: ApprovalRequest; resolve: (d: ApprovalDecision) => void }>();
   private cancelled = new Set<string>();
   private active = new Set<string>();
   /** The in-memory run of each performing run, so comments reach the performer straight away. */
   private live = new Map<string, Run>();
+  private geo: GeoHook;
 
   constructor(private opts: ArchitectOptions) {
     super();
@@ -181,9 +188,25 @@ export class Architect extends EventEmitter {
     this.instruments = opts.instruments;
     this.store = opts.store ?? new RunStore(path.resolve(opts.dataDir ?? ".architect"));
     this.ceiling = opts.permissionCeiling ?? PERMISSIONS.filter((p) => p !== "standing.irreversible");
+    const settingsFile = path.isAbsolute(this.store.root) ? path.join(this.store.root, "settings.json") : undefined;
+    this.geo = new GeoHook({ settingsFile });
     for (const instrument of opts.instruments) {
       for (const spec of instrument.tools) this.toolIndex.set(spec.name, { instrument, spec });
     }
+  }
+
+  /** Saved geo-routing preference. False when the switch has never been turned on. */
+  get geoRouting(): boolean {
+    return this.geo.savedRouting;
+  }
+
+  /** Effective switch: INFINITUM_GEO_ENABLED overrides the saved preference. Default off. */
+  get geoRoutingEffective(): boolean {
+    return this.geo.enabled();
+  }
+
+  setGeoRouting(on: boolean): Promise<void> {
+    return this.geo.setRouting(on);
   }
 
   get pendingApprovals(): ApprovalRequest[] {
@@ -250,7 +273,7 @@ ${knowledgePrompt(known)}`;
       summary: draft.summary,
       inputs: opts.inputs ?? {},
       // The model proposes; the account's ceiling disposes.
-      permissions: draft.permissions.filter((p) => ceiling.includes(p)),
+      permissions: withImplied(draft.permissions).filter((p) => ceiling.includes(p)),
       startUrl: opts.startUrl ?? draft.startUrl ?? undefined,
       steps: draft.steps.map((s, i) => ({
         id: `s${i + 1}`,
@@ -524,7 +547,7 @@ ${knowledgePrompt(known)}`;
     const specs = instruments
       .flatMap((i) => i.tools)
       .filter((t) => (readOnly ? t.risk === "read" : true))
-      .filter((t) => run.score.permissions.includes(t.permission));
+      .filter((t) => this.granted(run).includes(t.permission));
     const tools: ToolDef[] = [
       ...specs.map((s) => ({ name: s.name, description: s.description, input_schema: s.input_schema }) as ToolDef),
       ...controls.map((c) => CONTROL_TOOLS[c]!.def),
@@ -629,6 +652,8 @@ ${knowledgePrompt(known)}`;
     allowed: Set<string>,
   ): Promise<ToolResultBlockParam> {
     const entry = this.toolIndex.get(name);
+    const geoNote = this.geo.noteFor(rawInput);
+    if (geoNote) void this.emitEvent(run.id, "architect.note", { stepId, text: geoNote });
     const record = (risk: Risk, outcome: ActionRecord["outcome"], output: string, approval?: ActionRecord["approval"]) => {
       const action: ActionRecord = {
         id: newId("act"),
@@ -641,6 +666,7 @@ ${knowledgePrompt(known)}`;
         output: truncate(output, 2_000),
         approval,
         at: now(),
+        ...(geoNote ? { geo: geoNote } : {}),
       };
       run.actions.push(action);
       void this.emitEvent(run.id, "action", { ...action });
@@ -672,7 +698,10 @@ ${knowledgePrompt(known)}`;
       return errorResult(`Blocked: ${refused}. Do not try to reach it another way.`);
     }
     const risk = typeof entry.spec.risk === "function" ? await entry.spec.risk(input) : entry.spec.risk;
-    const decision = gate({ autonomy: run.autonomy, risk, required: entry.spec.permission, granted: run.score.permissions });
+    const decision = annotateDecision(
+      gate({ autonomy: run.autonomy, risk, required: entry.spec.permission, granted: this.granted(run) }),
+      geoNote,
+    );
 
     let approval: ActionRecord["approval"];
     if (decision.kind === "block") {
@@ -825,7 +854,7 @@ ${knowledgePrompt(known)}`;
       ...base,
       id: newId("score"),
       inputs: { ...base.inputs, ...(opts.inputs ?? {}) },
-      permissions: base.permissions.filter((p) => this.ceiling.includes(p)),
+      permissions: withImplied(base.permissions).filter((p) => this.ceiling.includes(p)),
       steps: base.steps.map((s) => ({ ...s, instruments: s.instruments.filter((n) => known.has(n)) })),
       createdAt: now(),
     };
@@ -930,7 +959,7 @@ ${knowledgePrompt(known)}`;
     return decision;
   }
 
-  /** Resolve a pending approval (from the Podium, the API or another product). */
+  /** Resolve a pending approval (from the web app, the API or another product). */
   decide(approvalId: string, decision: ApprovalDecision): boolean {
     const p = this.pending.get(approvalId);
     if (!p) return false;

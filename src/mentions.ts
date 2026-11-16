@@ -1,5 +1,5 @@
 /**
- * Local-project helpers for the Podium composer, like Claude Code, Codex and Cursor:
+ * Local-project helpers for the web app composer, like Claude Code, Codex and Cursor:
  *   @-mentions  – find files to mention, and attach the mentioned files' contents to the request
  *   ! commands  – run one shell command in the project and show its output
  * Node only: the cloud Worker has no project folder (it works on GitHub repositories).

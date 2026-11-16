@@ -97,7 +97,7 @@ const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
 
 /**
  * Checks an access token: offline against the JWKS, then the issuer's userinfo. Answers are cached
- * briefly (by the token's hash, never the token) so a busy Podium does not ask the issuer on every
+ * briefly (by the token's hash, never the token) so a busy web app does not ask the issuer on every
  * poll; a revoked session stops working within `ttlMs`.
  */
 export function createCidVerifier(

@@ -42,3 +42,37 @@ describe("@search", () => {
     expect(await (await fetch(`${base}/v1/search`, { method: "POST", headers: H, body: JSON.stringify({ text: "deploy it" }) })).json()).toEqual({ mention: false });
   });
 });
+
+describe("VEIL engine", () => {
+  it("POSTs the query and keeps only http(s) results; VEIL_SEARCH_URL turns it on", async () => {
+    const { veilEngine, enginesFromEnv } = await import("../src/search/search.mjs");
+    let sent: { url: string; body: string } | undefined;
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      sent = { url, body: String(init.body) };
+      return Response.json({ results: [{ title: "<b>Docs</b>", url: "https://docs.example/a", snippet: "x &amp; y" }, { title: "bad", url: "javascript:1" }] });
+    }) as unknown as typeof fetch;
+    const veil = veilEngine({ url: "https://veil.test/api/search", fetch: fetchImpl });
+    expect(await veil.search("q1")).toEqual([{ title: "Docs", url: "https://docs.example/a", snippet: "x & y" }]);
+    expect(sent).toEqual({ url: "https://veil.test/api/search", body: JSON.stringify({ q: "q1" }) });
+    expect(enginesFromEnv({ VEIL_SEARCH_URL: "https://infinitumveil.app/api/search" }).map((e: { name: string }) => e.name)).toEqual(["veil"]);
+    expect(() => enginesFromEnv({ VEIL_SEARCH_URL: "http://infinitumveil.app/api/search" })).toThrow(/https/);
+  });
+});
+
+describe("Exa engine", () => {
+  it("is on with EXA_API_KEY, after SearXNG and before Yandex/Brave; EXA_SEARCH=off removes it", async () => {
+    const { enginesFromEnv, exaEngine } = await import("../src/search/search.mjs");
+    const env = { SEARXNG_URL: "https://searx.example", EXA_API_KEY: "ek", BRAVE_SEARCH_API_KEY: "b" };
+    expect(enginesFromEnv(env).map((e: { name: string }) => e.name)).toEqual(["searxng", "exa", "brave"]);
+    expect(enginesFromEnv({ ...env, EXA_SEARCH: "off" }).map((e: { name: string }) => e.name)).toEqual(["searxng", "brave"]);
+    const calls: { url: string; init: RequestInit }[] = [];
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ results: [{ title: "T", url: "https://e.example/", highlights: ["h1", "h2"] }, { url: "ftp://x" }] }));
+    }) as unknown as typeof fetch;
+    const r = await exaEngine({ apiKey: "ek", fetch: fetchImpl }).search("q");
+    expect(calls[0]!.url).toBe("https://api.exa.ai/search");
+    expect((calls[0]!.init.headers as Record<string, string>)["x-api-key"]).toBe("ek");
+    expect(r).toEqual([{ title: "T", url: "https://e.example/", snippet: "h1 h2" }]);
+  });
+});

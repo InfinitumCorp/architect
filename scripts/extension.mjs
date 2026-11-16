@@ -1,5 +1,5 @@
 // Chrome extension build tools (no extra dependencies).
-//   node scripts/extension.mjs icons   render podium/icon.svg to extension/icons/*.png (needs Playwright's Chromium)
+//   node scripts/extension.mjs icons   render web/icon.svg to extension/icons/*.png (needs Playwright's Chromium)
 //   node scripts/extension.mjs zip     check the manifest, then write dist/architect-extension-<version>.zip for the Chrome Web Store
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -11,7 +11,7 @@ const EXT = path.join(ROOT, "extension");
 
 async function icons() {
   const { chromium } = await import("playwright");
-  const svg = await readFile(path.join(ROOT, "podium/icon.svg"), "utf8");
+  const svg = await readFile(path.join(ROOT, "web/icon.svg"), "utf8");
   const browser = await chromium.launch();
   try {
     await mkdir(path.join(EXT, "icons"), { recursive: true });

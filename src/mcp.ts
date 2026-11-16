@@ -6,7 +6,7 @@
  *
  * It is a thin client over the Architect HTTP API. Approvals are deliberately NOT exposed:
  * a calling agent can start, watch, recover and cancel runs, but risky actions still wait
- * for a person in the Podium or the CLI. An agent must never approve its own actions.
+ * for a person in the web app or the CLI. An agent must never approve its own actions.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";

@@ -16,10 +16,11 @@ import { InputError, NotFoundError, now } from "./policy.js";
 import { conjureRoutesFromEnv, toWebRequest, sendWebResponse, type ConjureRouteHandler } from "./conjure/conjure.mjs";
 import { openClawRoutesFromEnv, type OpenClawRouteHandler } from "./openclaw/openclaw.mjs";
 import { searchRoutesFromEnv, type SearchRoutes } from "./search/search.mjs";
+import { mixpanelBoot } from "./mixpanel-boot.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-const PODIUM_ASSETS: Record<string, { file: string; type: string }> = {
+const WEB_ASSETS: Record<string, { file: string; type: string }> = {
   "/manifest.webmanifest": { file: "manifest.webmanifest", type: "application/manifest+json" },
   "/sw.js": { file: "sw.js", type: "text/javascript; charset=utf-8" },
   "/icon.svg": { file: "icon.svg", type: "image/svg+xml" },
@@ -28,7 +29,10 @@ const PODIUM_ASSETS: Record<string, { file: string; type: string }> = {
   "/firm-suite.js": { file: "firm-suite.js", type: "text/javascript; charset=utf-8" },
   "/firm-suite.css": { file: "firm-suite.css", type: "text/css; charset=utf-8" },
   "/billing.js": { file: "billing.js", type: "text/javascript; charset=utf-8" },
-  "/cumulus-id.js": { file: "cumulus-id.js", type: "text/javascript; charset=utf-8" },
+  "/cumulus-bar.js": { file: "cumulus-bar.js", type: "text/javascript; charset=utf-8" },
+  "/amplitude.vendor.js": { file: "amplitude.vendor.js", type: "text/javascript; charset=utf-8" },
+  "/amplitude-boot.js": { file: "amplitude-boot.js", type: "text/javascript; charset=utf-8" },
+  "/mixpanel.vendor.js": { file: "mixpanel.vendor.js", type: "text/javascript; charset=utf-8" },
   "/privacy.html": { file: "privacy.html", type: "text/html; charset=utf-8" },
   "/cid-return.html": { file: "cid-return.html", type: "text/html; charset=utf-8" },
   // Interface language (@infinitum/i18n): runtime and build-time catalogs, no model calls.
@@ -108,7 +112,7 @@ function permissions(v: unknown): Permission[] | undefined {
 }
 
 /**
- * The Architect HTTP API and the Podium (the one-screen view of goal, plan, live actions,
+ * The Architect HTTP API and the web app (the one-screen view of goal, plan, live actions,
  * decisions waiting for you and the evidence behind every result).
  *
  *   POST /v1/runs                       start a run            { goal, autonomy?, inputs?, startUrl?, permissions?, composeOnly? }
@@ -126,6 +130,8 @@ function permissions(v: unknown): Permission[] | undefined {
  *   GET  /v1/approvals                  decisions waiting for a person
  *   POST /v1/approvals/:id              decide                 { approved, note?, by? }
  *   POST /v1/signals/:product           ecosystem trigger      { type, payload }
+ *   GET  /v1/settings                   geo routing preference { geoRouting, effective }
+ *   PUT  /v1/settings                   save the preference    { geoRouting }
  *   GET  /v1/openclaw                   is @scalvs connected   { connected, agent }
  *   POST /v1/openclaw                   @scalvs <task>         { text } -> { mention, text, agent }
  *   GET  /v1/search                     is web search connected { connected, engines, answers }
@@ -161,16 +167,21 @@ export function createArchitectServer(opts: ServerOptions): Server {
     const parts = url.pathname.split("/").filter(Boolean);
     try {
       if (url.pathname === "/api/labyrinth") return await serveNodeLabyrinthProxy(req, res, opts.lbrnthEndpoint ?? process.env.LBRNTH_ENDPOINT, "architect");
-      if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/podium")) {
+      if (req.method === "GET" && url.pathname === "/") {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        res.end(await readFile(path.join(here, "..", "podium", "index.html"), "utf8"));
+        res.end(await readFile(path.join(here, "..", "web", "index.html"), "utf8"));
+        return;
+      }
+      if (req.method === "GET" && url.pathname === "/mixpanel-boot.js") {
+        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" });
+        res.end(mixpanelBoot(process.env));
         return;
       }
       // Installable web app: manifest, service worker and icons (public, no secrets).
-      const asset = req.method === "GET" ? PODIUM_ASSETS[url.pathname] : undefined;
+      const asset = req.method === "GET" ? WEB_ASSETS[url.pathname] : undefined;
       if (asset) {
         res.writeHead(200, { "content-type": asset.type, "cache-control": "no-cache" });
-        res.end(await readFile(path.join(here, "..", "podium", asset.file)));
+        res.end(await readFile(path.join(here, "..", "web", asset.file)));
         return;
       }
       if (url.pathname === "/healthz") return json(res, 200, { ok: true, at: now() });
@@ -187,6 +198,7 @@ export function createArchitectServer(opts: ServerOptions): Server {
           files: Boolean(project),
           shell: Boolean(project) && loopback(req),
           labyrinth: Boolean(opts.lbrnthEndpoint ?? process.env.LBRNTH_ENDPOINT),
+          revenueUrl: process.env.REVENUE_URL || undefined,
         });
       }
       if (resource === "files" && req.method === "GET") {
@@ -261,7 +273,8 @@ export function createArchitectServer(opts: ServerOptions): Server {
           res.end(md);
           return;
         }
-        if (req.method === "GET" && action === "events") return streamEvents(req, res, architect, id);
+        // Awaited so an unknown run is a 404 here, not an unhandled rejection that stops the server.
+        if (req.method === "GET" && action === "events") return await streamEvents(req, res, architect, id);
         if (req.method === "GET" && action === "evidence" && file) {
           if (!/^[\w.-]+\.png$/.test(file)) throw new HttpError(400, "bad evidence name");
           res.writeHead(200, { "content-type": "image/png" });
@@ -375,6 +388,18 @@ export function createArchitectServer(opts: ServerOptions): Server {
           });
           if (!ok) throw new HttpError(404, "no pending approval with that id");
           return json(res, 200, { ok: true });
+        }
+      }
+
+      if (resource === "settings" && !id) {
+        if (req.method === "GET") {
+          return json(res, 200, { geoRouting: architect.geoRouting, effective: architect.geoRoutingEffective });
+        }
+        if (req.method === "PUT") {
+          const b = await body(req);
+          if (typeof b.geoRouting !== "boolean") throw new HttpError(400, "geoRouting must be true or false");
+          await architect.setGeoRouting(b.geoRouting);
+          return json(res, 200, { geoRouting: architect.geoRouting, effective: architect.geoRoutingEffective });
         }
       }
 

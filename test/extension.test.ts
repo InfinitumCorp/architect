@@ -75,6 +75,22 @@ describe("extension agent features", () => {
     expect(() => runRequest({ goal: "x", sameSite: true })).toThrow(/start URL/);
   });
 
+  it("reads and saves the geo routing switch", async () => {
+    const calls: Array<[string, RequestInit]> = [];
+    const client = createClient({
+      token: "t",
+      fetchImpl: (async (url: string, init: RequestInit) => {
+        calls.push([url, init]);
+        return jsonRes(200, { geoRouting: true, effective: true });
+      }) as unknown as typeof fetch,
+    });
+    expect(await client.settings()).toEqual({ geoRouting: true, effective: true });
+    await client.saveSettings({ geoRouting: false });
+    expect(calls[0]![0]).toBe("https://rchtch.app/v1/settings");
+    expect(calls[1]![1].method).toBe("PUT");
+    expect(JSON.parse(String(calls[1]![1].body))).toEqual({ geoRouting: false });
+  });
+
   it("approves plans and posts comments", async () => {
     const calls: Array<[string, RequestInit]> = [];
     const client = createClient({ token: "t", fetchImpl: (async (u: string, init: RequestInit) => { calls.push([u, init]); return jsonRes(201, { id: "cmt_1" }); }) as unknown as typeof fetch });

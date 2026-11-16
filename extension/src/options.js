@@ -31,6 +31,42 @@ $("signout").addEventListener("click", async () => {
   draw();
 });
 
+const { geoRouting = false } = await chrome.storage.local.get("geoRouting");
+$("geo-routing").checked = geoRouting === true;
+
+async function pullGeo() {
+  const stored = await chrome.storage.local.get("token");
+  if (!stored.token) return;
+  try {
+    const data = await createClient({ base: DEFAULT_BASE, token: stored.token }).settings();
+    if (typeof data.geoRouting === "boolean") {
+      $("geo-routing").checked = data.geoRouting;
+      await chrome.storage.local.set({ geoRouting: data.geoRouting });
+    }
+  } catch {
+    /* the saved browser value stands when the server cannot be reached */
+  }
+}
+await pullGeo();
+
+$("geo-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const on = $("geo-routing").checked === true;
+  await chrome.storage.local.set({ geoRouting: on });
+  const stored = await chrome.storage.local.get("token");
+  if (!stored.token) {
+    say("geo-result", "Saved in this browser. Add an API token to update the server.");
+    return;
+  }
+  try {
+    const data = await createClient({ base: DEFAULT_BASE, token: stored.token }).saveSettings({ geoRouting: on });
+    if (data.effective === on) say("geo-result", on ? "Saved. Geo routing is on." : "Saved. Geo routing is off.");
+    else say("geo-result", "Saved. INFINITUM_GEO_ENABLED on the server overrides this switch.");
+  } catch (err) {
+    say("geo-result", `Saved in this browser. The server was not updated: ${err.message}`);
+  }
+});
+
 $("check").addEventListener("click", async () => {
   say("Checking…");
   const s = await session();

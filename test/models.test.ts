@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Brain, TurnRequest } from "../src/brain.js";
-import { brainFromEnv, hasExplicitModelConfig, loadModelsFile, modelsFromEnv } from "../src/brains/config.js";
+import { brainFromEnv, candidatesFrom, hasExplicitModelConfig, loadModelsFile, modelsFromEnv } from "../src/brains/config.js";
 import { OpenAICompatBrain, toOpenAIMessages } from "../src/brains/openai.js";
-import { RouterBrain, trailingErrors } from "../src/brains/router.js";
+import { RouterBrain, isTransient, trailingErrors } from "../src/brains/router.js";
 import { Architect } from "../src/architect.js";
 import { WorkspaceInstrument } from "../src/instruments/workspace.js";
 
@@ -179,7 +179,43 @@ describe("automatic model router", () => {
 
   it("reports every failure when all models are down", async () => {
     const r = new RouterBrain([{ id: "x", tier: "fast", brain: brain("x") }]);
+    r.sleep = async () => {};
     await expect(r.turn(req())).rejects.toThrow(/every model failed.*x \(/);
+  });
+
+  it("goes round again after a transient failure of every model", async () => {
+    const r = new RouterBrain([{ id: "x", tier: "fast", brain: brain("x") }], { act: "fast" });
+    const waits: number[] = [];
+    r.sleep = async (ms) => void waits.push(ms);
+    replies.x = [{ status: 503, body: { error: { message: "overloaded" } } }, chat({ content: "back" })];
+    const out = await r.turn(req());
+    expect(out.model).toBe("x");
+    expect(waits).toEqual([2000]);
+    expect(seen.map((s) => s.model)).toEqual(["x", "x"]);
+  });
+
+  it("gives up after the configured retry rounds", async () => {
+    const r = new RouterBrain([{ id: "x", tier: "fast", brain: brain("x") }], { act: "fast", retryDelaysMs: [5, 10] });
+    const waits: number[] = [];
+    r.sleep = async (ms) => void waits.push(ms);
+    await expect(r.turn(req())).rejects.toThrow(/every model failed/);
+    expect(waits).toEqual([5, 10]);
+    expect(seen).toHaveLength(3);
+  });
+
+  it("does not retry an error that will not clear on its own", async () => {
+    const r = new RouterBrain([{ id: "x", tier: "fast", brain: brain("x") }], { act: "fast" });
+    const waits: number[] = [];
+    r.sleep = async (ms) => void waits.push(ms);
+    replies.x = [{ status: 401, body: { error: { message: "invalid api key" } } }];
+    await expect(r.turn(req())).rejects.toThrow(/every model failed/);
+    expect(waits).toEqual([]);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("tells transient failures from permanent ones", () => {
+    for (const m of ["fetch failed", "write ECONNRESET", "429 Too Many Requests", "HTTP 503: overloaded", "request timed out", "connect ETIMEDOUT 1.2.3.4:443"]) expect(isTransient(m), m).toBe(true);
+    for (const m of ["401 invalid api key", "400 bad request: model not found", "unknown model \"x\"", "HTTP 4290 bytes"]) expect(isTransient(m), m).toBe(false);
   });
 });
 
@@ -240,6 +276,19 @@ describe("model configuration", () => {
       "qwen3:8b", "qwen3:32b", "deepseek-v3.2", "kimi-k3", "glm4", "auto", "claude-opus-5-5",
     ]);
     expect(cfg.policy?.act).toBe("fast");
+  });
+
+  it("takes Gemini (AI Studio) as an ordinary OpenAI-compatible entry, key from the env", async () => {
+    const file = path.join(dir, "gemini.models.json");
+    const entry = { provider: "openai", id: "gemini/flash-lite", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.5-flash-lite", tier: "fast", apiKeyEnv: "GEMINI_API_KEY" };
+    await writeFile(file, JSON.stringify({ models: [entry] }));
+    const [c] = candidatesFrom(loadModelsFile(file), { GEMINI_API_KEY: "test-key" });
+    expect(c).toMatchObject({ id: "gemini/flash-lite", tier: "fast" });
+    expect(c!.brain).toBeInstanceOf(OpenAICompatBrain);
+    expect((c!.brain as OpenAICompatBrain).baseUrl).toBe(entry.baseUrl);
+    expect((c!.brain as unknown as { opts: { apiKey?: string } }).opts.apiKey).toBe("test-key");
+    // Not added from the env alone: Gemini is used only when the models file names it.
+    expect(modelsFromEnv({ GEMINI_API_KEY: "test-key" }).models.some((m) => m.model.startsWith("gemini"))).toBe(false);
   });
 
   it("defaults to OmniRoute's open models when nothing is configured; Claude is opt-in only", () => {

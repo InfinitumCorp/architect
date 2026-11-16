@@ -43,6 +43,7 @@ export declare function escapeRobotsPattern(value: string): string;
 export declare function createCrawler(options?: { fetch?: typeof fetch; timeoutMs?: number; robots?: boolean; userAgent?: string }): (url: string, options?: { signal?: AbortSignal }) => Promise<CrawledPage | null>;
 export declare function searxngEngine(options: { url: string; fetch?: typeof fetch; timeoutMs?: number }): SearchEngine;
 export declare function yandexEngine(options: { apiKey: string; folderId: string; fetch?: typeof fetch; timeoutMs?: number }): SearchEngine;
+export declare function exaEngine(options: { apiKey: string; url?: string; numResults?: number; fetch?: typeof fetch; timeoutMs?: number }): SearchEngine;
 export declare function braveEngine(options: { apiKey: string; fetch?: typeof fetch; timeoutMs?: number }): SearchEngine;
 export declare function parseYandexXml(xml: string): SearchResult[];
 export declare function openAiChat(options: { baseUrl: string; apiKey?: string; model?: string; fetch?: typeof fetch; timeoutMs?: number }): Chat;
@@ -62,6 +63,7 @@ export declare function toWebRequest(req: unknown, base?: string): Promise<Reque
 export declare function sendWebResponse(res: unknown, response: Response): Promise<void>;
 
 type Env = Record<string, string | undefined>;
+export declare function veilEngine(options?: { url?: string; fetch?: typeof fetch; timeoutMs?: number }): SearchEngine;
 export declare function enginesFromEnv(env?: Env, options?: { fetch?: typeof fetch }): SearchEngine[];
 export declare function chatFromEnv(env?: Env, options?: { fetch?: typeof fetch }): Chat | null;
 export declare function searchFromEnv(env?: Env, options?: { fetch?: typeof fetch; chat?: Chat | null }): Search | null;

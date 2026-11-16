@@ -1,6 +1,6 @@
 // :\ARCHITECT\ Desktop — the coding agent on your own machine.
 // Runs the Architect server locally (Electron's own Node, no install needed) on a project folder
-// you choose, protected by a fresh random token each launch, and shows the Podium in a window.
+// you choose, protected by a fresh random token each launch, and shows the web app in a window.
 // Model keys live in the settings folder's .env (Settings > Open settings folder); never in the app.
 // People sign in with Cumulus://ID in their browser: the app sends them to the OIDC issuer
 // (https://id.cumuluscloud.app/realms/cumulus) with PKCE S256 and a nonce, rchtch.app/cid-return.html
@@ -129,9 +129,9 @@ async function finishCidSignIn(link) {
     const profile = { cid: claims.sub, username: claims.preferred_username || claims.username, email: claims.email, name: claims.name };
     writeCid({ token: d.access_token, profile, until: Date.now() + Number(d.expires_in || 3600) * 1000 });
     const prefs = readPrefs();
-    if (prefs.project && fs.existsSync(prefs.project)) await openPodium(prefs.project);
+    if (prefs.project && fs.existsSync(prefs.project)) await openWebApp(prefs.project);
     else {
-      await openPodium(undefined);
+      await openWebApp(undefined);
       await chooseProject();
     }
   } catch (err) {
@@ -259,15 +259,15 @@ async function chooseProject() {
   prefs.project = r.filePaths[0];
   prefs.recent = [r.filePaths[0], ...(prefs.recent || []).filter((p) => p !== r.filePaths[0])].slice(0, 8);
   writePrefs(prefs);
-  await openPodium(r.filePaths[0]);
+  await openWebApp(r.filePaths[0]);
 }
 
-async function openPodium(project) {
+async function openWebApp(project) {
   const cid = readCid();
   if (!cid) return showSignIn();
   const { port } = await startServer(project);
   win.setTitle(`:\\ARCHITECT\\ — ${project ? path.basename(project) : "no project"}`);
-  // The Podium shows who is signed in and can save to Labyrinth with this Cumulus ID session.
+  // The web app shows who is signed in and can save to Labyrinth with this Cumulus ID session.
   const handoff = b64url(JSON.stringify({ token: cid.token, profile: cid.profile, until: cid.until }));
   await win.loadURL(`http://127.0.0.1:${port}/#cid_handoff=${handoff}`);
   buildMenu();
@@ -283,7 +283,7 @@ function buildMenu() {
         {
           label: "Recent",
           submenu: (prefs.recent || []).length
-            ? prefs.recent.map((p) => ({ label: p, click: () => openPodium(p) }))
+            ? prefs.recent.map((p) => ({ label: p, click: () => openWebApp(p) }))
             : [{ label: "No recent folders", enabled: false }],
         },
         { label: "Show project in file manager", enabled: Boolean(current?.project), click: () => current?.project && shell.openPath(current.project) },
@@ -294,7 +294,7 @@ function buildMenu() {
     {
       label: "Server",
       submenu: [
-        { label: "Restart", click: () => openPodium(current?.project) },
+        { label: "Restart", click: () => openWebApp(current?.project) },
         { label: "Open settings folder (.env with model keys)", click: () => shell.openPath(path.dirname(ensureSettings())) },
       ],
     },
@@ -328,7 +328,7 @@ app.whenReady().then(async () => {
     title: ":\\ARCHITECT\\",
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
-  // Marks this window as the app, so the Podium accepts the Cumulus ID handoff (and nothing else does).
+  // Marks this window as the app, so the web app accepts the Cumulus ID handoff (and nothing else does).
   win.webContents.setUserAgent(`${win.webContents.getUserAgent()} ArchitectShell/desktop`);
   // The local server's machine token rides on the app's own requests; it never appears in the page.
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ["http://127.0.0.1/*"] }, (details, done) => {
@@ -336,7 +336,7 @@ app.whenReady().then(async () => {
     if (current && details.url.startsWith(`http://127.0.0.1:${current.port}/`)) headers.Authorization = `Bearer ${current.token}`;
     done({ requestHeaders: headers });
   });
-  // Links away from the local Podium open in the system browser.
+  // Links away from the local web app open in the system browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (!url.startsWith(`http://127.0.0.1:${current?.port}/`)) shell.openExternal(url);
     return { action: url.startsWith(`http://127.0.0.1:${current?.port}/`) ? "allow" : "deny" };
@@ -355,9 +355,9 @@ app.whenReady().then(async () => {
   buildMenu();
   if (!readCid()) return showSignIn();
   const prefs = readPrefs();
-  if (prefs.project && fs.existsSync(prefs.project)) await openPodium(prefs.project);
+  if (prefs.project && fs.existsSync(prefs.project)) await openWebApp(prefs.project);
   else {
-    await openPodium(undefined);
+    await openWebApp(undefined);
     await chooseProject();
   }
 });

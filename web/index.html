@@ -4,9 +4,11 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
 <meta name="theme-color" content="#ffffff" />
+<meta name="description" content="Architect is a coding agent: describe a task in plain words and it plans the work, edits the code or drives the browser, checks the result and shows you every change." />
 <meta name="mobile-web-app-capable" content="yes" />
 <link rel="manifest" href="/manifest.webmanifest" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://infinitum-revenue.infinitumcorp.workers.dev" crossorigin />
 <link rel="stylesheet" href="/firm-suite.css" />
 <script type="module" src="/firm-suite.js"></script>
 <script type="module" src="/billing.js"></script>
@@ -53,7 +55,6 @@
   .side { border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
   .brand { display:flex; align-items:baseline; gap:8px; padding:18px 18px 14px; border-bottom:1px solid var(--ink); }
   .brand h1 { font-weight:400; font-size:26px; line-height:1; letter-spacing:-.06em; margin:0; }
-  .brand .cid-slot { margin-left:auto; font-size:13px; }
   .side-actions { display:grid; gap:10px; padding:14px 18px 10px; }
   .side-actions button { text-align:left; display:flex; justify-content:space-between; align-items:center; }
   .side-actions input { width:100%; font-size:14px; }
@@ -71,6 +72,7 @@
   .dot.failed { background:var(--paper); box-shadow:inset 0 0 0 1.5px var(--ink); }
   @keyframes pulse { 50% { opacity:.35; } }
   .side-foot { border-top:1px solid var(--line); padding:12px 18px; font-size:13px; display:grid; gap:8px; }
+  .side-foot a.link { color:var(--muted); }
   .side-foot a.get { color:var(--accent); text-decoration:none; }
   .side-foot details summary { cursor:pointer; color:var(--muted); }
 
@@ -251,12 +253,13 @@
 </style>
 <link rel="stylesheet" href="/i18n/i18n.css" />
 <script type="module" src="/i18n/start.js"></script>
-<style id="cid-style">.cid-slot{display:inline-flex;align-items:center;margin-left:auto}.cid-fixed{position:fixed;top:12px;right:12px;z-index:1000;background:#fff;color:#111820;padding:4px}@media (max-width:720px){.cid-slot .cid-who{display:none}}</style></head>
+<!-- Cumulus://ID account bar at the right end of the conversation header; on phones the header wraps so it never overflows. -->
+<style id="cid-style">.bar .cumulus-bar{display:inline-flex;align-items:center;flex-shrink:0;max-width:100%;margin-left:auto}@media (max-width:760px){.bar{flex-wrap:wrap;row-gap:8px}}</style></head>
 <body>
 <a class="skip-link" href="#prompt">Skip to the composer</a>
 <div class="app" id="app">
   <aside class="side" aria-label="Sessions">
-    <div class="brand"><h1>:\ARCHITECT\<sup class="tm">™</sup></h1><span class="cid-slot" data-cumulus-id data-label="Sign in" data-create="false"></span></div>
+    <div class="brand"><h1>:\ARCHITECT\<sup class="tm">™</sup></h1></div>
     <div class="side-actions">
       <button type="button" id="new-session">New session <kbd>Alt N</kbd></button>
       <input id="search" type="search" placeholder="Search sessions" aria-label="Search sessions" />
@@ -270,6 +273,7 @@
         <firm-suite class="firm" product="architect" compact></firm-suite>
       </details>
       <button type="button" class="link" id="help-btn">Keyboard shortcuts</button>
+      <a class="link" href="/privacy.html">Privacy</a>
     </div>
   </aside>
   <div class="scrim" id="scrim"></div>
@@ -280,6 +284,7 @@
       <div class="title" id="title">New session</div>
       <span class="state" id="state"></span>
       <button type="button" class="quiet" id="panel-btn" aria-controls="panel" aria-expanded="true" title="Changes, plan, evidence and log (Alt B)">Changes</button>
+      <div class="cumulus-bar" data-cumulus-bar></div>
     </div>
     <div class="scroll" id="scroll"><div class="transcript" id="transcript" aria-live="polite"></div></div>
     <div class="composer">
@@ -330,7 +335,7 @@
   <div>
     <h2>Sign in to :\ARCHITECT\</h2>
     <p>Use your Cumulus ID. No Cumulus ID yet? Create one here; you come straight back signed in.</p>
-    <span data-cumulus-id data-label="Sign in with Cumulus ID"></span>
+    <div data-cumulus-bar></div>
     <p class="empty" id="signin-msg" role="alert"></p>
   </div>
 </div>
@@ -360,7 +365,7 @@
   const ownText = (goal) => String(goal || "").split(FOLLOW_UP_MARK)[0].split(MENTION_MARK)[0].replace(/^(\/[a-z-]+\s+)+/i, "");
   const isLocal = /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
 
-  // ---- Sign-in: Cumulus ID (cumulus-id.js). The API takes the Cumulus ID token as its Bearer. ----
+  // ---- Sign-in: Cumulus ID (the account bar, cumulus-bar.js). The API takes the Cumulus ID token as its Bearer. ----
   // The Android and desktop apps sign in natively and hand their session over once, in the fragment.
   // Only honoured inside those apps (their user agent says so), so a link can't sign anyone in.
   (() => {
@@ -382,7 +387,14 @@
   // EventSource and <img> can't send headers.
   const withToken = (u) => { const t = cidToken(); return t ? u + (u.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(t) : u; };
   const signInNeeded = () => !$("signin-sheet").hidden;
+  // The hosted server refuses /v1 without a session: ask for sign-in instead of sending a request that 401s.
+  const hosted = /(^|\.)rchtch\.app$|\.workers\.dev$/.test(location.hostname);
   async function api(p, opts = {}) {
+    if (hosted && !cidToken()) {
+      $("signin-msg").textContent = "";
+      $("signin-sheet").hidden = false;
+      throw new Error("Sign in with Cumulus ID.");
+    }
     const r = await fetch(p, { ...opts, headers: { "content-type": "application/json", ...authHeaders() } });
     const d = await r.json().catch(() => ({}));
     if (r.status === 401 || r.status === 403) {
@@ -533,7 +545,13 @@
       const s = r.score.steps.find((x) => x.id === id);
       if (s) parts.push(`<div class="line step ${esc(st(id).status)}"><span class="mark">&#9679;</span><span class="body">${esc(s.title)}</span></div>`);
     };
+    // A finished step's closing note usually restates its summary: show the summary alone.
+    const closing = new Set();
+    const lastOf = new Map();
+    items.forEach((it) => { const id = it.kind === "action" ? it.a.stepId : it.stepId; if (id) lastOf.set(id, it); });
+    for (const [id, it] of lastOf) if (it.kind === "note" && st(id).summary && st(id).status !== "running") closing.add(it);
     for (const it of items) {
+      if (closing.has(it)) { stepHead(it.stepId); continue; }
       if (it.kind === "action") {
         stepHead(it.a.stepId);
         const a = it.a, bad = !OK.includes(String(a.outcome));
@@ -591,14 +609,23 @@
       <div class="starters">${starters.map(([t, p, d]) => `<button type="button" data-starter="${esc(p)}"><b>${esc(t)}</b><span>${esc(d)}</span></button>`).join("")}</div></div>`;
   }
 
+  // The message being sent while the server plans it (a new run can take a while to plan).
+  let pendingSend = "";
+  let lastTranscript = "";
   function drawTranscript(jump) {
     const sc = $("scroll");
     const atBottom = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80;
+    const shells = shellLog.filter((x) => x.session === (session || "")).map(shellBlock).join("");
+    const pending = pendingSend ? `<div class="msg-user">${esc(pendingSend)}<span class="meta">planning…</span></div>` : "";
+    const html = (thread.length ? thread.map((r, i) => runBlock(r, i === thread.length - 1)).join("") : shells || pending ? "" : welcome()) + shells + pending;
+    // The refresh loop redraws every few seconds: leave the DOM alone when nothing changed, so a
+    // selection, a hover or a half-made click survives.
+    if (html === lastTranscript) { if (jump) sc.scrollTop = sc.scrollHeight; return; }
+    lastTranscript = html;
     const openWalks = new Set([...document.querySelectorAll(".walk:not([hidden])")].map((d) => d.id));
     const key = (d) => d.querySelector(".name").textContent + "|" + d.querySelector(".arg").textContent;
     const openTools = new Set([...document.querySelectorAll("details.tool[open]")].map(key));
-    const shells = shellLog.filter((x) => x.session === (session || "")).map(shellBlock).join("");
-    $("transcript").innerHTML = (thread.length ? thread.map((r, i) => runBlock(r, i === thread.length - 1)).join("") : shells ? "" : welcome()) + shells;
+    $("transcript").innerHTML = html;
     document.querySelectorAll("details.tool").forEach((d) => { if (openTools.has(key(d))) d.open = true; });
     openWalks.forEach((id) => { const d = $(id); if (d) { d.hidden = false; d.open = true; loadWalk(d); } });
     document.querySelectorAll("[data-starter]").forEach((b) => (b.onclick = () => { prompt.value = b.dataset.starter; grow(); prompt.focus(); }));
@@ -795,8 +822,12 @@
     try {
       if (r && (LIVE.includes(r.status) || planWaiting(r))) {
         // Mid-run (or plan waiting): a steering comment the agent reads before its next move.
-        await api(`/v1/runs/${r.id}/comments`, { method: "POST", body: JSON.stringify({ target: "score", text, by: "podium" }) });
+        await api(`/v1/runs/${r.id}/comments`, { method: "POST", body: JSON.stringify({ target: "score", text, by: "web" }) });
+        prompt.value = ""; grow();
       } else {
+        // The message moves into the transcript at once; the box is free while the plan is made.
+        pendingSend = text; drawTranscript(true);
+        prompt.value = ""; grow();
         const allow = hostsOf($("allow-hosts").value), block = hostsOf($("block-hosts").value), budget = Number($("budget").value);
         const run = await api("/v1/runs", { method: "POST", body: JSON.stringify({
           goal: text, autonomy: mode.autonomy, review: mode.review,
@@ -812,10 +843,14 @@
         if (!session) session = run.id;
         setHash(); drawSessions();
       }
-      prompt.value = ""; grow(); toggleOpts(false);
+      toggleOpts(false);
       await drawSession(true);
-    } catch (err) { $("form-error").textContent = err.message; $("form-error").hidden = false; }
-    finally { btn.disabled = false; }
+    } catch (err) {
+      // Give the text back unless something new was typed meanwhile.
+      if (!prompt.value.trim()) { prompt.value = text; grow(); }
+      $("form-error").textContent = err.message; $("form-error").hidden = false;
+    }
+    finally { btn.disabled = false; if (pendingSend) { pendingSend = ""; drawTranscript(false); } }
   };
 
   function formError(msg) { $("form-error").textContent = msg; $("form-error").hidden = false; }
@@ -830,6 +865,7 @@
     const want = store.get("architect.model", "auto");
     sel.value = opts.some((o) => o.id === want) ? want : "auto";
     $("saved-tab").hidden = !caps.labyrinth;
+    if (caps.revenueUrl) document.querySelector("architect-plan")?.setAttribute("revenue-url", caps.revenueUrl);
     if (!caps.labyrinth && panelTab === "saved") panelTab = "changes";
     drawPanel();
     drawComposer(); if (thread.length) drawTranscript(false);
@@ -1066,7 +1102,7 @@
       note = prompt.value.trim() || window.prompt("What should Architect do differently? (optional)") || undefined;
       prompt.value = ""; grow();
     }
-    await api(`/v1/approvals/${id}`, { method: "POST", body: JSON.stringify({ approved, note, by: "podium" }) });
+    await api(`/v1/approvals/${id}`, { method: "POST", body: JSON.stringify({ approved, note, by: "web" }) });
     drawSession(false);
   }
   async function act(kind, runId) {
@@ -1127,7 +1163,7 @@
   } else $("cloud-link").hidden = false;
 
   (async () => {
-    // cumulus-id.js (deferred) has run by DOMContentLoaded, so the first requests carry the session.
+    // cumulus-bar.js (deferred) has run by DOMContentLoaded, so the first requests carry the session.
     if (document.readyState === "loading") await new Promise((r) => addEventListener("DOMContentLoaded", r, { once: true }));
     drawComposer(); drawPanel();
     loadCaps();
@@ -1143,6 +1179,13 @@
   setInterval(refresh, 5000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 </script>
-<script src="/cumulus-id.js" data-client="architect" data-issuer="https://id.cumuluscloud.app" defer></script>
+<!-- Cumulus://ID account bar: copy of https://id.cumuluscloud.app/id/bar.js -->
+<script src="/cumulus-bar.js" data-client="architect" data-issuer="https://id.cumuluscloud.app" defer></script>
+<!-- Amplitude Browser SDK 2.49.2 (vendored): page views and sessions only, IP off, US region. -->
+<script src="/amplitude.vendor.js" defer></script>
+<script src="/amplitude-boot.js" defer></script>
+<!-- Mixpanel (mixpanel-browser 2.85.0 core, vendored): one page view per load, path only, IP off. Off until MIXPANEL_PROJECT_TOKEN. -->
+<script src="/mixpanel.vendor.js" defer></script>
+<script src="/mixpanel-boot.js" defer></script>
 </body>
 </html>

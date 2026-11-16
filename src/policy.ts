@@ -47,6 +47,15 @@ export function gate(opts: {
   return { kind: "approve", reason: "irreversible action needs a person's approval" };
 }
 
+/**
+ * Attach an optional note to a gate decision.
+ * With no note, or an execute decision, the same decision is returned.
+ */
+export function annotateDecision(decision: GateDecision, note?: string): GateDecision {
+  if (!note || decision.kind === "execute") return decision;
+  return { ...decision, reason: `${decision.reason} · ${note}` };
+}
+
 /** Words that make a click or keypress consequential (submits, payments, deletions, messages). */
 const IRREVERSIBLE_WORDS =
   /\b(submit|pay|payment|purchase|buy|order|place order|checkout|check out|delete|remove|erase|send|publish|post|confirm|transfer|sign|agree|accept|book|reserve|subscribe|unsubscribe|deploy|merge|approve|cancel (?:subscription|order|account))\b/i;

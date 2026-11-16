@@ -16,7 +16,7 @@ If rchtch.app is also behind Cloudflare Access, the panel shows **Sign in at rch
 ## Develop
 
 ```bash
-npm run extension:icons   # render podium/icon.svg to extension/icons (Playwright Chromium)
+npm run extension:icons   # render web/icon.svg to extension/icons (Playwright Chromium)
 npx vitest run test/extension.test.ts
 npm run extension:zip     # checks the manifest, writes dist/architect-extension-<version>.zip
 ```

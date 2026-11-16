@@ -42,6 +42,21 @@ describe("coding tools", () => {
     expect((await ws.execute("workspace_edit", { path: "../outside.ts", old_string: "a", new_string: "b" }, ctx).catch((e) => ({ text: String(e), isError: true }))).text).toMatch(/outside the workspace/);
   });
 
+  it("edits and rewrites CRLF files (Windows checkouts) from \\n text, keeping CRLF", async () => {
+    const file = path.join(dir, "src", "win.js");
+    await writeFile(file, "export function add(a, b) {\r\n  return a - b;\r\n}\r\n");
+    const out = await ws.execute("workspace_edit", { path: "src/win.js", old_string: "export function add(a, b) {\n  return a - b;\n}", new_string: "export function add(a, b) {\n  return a + b;\n}" }, ctx);
+    expect(out.isError).toBeFalsy();
+    expect(await readFile(file, "utf8")).toBe("export function add(a, b) {\r\n  return a + b;\r\n}\r\n");
+    expect(out.text).toContain("+  return a + b;");
+
+    await ws.execute("workspace_write", { path: "src/win.js", content: "export const x = 1;\nexport const y = 2;\n" }, ctx);
+    expect(await readFile(file, "utf8")).toBe("export const x = 1;\r\nexport const y = 2;\r\n");
+    // A new or LF file is written as given.
+    await ws.execute("workspace_write", { path: "src/new.js", content: "a\nb\n" }, ctx);
+    expect(await readFile(path.join(dir, "src", "new.js"), "utf8")).toBe("a\nb\n");
+  });
+
   it("searches and globs without dependency folders", async () => {
     const hits = await ws.execute("workspace_search", { pattern: "hello" }, ctx);
     expect(hits.text).toContain("src/app.ts:2:");

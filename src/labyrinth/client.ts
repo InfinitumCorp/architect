@@ -17,6 +17,25 @@ export interface LabyrinthClientOptions {
   token?: () => string | undefined | Promise<string | undefined>;
   fetch?: typeof fetch;
 }
+/**
+ * Picks the hosted Labyrinth for a visitor's country. `spec` is either one URL, or a map such as
+ * "RU=https://lbrnth.cumuluscloud.app/api/labyrinth,*=https://lbrnth-us.cumuluscloud.app/api/labyrinth"
+ * (Russia on the Russia server, everyone else on the US one). `country` is Cloudflare's
+ * cf-ipcountry value. A map with no matching entry and no "*" yields undefined (not configured).
+ */
+export function labyrinthEndpointFor(spec: string, country: string | null | undefined): string | undefined {
+  if (!spec.includes("=")) return spec;
+  const routes = new Map<string, string>();
+  for (const part of spec.split(",")) {
+    const i = part.indexOf("=");
+    if (i < 1) throw new Error("Invalid Labyrinth endpoint map");
+    const code = part.slice(0, i).trim().toUpperCase();
+    if (!(code === "*" || /^[A-Z]{2}$/.test(code))) throw new Error("Invalid Labyrinth endpoint map");
+    routes.set(code, part.slice(i + 1).trim());
+  }
+  const cc = (country ?? "").trim().toUpperCase();
+  return (/^[A-Z]{2}$/.test(cc) ? routes.get(cc) : undefined) ?? routes.get("*");
+}
 export function secureLabyrinthEndpoint(endpoint: string): string {
   const url = new URL(endpoint);
   if (url.username || url.password || url.search || url.hash || !(url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)))) throw new Error("Labyrinth requires HTTPS (loopback HTTP only for development)");

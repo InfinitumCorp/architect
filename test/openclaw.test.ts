@@ -75,8 +75,8 @@ describe("@scalvs / @scalus", () => {
     expect((await res.json()).error).toMatch(/OPENCLAW_GATEWAY_URL/);
   });
 
-  it("the Podium routes @scalvs, @scalus and @conjure from the composer", async () => {
-    const html = await readFile(path.join(__dirname, "..", "podium", "index.html"), "utf8");
+  it("the web app routes @scalvs, @scalus and @conjure from the composer", async () => {
+    const html = await readFile(path.join(__dirname, "..", "web", "index.html"), "utf8");
     expect(html).toContain('api("/v1/openclaw"');
     expect(html).toContain('api("/v1/conjure"');
     expect(html).toMatch(/SCALVS\.test\(text\)/);

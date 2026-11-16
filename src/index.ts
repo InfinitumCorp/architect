@@ -42,7 +42,10 @@ export { RouterBrain, DEFAULT_POLICY, type Candidate, type RouterPolicy, type Ti
 export { brainFromEnv, loadModelsFile, modelsFromEnv, ModelsFileSchema } from "./brains/config.js";
 export type { Brain, ScoreDraft, TurnRequest, TurnResult } from "./brain.js";
 export { RunStore } from "./store.js";
-export { gate, classifyByLabel, classifyCommand } from "./policy.js";
+export { gate, annotateDecision, classifyByLabel, classifyCommand } from "./policy.js";
+export { GeoHook, geoNote, targetsOf } from "./geo/hook.js";
+export { geoRoutingEnabled, readGeoSettings, writeGeoSettings } from "./geo/settings.js";
+export { loadGeoIpList, loadGeoSiteList, GeoIpList, GeoSiteList } from "./geo/dat.js";
 export { BrowserInstrument } from "./instruments/browser.js";
 export { WorkspaceInstrument } from "./instruments/workspace.js";
 export { HttpInstrument } from "./instruments/http.js";

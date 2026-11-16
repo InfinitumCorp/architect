@@ -68,7 +68,7 @@ export function performSystem(run: Run, step: ScoreStep, instruments: Instrument
   const plan = score.steps
     .map((s, i) => {
       const st = run.steps.find((x) => x.id === s.id);
-      return `${i + 1}. [${st?.status ?? "pending"}] ${s.title}${st?.summary ? ` — ${st.summary}` : ""}`;
+      return `${i + 1}. [${st?.status ?? "pending"}] ${s.title}${st?.summary ? ` — ${st.summary}` : ""}${s.id === step.id ? "   <- this step" : ""}`;
     })
     .join("\n");
   return `You are :\\ARCHITECT\\ (Architect), Infinitum's coding agent, carrying out one step of a plan with real tools. Work autonomously from start to finish of the step: when something is unclear, make the most reasonable assumption, write it down in your summary, and keep going. Hand off only when blocked by something only a person can do.
@@ -85,6 +85,8 @@ ${score.successCriteria.map((c) => `- ${c}`).join("\n")}
 
 Plan:
 ${plan}
+
+Scope: do only the step marked "<- this step" (${step.title}); the later steps get their own turns. If the summaries above show an earlier step already did this step's work, check that it holds (read the file, re-run the check) and call step_complete saying so, without redoing it.
 
 Instruments for this step:
 ${instrumentCatalog(instruments)}

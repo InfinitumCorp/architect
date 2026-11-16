@@ -1,16 +1,16 @@
-// Render podium/icon.svg (made by scripts/logo.py) to the PNG sizes the web app and the extension need.
+// Render web/icon.svg (made by scripts/logo.py) to the PNG sizes the web app and the extension need.
 // The Android app uses the vector drawables scripts/logo.py writes.
 //   node scripts/icons.mjs
 import { chromium } from "playwright";
 import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-const svg = await readFile("podium/icon.svg", "utf8");
+const svg = await readFile("web/icon.svg", "utf8");
 // [file, size, crop]: small icons crop tighter so the :\™ mark stays legible at 16-48 px.
 const TIGHT = "21 21 66 66";
 const targets = [
-  ["podium/icon-192.png", 192],
-  ["podium/icon-512.png", 512],
+  ["web/icon-192.png", 192],
+  ["web/icon-512.png", 512],
   ["extension/icons/icon-16.png", 16, TIGHT],
   ["extension/icons/icon-32.png", 32, TIGHT],
   ["extension/icons/icon-48.png", 48, TIGHT],

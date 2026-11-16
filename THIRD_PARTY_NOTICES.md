@@ -16,6 +16,8 @@ How each item reaches a user:
 - **External tool**: not installed or shipped by Architect. A person installs it; Architect runs
   it only if it is found.
 - **Design reference**: the idea was studied and reimplemented. No code was copied.
+- **Downloaded dataset**: fetched by `npm run geo:fetch` into `data/geo/` (gitignored). Not shipped
+  and not loaded until geo routing is turned on.
 
 ---
 
@@ -169,6 +171,34 @@ How each item reaches a user:
 - NOTICE file: none.
 
 Not used: openai/evals datasets (CC-BY-SA and GFDL). None are included.
+
+## v2fly/geoip (`geoip.dat`)
+
+- Use: downloaded dataset, tag `202611080027`, file `geoip.dat`. Optional geo-routing notes
+  (`src/geo/`). Not committed, not installed by `npm install`, and not read while geo routing is off.
+- Source: https://github.com/v2fly/geoip/releases/tag/202611080027
+- SHA-256: `eedb24b3b9fcba27e06b92c0428dab90d9496083091ae4cf39e11387fd99d0e2`
+  (matches the official `geoip.dat.sha256sum` asset)
+- License: CC-BY-SA-4.0 (text: [CC-BY-SA-4.0](#cc-by-sa-40))
+- Copyright: v2fly/geoip contributors. The bytes are the unmodified upstream release.
+- Attribution required by the upstream README: the free [IP Geolocation data by DB-IP](https://db-ip.com)
+  is licensed under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/).
+- NOTICE file: none. The license and the DB-IP line above are the attribution.
+- Not modified.
+- Not used: Loyalsoldier geoip and sing-box rule sets (GPL-3). None are included.
+
+## v2fly/domain-list-community (`geosite.dat`)
+
+- Use: downloaded dataset, tag `20261108011013`. The release asset `dlc.dat` is saved as
+  `geosite.dat`. Same optional geo-routing notes as geoip.dat. Not committed.
+- Source: https://github.com/v2fly/domain-list-community/releases/tag/20261108011013
+- SHA-256: `dc4192dd1b644a38276ed06136d26e729fa674d25785adb38c87e040e92376b2`
+  (matches the official `dlc.dat.sha256sum` asset)
+- License: MIT (text: [MIT: domain-list-community](#mit-license-v2flydomain-list-community))
+- Copyright (c) 2018-2019 V2Ray
+- NOTICE file: none.
+- Not modified.
+- Not used: Loyalsoldier and sing-box copies of this data (GPL-3). None are included.
 
 ---
 
@@ -461,3 +491,45 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## MIT License (v2fly/domain-list-community)
+
+```text
+MIT License
+
+Copyright (c) 2018-2019 V2Ray
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## CC-BY-SA-4.0
+
+Creative Commons Attribution-ShareAlike 4.0 International.
+Canonical text: https://creativecommons.org/licenses/by-sa/4.0/legalcode
+
+Applies to the unmodified v2fly `geoip.dat` release named above. Architect does not
+adapt that file. ShareAlike applies if you adapt the dataset.
+
+## CC-BY-4.0
+
+Creative Commons Attribution 4.0 International.
+Canonical text: https://creativecommons.org/licenses/by/4.0/legalcode
+
+Applies to the DB-IP geolocation data inside that `geoip.dat` release. Attribute DB-IP
+(https://db-ip.com) when using the data.

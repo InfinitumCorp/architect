@@ -112,6 +112,8 @@ export function createClient({ base = DEFAULT_BASE, token = "", fetchImpl = glob
     approvals: () => call("/v1/approvals"),
     decide: (id, approved, note) =>
       call(`/v1/approvals/${encodeURIComponent(id)}`, { method: "POST", body: { approved, note: note || undefined, by: "chrome-extension" } }),
+    settings: () => call("/v1/settings"),
+    saveSettings: (body) => call("/v1/settings", { method: "PUT", body }),
   };
 }
 
